@@ -5,4 +5,6 @@ billing_account     = "XXXXXX-XXXXXX-XXXXXX"
 monthly_budget_usd  = 3
 timezone            = "America/Panama"
 firestore_location  = "nam5"
-# worker_url        = "https://assistant-worker-<hash>.us-central1.run.app"
+# Set after the first deploy (and equal to the service's WORKER_URL):
+# service_url         = "https://assistant-<hash>.us-central1.run.app"
+# service_url_staging = "https://assistant-staging-<hash>.us-central1.run.app"

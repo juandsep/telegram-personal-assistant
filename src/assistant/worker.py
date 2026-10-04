@@ -1,9 +1,9 @@
-"""Worker entrypoint (assistant-worker).
+"""Google-only routes of the assistant service (see ``app.py``).
 
 Push subscriber for assistant-updates (user messages) and assistant-cron
 (scheduled jobs), and target of the Cloud Tasks reminders. The service is
-private: Cloud Run validates the OIDC token (Pub/Sub, Cloud Tasks) before a
-request reaches these routes, so no unauthenticated caller gets here.
+public (Telegram reaches the webhook), so every route here requires the
+Google-signed OIDC token checked by ``assistant.authz``.
 
 Any 2xx acks the message; a 5xx makes Pub/Sub retry with backoff.
 """
@@ -23,9 +23,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
+from assistant.authz import require_google_oidc
 from assistant.channels.base import InboundMessage
 from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import WorkerSettings, get_worker_settings
@@ -34,7 +35,7 @@ from assistant.i18n import idioma, t
 from assistant.services import agenda, quick, state
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="assistant-worker")
+router = APIRouter(dependencies=[Depends(require_google_oidc)])
 
 ACK = 204
 GIF_USAGE = (
@@ -49,12 +50,7 @@ LEDGER_COMMANDS = ("/ultimos", "/editar", "/anular", "/gif")
 REGISTROS = {"registrar_gasto": "gasto", "registrar_ingreso": "ingreso"}
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.post("/push")
+@router.post("/push")
 async def push(request: Request) -> Response:
     try:
         envelope = json.loads(await request.body())
@@ -66,7 +62,7 @@ async def push(request: Request) -> Response:
     return Response(status_code=await run_in_threadpool(_route, payload))
 
 
-@app.post("/tasks/reminder")
+@router.post("/tasks/reminder")
 async def reminder(request: Request) -> Response:
     """Cloud Tasks at the reminder time. Always 2xx unless Firestore fails."""
     try:
@@ -451,7 +447,7 @@ def _tool(
 def _tablero(
     ctx: ToolContext, channel: Telegram, msg: InboundMessage, settings: WorkerSettings
 ) -> None:
-    """/tablero: pins the dashboard Mini App (assistant-api /visor) in the chat."""
+    """/tablero: pins the dashboard Mini App (the service's /visor) in the chat."""
     if not settings.api_url:
         _send(channel, msg, t(ctx.idioma, "tablero_no_config"))
         return

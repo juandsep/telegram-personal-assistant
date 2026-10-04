@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Expense message: caf\u00e9 2000cop",
+    "title": "Expense message: café 2000cop",
     "output": "expense-turn.html",
     "viewBox": [
       1080,
@@ -18,19 +18,14 @@
       "label": "Telegram"
     },
     {
-      "id": "api",
+      "id": "assistant",
       "type": "backend",
-      "label": "assistant-api"
+      "label": "assistant"
     },
     {
       "id": "pubsub",
       "type": "messagebus",
       "label": "Pub/Sub"
-    },
-    {
-      "id": "worker",
-      "type": "backend",
-      "label": "assistant-worker"
     },
     {
       "id": "firestore",
@@ -46,27 +41,27 @@
   "messages": [
     {
       "from": "telegram",
-      "to": "api",
+      "to": "assistant",
       "y": 160,
       "label": "webhook",
       "variant": "emphasis"
     },
     {
-      "from": "api",
+      "from": "assistant",
       "to": "firestore",
       "y": 190,
       "label": "allowlist + dedup",
       "variant": "security"
     },
     {
-      "from": "api",
+      "from": "assistant",
       "to": "pubsub",
       "y": 220,
       "label": "publish",
       "variant": "emphasis"
     },
     {
-      "from": "api",
+      "from": "assistant",
       "to": "telegram",
       "y": 250,
       "label": "200 OK",
@@ -74,34 +69,34 @@
     },
     {
       "from": "pubsub",
-      "to": "worker",
+      "to": "assistant",
       "y": 296,
-      "label": "push",
+      "label": "push (OIDC)",
       "variant": "emphasis"
     },
     {
-      "from": "worker",
+      "from": "assistant",
       "to": "fx",
       "y": 326,
       "label": "TRM rate",
       "variant": "dashed"
     },
     {
-      "from": "worker",
+      "from": "assistant",
       "to": "firestore",
       "y": 356,
       "label": "write USD",
       "variant": "emphasis"
     },
     {
-      "from": "worker",
+      "from": "assistant",
       "to": "telegram",
       "y": 402,
-      "label": "reaction GIF",
+      "label": "entry + editar: hint",
       "variant": "emphasis"
     },
     {
-      "from": "worker",
+      "from": "assistant",
       "to": "pubsub",
       "y": 462,
       "label": "ack",
@@ -110,13 +105,13 @@
   ],
   "activations": [
     {
-      "participant": "api",
+      "participant": "assistant",
       "from": 154,
       "to": 258,
       "type": "backend"
     },
     {
-      "participant": "worker",
+      "participant": "assistant",
       "from": 290,
       "to": 470,
       "type": "backend"

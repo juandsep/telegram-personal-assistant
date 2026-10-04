@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from firestore_fake import FakeDB
 
 from assistant import api
+from assistant.app import app
 from assistant.services import agenda, ledger, pubsub, state
 
 URL = "/tg/test-path"
@@ -47,7 +48,7 @@ def fake(monkeypatch):
     return m
 
 
-client = TestClient(api.app)
+client = TestClient(app)
 
 
 def test_missing_header_403(fake) -> None:

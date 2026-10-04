@@ -164,10 +164,10 @@ Confirmation buttons use `callback_data` `ok:<token>` and `no:<token>`.
 def record_turn(result: TurnResult, latency_ms: int, text: str) -> None
 ```
 
-Always emits one structured JSON log line (no PII; `text` only as sha256).
-Then sends the run to MLflow best-effort: 3 s timeout, identity token for the
-private Cloud Run URL, any error only logged. Skipped when
-`MLFLOW_TRACKING_URI` is empty. Never raises.
+Emits one structured JSON log line, `{"event": "llm_turn", ...}` (no PII;
+`text` only as sha256). The log-based metrics in `infra/monitoring.tf` parse its
+fields, so keep the `"field": value` format (asserted in
+`tests/test_trace.py`). Never raises.
 
 ## Worker routes without the LLM
 

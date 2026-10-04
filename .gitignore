@@ -40,3 +40,6 @@ coverage.xml
 
 # archify browser-check evidence
 docs/architecture/*.visual-check.*
+
+# Local Grafana: the read-only account key (monitoring/grafana-key.sh).
+monitoring/secrets/

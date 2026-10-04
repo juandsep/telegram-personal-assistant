@@ -156,6 +156,20 @@
         150,
         64
       ]
+    },
+    {
+      "id": "monitoring",
+      "type": "cloud",
+      "label": "Cloud Monitoring",
+      "sublabel": "metrics · alerts · Grafana",
+      "pos": [
+        650,
+        570
+      ],
+      "size": [
+        200,
+        64
+      ]
     }
   ],
   "boundaries": [
@@ -170,7 +184,8 @@
         "firestore",
         "tasks",
         "gcs",
-        "bigquery"
+        "bigquery",
+        "monitoring"
       ]
     }
   ],
@@ -252,6 +267,13 @@
       "id": "external-table",
       "from": "gcs",
       "to": "bigquery"
+    },
+    {
+      "id": "observe",
+      "from": "assistant",
+      "to": "monitoring",
+      "label": "logs + metrics",
+      "labelDy": 63
     }
   ]
 }

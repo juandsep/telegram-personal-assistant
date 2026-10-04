@@ -38,7 +38,9 @@ One Cloud Run service, scaled to zero. The Telegram webhook only verifies the
 update, publishes it to Pub/Sub and acks in under 300 ms; Pub/Sub pushes it
 back to the same service, which calls the LLM (DeepSeek, tool calling), writes
 to Firestore and replies on its own request. Reminders are Cloud Tasks; reports
-run from an hourly Cloud Scheduler job. Interactive diagrams live
+run from an hourly Cloud Scheduler job. Cloud Monitoring collects request and
+LLM metrics and mails alerts, always on; a local Grafana explores them
+([monitoring/](monitoring/README.md)). Interactive diagrams live
 in [`docs/architecture/`](docs/architecture/).
 
 ## Documentation
@@ -65,8 +67,8 @@ Local runs read a git-ignored `.env` with the same variables as the deploy (see
 [docs/DEPLOY.md](docs/DEPLOY.md#configuration)).
 
 **Stack:** FastAPI, httpx (DeepSeek, Telegram), `google-cloud-*` (Firestore,
-Pub/Sub, Storage, Tasks, KMS), `mlflow-skinny`, uv + ruff + mypy + pytest,
-Terraform, GitHub Actions.
+Pub/Sub, Storage, Tasks, KMS), Cloud Monitoring + Grafana, uv + ruff + mypy +
+pytest, Terraform, GitHub Actions.
 
 ## Deploy
 

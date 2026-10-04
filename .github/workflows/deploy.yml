@@ -37,12 +37,11 @@ jobs:
           GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
           GCP_DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
           GCP_WORKER_SA: ${{ vars.GCP_WORKER_SA }}
-          MLFLOW_TRACKING_URI: ${{ vars.MLFLOW_TRACKING_URI }}
           BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
         run: |
           missing=0
           for name in GCP_PROJECT_ID GCP_REGION GCP_ARTIFACT_REPO GCP_WIF_PROVIDER \
-                      GCP_DEPLOY_SA GCP_WORKER_SA MLFLOW_TRACKING_URI \
+                      GCP_DEPLOY_SA GCP_WORKER_SA \
                       BACKUP_BUCKET; do
             if [ -z "${!name}" ]; then
               echo "::error::variable $name is empty; set it before deploying"
@@ -98,7 +97,6 @@ jobs:
             UPDATES_TOPIC=${{ env.STAGING == 'true' && 'assistant-updates-staging' || 'assistant-updates' }}
             TELEGRAM_BOT_ID=${{ env.STAGING == 'true' && vars.TELEGRAM_BOT_ID_STAGING || vars.TELEGRAM_BOT_ID }}
             BACKUP_BUCKET=${{ vars.BACKUP_BUCKET }}
-            MLFLOW_TRACKING_URI=${{ vars.MLFLOW_TRACKING_URI }}
             WORKER_URL=${{ vars.WORKER_URL }}
             WORKER_SA=${{ vars.GCP_WORKER_SA }}
             TASKS_QUEUE=assistant-reminders

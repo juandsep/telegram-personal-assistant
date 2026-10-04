@@ -102,7 +102,7 @@ see [Configuration](#configuration).
 
    ```bash
    TELEGRAM_BOT_TOKEN="$(gcloud secrets versions access latest --secret=assistant-bot-token)" \
-     uv run python -m assistant.admin bot-profile --photo docs/assets/juani-avatar.jpg
+     uv run python -m assistant.admin bot-profile --photo
    ```
 
    Owner commands (`/invitar`, `/usuarios`, `/gif`) work but are not listed.

@@ -97,8 +97,8 @@ def test_idioma_from_language_code() -> None:
 
 
 @respx.mock
-def test_bot_profile_in_three_languages(tmp_path) -> None:
-    from assistant.admin import COMANDOS, bot_profile
+def test_bot_profile_in_three_languages() -> None:
+    from assistant.admin import AVATAR, COMANDOS, bot_profile
 
     routes = {
         m: respx.post(f"{API_BASE}/bot1:x/{m}").mock(
@@ -111,9 +111,7 @@ def test_bot_profile_in_three_languages(tmp_path) -> None:
             "setMyProfilePhoto",
         )
     }
-    foto = tmp_path / "a.jpg"
-    foto.write_bytes(b"\xff\xd8jpg")
-    bot_profile(Telegram("1:x"), foto)
+    bot_profile(Telegram("1:x"), photo=True)
     bodies = [json.loads(c.request.read()) for c in routes["setMyCommands"].calls]
     assert [b["language_code"] for b in bodies] == ["", "en", "zh"]
     assert [c["command"] for c in bodies[1]["commands"]] == list(COMANDOS)
@@ -125,4 +123,4 @@ def test_bot_profile_in_three_languages(tmp_path) -> None:
     for call in routes["setMyShortDescription"].calls:
         assert len(json.loads(call.request.read())["short_description"]) <= 120
     upload = routes["setMyProfilePhoto"].calls.last.request.read()
-    assert b'"attach://foto"' in upload and b"\xff\xd8jpg" in upload
+    assert b'"attach://foto"' in upload and AVATAR.read_bytes() in upload

@@ -3,9 +3,9 @@
 ``python -m assistant.admin add-owner <chat_id> <nombre>``
 ``python -m assistant.admin migrate-gifs <owner_chat_id>``: copies the owner's
 old per-user ``gifs/{chat_id}`` lists into the shared catalog's ``general``.
-``python -m assistant.admin bot-profile [--photo docs/assets/juani-avatar.jpg]``:
+``python -m assistant.admin bot-profile [--photo]``:
 the bot's commands, description and about text in es (default), en and zh, and
-optionally its profile photo. Needs TELEGRAM_BOT_TOKEN.
+optionally its profile photo (``AVATAR``). Needs TELEGRAM_BOT_TOKEN.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from assistant.channels.telegram import Telegram
 from assistant.i18n import IDIOMAS, t
 from assistant.services import state
 
+AVATAR = Path(__file__).resolve().parents[2] / "docs" / "assets" / "juani-avatar.jpg"
 # The menu users see; owner commands (/invitar, /usuarios, /gif) stay unlisted.
 COMANDOS = (
     "tablero",
@@ -33,7 +34,7 @@ COMANDOS = (
 )
 
 
-def bot_profile(telegram: Telegram, photo: Path | None) -> None:
+def bot_profile(telegram: Telegram, photo: bool) -> None:
     for lang in IDIOMAS:
         telegram.set_profile(
             "" if lang == "es" else lang,  # Spanish for every other language
@@ -44,7 +45,7 @@ def bot_profile(telegram: Telegram, photo: Path | None) -> None:
             short_description=t(lang, "bot_about"),
         )
     if photo:
-        telegram.set_photo(photo.read_bytes())
+        telegram.set_photo(AVATAR.read_bytes())
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -60,7 +61,7 @@ def main(argv: list[str] | None = None) -> None:
     profile = commands.add_parser(
         "bot-profile", help="set the bot's commands, texts and photo"
     )
-    profile.add_argument("--photo", type=Path)
+    profile.add_argument("--photo", action="store_true", help="also set AVATAR")
     args = parser.parse_args(argv)
     if args.command == "bot-profile":
         bot_profile(Telegram(os.environ["TELEGRAM_BOT_TOKEN"]), args.photo)

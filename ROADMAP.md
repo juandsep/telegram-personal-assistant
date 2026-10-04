@@ -1,4 +1,4 @@
-# Plan: personal finance and calendar assistant (Telegram)
+# Roadmap: personal finance and calendar assistant (Telegram)
 
 > **This is the original plan (phase 0).** It records the decisions and their
 > reasons. The implementation evolved from it: the ledger moved from Google
@@ -226,7 +226,7 @@ Billing traps to avoid from day one:
 
 ```
 personal-assistant-bot/
-├── PLAN.md
+├── ROADMAP.md
 ├── README.md                 # architecture + local run + deploy
 ├── CONTRIBUTING.md           # branch flow (same as uplift)
 ├── pyproject.toml            # uv + ruff + mypy + pytest

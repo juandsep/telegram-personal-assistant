@@ -40,7 +40,7 @@ under 300 ms and publishes to Pub/Sub; `assistant-worker` calls the LLM
 Tasks; reports run from an hourly Cloud Scheduler job. Interactive diagrams live
 in [`docs/architecture/`](docs/architecture/).
 
-Design decisions, costs, security and roadmap: **[PLAN.md](PLAN.md)**.
+Design decisions, costs, security and roadmap: **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -48,9 +48,7 @@ Design decisions, costs, security and roadmap: **[PLAN.md](PLAN.md)**.
 |---|---|
 | [docs/USAGE.md](docs/USAGE.md) | Logging, corrections, dashboard, reports, GIFs, agenda, languages, commands |
 | [docs/DATA.md](docs/DATA.md) | Ledger model, CSV export and backup, Looker Studio, agenda and other collections |
-| [docs/DEPLOY.md](docs/DEPLOY.md) | Reproducing it on GCP, bot profile, configuration variables, admin CLI |
-| [PLAN.md](PLAN.md) | The original plan: decisions, architecture, costs, security, roadmap |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commits and releases |
+| [ROADMAP.md](ROADMAP.md) | The original plan: decisions, architecture, costs, security, roadmap |
 
 ## Run locally
 
@@ -70,6 +68,13 @@ Local runs read a git-ignored `.env` with the same variables as the deploy (see
 **Stack:** FastAPI, httpx (DeepSeek, Telegram), `google-cloud-*` (Firestore,
 Pub/Sub, Storage, Tasks, KMS), `mlflow-skinny`, uv + ruff + mypy + pytest,
 Terraform, GitHub Actions.
+
+## Deploy
+
+Juani runs on GCP: Terraform for the base infrastructure, GitHub Actions for
+the two Cloud Run services (`dev` deploys staging, `main` deploys production).
+Step by step, the bot profile, every configuration variable and the admin CLI:
+see [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Contributing
 

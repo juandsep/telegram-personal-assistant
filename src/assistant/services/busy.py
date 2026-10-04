@@ -33,6 +33,7 @@ from google.cloud import firestore
 
 from assistant.config import get_worker_settings
 from assistant.context import ToolContext
+from assistant.i18n import t
 from assistant.services import crypto
 
 log = logging.getLogger(__name__)
@@ -48,8 +49,6 @@ CACHE_TTL_S = 300.0
 LABEL = "Ocupado"
 DEFAULT_ZONE = "America/Panama"
 
-INVALID = "Enlace no válido."
-UNREADABLE = "No pude leer ese calendario."
 
 # ponytail: per-instance cache (each Cloud Run instance fetches on its own);
 # fine for one turn, move to Firestore/Redis if fetch volume ever matters.
@@ -189,17 +188,20 @@ def conectar(ctx: ToolContext, url: str) -> str:
             merge=True,
         )
         log.info("ics_disconnect")
-        return "Calendario desconectado."
+        return t(ctx.idioma, "cal_desconectado")
     key = get_worker_settings().kms_key
     if not key:  # fail closed: never store the URL in clear
         log.warning("ics_connect_rejected code=no_kms_key")
-        return "Aún no disponible."
+        return t(ctx.idioma, "no_disponible")
     try:
         _load(url)
     except BusyError as exc:
         log.info("ics_connect_rejected code=%s", exc)
-        return INVALID if str(exc) == "invalid_url" else UNREADABLE
+        return t(
+            ctx.idioma,
+            "enlace_invalido" if str(exc) == "invalid_url" else "cal_ilegible",
+        )
     enc = crypto.encrypt(key, url.strip(), ctx.chat_id)
     ref.set({"ics_url_enc": enc, "ics_url": firestore.DELETE_FIELD}, merge=True)
     log.info("ics_connect")
-    return "✓ Calendario conectado."
+    return t(ctx.idioma, "cal_conectado")

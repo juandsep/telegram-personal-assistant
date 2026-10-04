@@ -89,26 +89,23 @@ see [Configuration](#configuration).
    plus the environment-specific variables, then create the `staging`
    (branch `dev`) and `production` (branch `main`) environments. After the
    first deploy, set per environment `WORKER_URL` (the worker's Cloud Run URL;
-   reminders are skipped while it is empty) and `API_URL` (the api's URL, for
-   the ICS link), then deploy again.
+   reminders are skipped while it is empty), `API_URL` (the api's URL, for
+   the ICS link and the Visor) and `TELEGRAM_BOT_ID` /
+   `TELEGRAM_BOT_ID_STAGING` (the number before `:` in each bot token, which
+   checks the Visor's Mini App signature), then deploy again.
 
-4. In @BotFather, `/setcommands` for the bot and paste:
+4. Set the bot's profile (Juani): the command menu, the description shown in
+   an empty chat and the about text, in Spanish (default for any other
+   language), English and Chinese, plus the profile photo
+   ([`docs/assets/juani-avatar.jpg`](docs/assets/juani-avatar.jpg)). Run it
+   again after changing the texts in `src/assistant/i18n.py`:
 
+   ```bash
+   TELEGRAM_BOT_TOKEN="$(gcloud secrets versions access latest --secret=assistant-bot-token)" \
+     uv run python -m assistant.admin bot-profile --photo
    ```
-   calendario - próximos 7 días
-   ultimos - últimos 5 movimientos
-   tablero - ver tus gastos en la web (enlace 1 h)
-   editar - editar un movimiento: /editar 1 3usd
-   anular - anular un movimiento: /anular 1
-   gif - catálogo de GIFs de reacción (solo owner)
-   conectar - conectar tu calendario (enlace iCal secreto)
-   vincular - vincular tu Google Calendar (instantáneo)
-   invitar - (owner) invitar a alguien: /invitar Ana
-   usuarios - (owner) ver y revocar usuarios
-   ayuda - qué puedo hacer
-   zona - tu zona horaria: /zona America/Bogota
-   start - activar
-   ```
+
+   Owner commands (`/invitar`, `/usuarios`, `/gif`) work but are not listed.
 
 5. Add yourself as the owner (your chat id from @userinfobot), with ADC
    pointed at the project. Only invited people can use the bot: the owner sends
@@ -117,13 +114,13 @@ see [Configuration](#configuration).
 
    ```bash
    GCP_PROJECT_ID="$PROJECT_ID" uv run python -m assistant.admin add-owner <chat_id> <nombre>
-   for c in processed invites rate spend pending dash cron; do
+   for c in processed invites rate spend pending cron; do
      gcloud firestore fields ttls update expire_at --collection-group="$c" --enable-ttl --async
    done
    ```
 
-   The loop enables TTL cleanup of the dedup markers, invites, counters,
-   pending confirmations and dashboard links.
+   The loop enables TTL cleanup of the dedup markers, invites, counters and
+   pending confirmations.
 
 6. Register the webhook and start using the bot:
 
@@ -153,11 +150,30 @@ to the LLM.
 - `/ultimos`: the last 5 movements, numbered (1 = the most recent).
 - `/editar <n> <monto>[moneda]`: `/editar 1 3usd`, `/editar 2 2000 cop`.
 - `/anular <n>`: asks with Confirmar/Cancelar buttons, then voids it.
-- `/tablero`: a private link, valid 1 h, to a web dashboard of the month
+- **Languages**: Spanish, English and Chinese, from the `language_code` of the
+  user's Telegram app (it follows the phone unless changed in Telegram), saved
+  as `users.idioma` on every message that changes it. `assistant/i18n.py` holds
+  every reply, the reports, the dashboard and the category names (stored keys
+  stay Spanish); the LLM is told to answer in that language. Only the
+  owner-only commands (`/invitar`, `/usuarios`, `/gif`) stay in Spanish. Quick
+  entry knows Spanish, English and Chinese keywords for categories, and sends
+  dates and questions in any of the three to the LLM.
+- `/start` (also after an invite) sends the welcome from Juani and pins the
+  Visor, like `/tablero`.
+- Every registration answers with the entry as stored (`−12.00 USD · Lunch ·
+  Restaurantes`) and how to fix it: `editar: 15 · almuerzo · restaurantes`
+  (also `edit:` / `修改:`) corrects the last movement; amount, currency,
+  category (by name in any language) and note, in any order. No LLM.
+- `/fun` toggles GIF replies (`users.fun`, off by default): with it on, a
+  registration answers with the reaction GIF instead of the text.
+- `/tablero`: pins a "Visor de gastos" button in the chat and sets it as the
+  chat's menu button. It opens a Telegram Mini App with the month's dashboard
   (income, spend, savings rate against the 20% target, spend by category and
-  per day, last 15 movements). Served read-only by `assistant-api` at
-  `/tablero/{token}` (`?mes=YYYY-MM` for another month); `dash/{token}` holds
-  the chat_id and `expire_at`.
+  per day, last 15 movements, ← → for other months). `assistant-api` serves the
+  shell at `/visor`; the page posts Telegram's signed `initData` to
+  `/visor/datos`, which checks the Ed25519 signature with Telegram's public key
+  and `TELEGRAM_BOT_ID` (the number before `:` in the bot token, not a secret),
+  so the api never holds the bot token and the URL carries no secret.
 - In free text the LLM does the same: "el último era 3 dólares, no 5".
 
 **Reaction GIFs.** One shared catalog, curated by the owner, answers every
@@ -182,10 +198,10 @@ per-user libraries move with
 
 **Scheduled messages**, each in the user's own time zone (an hourly `tick` job
 in UTC picks who is due): 07:00 agenda of the day and yesterday's spend; 22:00
-every movement of the day and the day's spend; Sunday 22:00 the same list plus
+the day's spend ("Tus gastos hoy: …") pointing to the Visor de gastos; Sunday 22:00 that line plus
 the week's spend, top categories and, against the month's income, the 20% to
-save and what is left per week, in one message. The 22:00 reports end with a
-24 h link to the dashboard. The ledger export (daily) and the backup (Sundays) run
+save and what is left per week, in one message. The dashboard is the pinned
+Visor de gastos (`/tablero`). The ledger export (daily) and the backup (Sundays) run
 from 12:00 UTC: a `cron/{key}` marker records each success, and a failure is
 retried at the next hourly tick without holding back anyone's message.
 

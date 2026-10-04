@@ -7,19 +7,27 @@ never calls the LLM. The only state it writes is the dedup marker and, for
 
 Also serves each chat's agenda as a private ICS feed at ``/ics/{token}.ics``
 (read-only; the token is the only secret, so it is never logged), and a
-month's ledger as a web dashboard at ``/tablero/{token}`` (1 h token).
+month's ledger as a Telegram Mini App at ``/visor``: the page posts Telegram's
+signed initData to ``/visor/datos``, checked with Telegram's Ed25519 public key
+(no bot token here, no secret in the URL).
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
 import json
 import logging
 import re
+import time
 from datetime import UTC, date, datetime
 from typing import Any
+from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -31,12 +39,62 @@ from assistant.services import agenda, pubsub, state, tablero
 logger = logging.getLogger(__name__)
 app = FastAPI(title="assistant-api")
 _MES = re.compile(r"(20\d\d)-(0[1-9]|1[0-2])")
+# Telegram's production key for third-party initData (core.telegram.org/bots/webapps)
+TG_PUBLIC_KEY = Ed25519PublicKey.from_public_bytes(
+    bytes.fromhex("e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d")  # noqa: E501 # pragma: allowlist secret
+)
+INIT_DATA_MAX_AGE = 24 * 3600  # seconds; Telegram signs at each Mini App launch
+VISOR_JS = """const tg = window.Telegram.WebApp;
+async function cargar(mes) {
+  const r = await fetch("/visor/datos" + (mes ? "?mes=" + mes : ""), {
+    method: "POST", headers: {Authorization: "tma " + tg.initData}});
+  if (r.ok) document.documentElement.innerHTML = await r.text();
+  else document.body.textContent = "Telegram → Visor de gastos / Expense viewer";
+}
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("a[href^='?mes=']");
+  if (a) { e.preventDefault(); cargar(a.getAttribute("href").slice(5)); }
+});
+tg.ready();
+cargar("");
+"""
+VISOR = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Visor de gastos</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head><body><script>{VISOR_JS}</script></body></html>
+"""
+_JS_HASH = base64.b64encode(hashlib.sha256(VISOR_JS.encode()).digest()).decode()
 DASH_HEADERS = {
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
     "X-Robots-Tag": "noindex",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+    "Content-Security-Policy": (
+        f"default-src 'none'; script-src https://telegram.org 'sha256-{_JS_HASH}'; "
+        "connect-src 'self'; style-src 'unsafe-inline'"
+    ),
 }
+
+
+def init_data_chat(init_data: str, bot_id: str, now: float) -> str | None:
+    """The chat_id (= user id in a private chat) of fresh, Telegram-signed
+    Mini App initData; None if unsigned, tampered, stale or malformed."""
+    campos = dict(parse_qsl(init_data, keep_blank_values=True))
+    firma = campos.pop("signature", "")
+    campos.pop("hash", None)
+    check = f"{bot_id}:WebAppData\n" + "\n".join(
+        f"{k}={v}" for k, v in sorted(campos.items())
+    )
+    try:
+        TG_PUBLIC_KEY.verify(
+            base64.urlsafe_b64decode(firma + "=" * (-len(firma) % 4)), check.encode()
+        )
+        if now - int(campos["auth_date"]) > INIT_DATA_MAX_AGE:
+            return None
+        return str(json.loads(campos["user"])["id"])
+    except (InvalidSignature, ValueError, KeyError, TypeError):
+        return None
 
 
 @app.get("/health")
@@ -59,22 +117,30 @@ def ics_feed(token: str) -> Response:
     )
 
 
-@app.get("/tablero/{token}")
-def dashboard(token: str, mes: str | None = None) -> Response:
-    chat_id = state.chat_for_dash_token(token)  # checks the format first
-    if chat_id is None:
-        logger.info("tablero status=404")
-        return Response(status_code=404, headers=DASH_HEADERS)
+@app.get("/visor")
+def visor() -> Response:
+    return HTMLResponse(VISOR, headers=DASH_HEADERS)
+
+
+@app.post("/visor/datos")
+def visor_datos(request: Request, mes: str | None = None) -> Response:
+    init_data = request.headers.get("Authorization", "").removeprefix("tma ")
+    bot_id = get_api_settings().telegram_bot_id
+    chat_id = init_data_chat(init_data, bot_id, time.time()) if bot_id else None
+    user = state.get_user(chat_id) if chat_id else None
+    if user is None:  # unsigned, stale, or not (any longer) a user
+        logger.info("visor status=403")
+        return Response(status_code=403, headers=DASH_HEADERS)
     if mes is None:
-        zona = (state.get_user(chat_id) or {}).get("zona_horaria") or "America/Panama"
+        zona = user.get("zona_horaria") or "America/Panama"
         dia = datetime.now(ZoneInfo(zona)).date()
     elif match := _MES.fullmatch(mes):
         dia = date(int(match[1]), int(match[2]), 1)
     else:
-        logger.info("tablero status=400")
+        logger.info("visor status=400")
         return Response(status_code=400, headers=DASH_HEADERS)
-    body = tablero.render(chat_id, dia)
-    logger.info("tablero status=200")
+    body = tablero.render(str(chat_id), dia, user.get("idioma", "es"))
+    logger.info("visor status=200")
     return HTMLResponse(body, headers=DASH_HEADERS)
 
 

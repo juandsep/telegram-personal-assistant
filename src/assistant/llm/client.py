@@ -22,6 +22,7 @@ import httpx
 
 from assistant.config import get_worker_settings
 from assistant.context import ToolContext
+from assistant.i18n import NOMBRE
 from assistant.llm.tools import (
     TOOL_SPECS,
     TOOLS_JSON,
@@ -67,7 +68,8 @@ def _context_message(ctx: ToolContext) -> dict[str, str]:
         "role": "system",
         "content": (
             f"Ahora: {_DIAS[now.weekday()]} {now:%Y-%m-%d %H:%M} "
-            f"({ctx.zona_horaria}). Moneda: {ctx.moneda}."
+            f"({ctx.zona_horaria}). Moneda: {ctx.moneda}. "
+            f"Responde siempre en {NOMBRE.get(ctx.idioma, 'español')}."
         ),
     }
 

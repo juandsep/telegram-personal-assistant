@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 
 from assistant.context import BUCKET_OF, ToolContext
+from assistant.i18n import t
 from assistant.services import ledger
 
 # 50/30/20: ahorro (20%) is a floor, not a cap, so saving more is never an excess.
@@ -63,12 +64,19 @@ def linea_exceso(
         return None
     exceso = mayor_exceso(gastos, presupuesto, ingresos, factor)
     if exceso is None:
-        return "Dentro del presupuesto."
+        return t(ctx.idioma, "dentro")
     key, gastado, cap = exceso
     regla = "" if presupuesto else " (50/30/20)"
-    return (
-        f"Exceso en {key}{regla}: {gastado} de {cap} USD "
-        f"(+{gastado - cap}). Recorta ahí primero."
+    cat = ledger.etiqueta(key, ctx.idioma)
+    extra = gastado - cap
+    return t(
+        ctx.idioma,
+        "exceso",
+        cat=cat,
+        regla=regla,
+        gastado=gastado,
+        cap=cap,
+        extra=extra,
     )
 
 
@@ -81,4 +89,4 @@ def recomendar_presupuesto(ctx: ToolContext, periodo: str = "mes") -> str:
         Decimal(1) if periodo == "mes" else Decimal((hasta - desde).days + 1) / dias_mes
     )
     linea = linea_exceso(ctx, gastos, factor)
-    return linea or "Sin presupuesto ni ingresos del mes para comparar."
+    return linea or t(ctx.idioma, "sin_presupuesto")

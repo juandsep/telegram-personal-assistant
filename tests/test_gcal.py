@@ -13,6 +13,7 @@ import respx
 from google.cloud import firestore
 
 from assistant.context import ToolContext
+from assistant.i18n import t
 from assistant.services import gcal
 
 CAL = "yo.secreto@gmail.com"
@@ -90,8 +91,8 @@ def test_vincular_without_access(
     caplog.set_level(logging.DEBUG)
     with respx.mock:
         respx.post(EVENTS).respond(code)
-        assert gcal.vincular(ctx(), CAL) == gcal.NO_ACCESS
-    assert "assistant-worker@jd-botjonh" in gcal.NO_ACCESS
+        assert gcal.vincular(ctx(), CAL) == t("es", "gcal_sin_acceso", sa=gcal.SA_EMAIL)
+    assert "assistant-worker@jd-botjonh" in t("es", "gcal_sin_acceso", sa=gcal.SA_EMAIL)
     db.collection().document().set.assert_not_called()
     assert "secreto" not in caplog.text
 

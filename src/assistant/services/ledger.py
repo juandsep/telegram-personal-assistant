@@ -37,12 +37,11 @@ from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
 
 from assistant.context import ToolContext
+from assistant.i18n import categoria, t
 
 log = logging.getLogger(__name__)
 
 CENT = Decimal("0.01")
-POSITIVO = "El monto debe ser mayor que 0."
-NO_ENCONTRADO = "No encontré ese movimiento."
 
 
 @cache
@@ -114,19 +113,19 @@ def _por_fecha(chat_id: str, tipo_mov: str, desde: date, hasta: date) -> list[di
     return [d for d in docs if d["tipo_mov"] == tipo_mov]
 
 
-def _fx(monto: object, moneda: str, fecha: date) -> dict | str:
+def _fx(monto: object, moneda: str, fecha: date, lang: str = "es") -> dict | str:
     """USD fields for one amount, or the reply when the rate is unavailable."""
     original = q(monto)
     if original <= 0:
-        return POSITIVO
+        return t(lang, "positivo")
     cur = moneda.strip().upper()
     fx = importlib.import_module("assistant.services.fx")
     try:
         usd, tasa, fuente = fx.a_usd(original, cur, fecha)
     except fx.FxError as e:
         if str(e) == "unsupported":
-            return "Moneda no soportada."
-        return f"No pude obtener la tasa de {cur}, intenta luego."
+            return t(lang, "moneda_no")
+        return t(lang, "sin_tasa", cur=cur)
     return {
         "monto": str(usd),
         "moneda": "USD",
@@ -143,26 +142,18 @@ def _cifra(valor: Decimal) -> str:
     return f"{valor:,.0f}" if valor == valor.to_integral() else f"{valor:,.2f}"
 
 
-# Display names of the stored category keys; anything else gets a capital.
-ETIQUETAS = {
-    "supermercado": "Mercado",
-    "vivienda": "Arriendo",
-    "inversion": "Inversión",
-}
+def etiqueta(valor: str, lang: str = "es") -> str:
+    """ "supermercado" -> "Mercado" (or Groceries, 超市), "pan" -> "Pan": display."""
+    return categoria(lang, valor) or valor[:1].upper() + valor[1:]
 
 
-def etiqueta(valor: str) -> str:
-    """ "supermercado" -> "Mercado", "pan" -> "Pan": for display only."""
-    return ETIQUETAS.get(valor) or valor[:1].upper() + valor[1:]
-
-
-def texto(d: dict, sep: str = " · ") -> str:
+def texto(d: dict, sep: str = " · ", lang: str = "es") -> str:
     """One movement as "−0.49 USD · café (2,000 COP)"; a reverso as its registro."""
     signo = "−" if d["tipo_mov"] == "gasto" else "+"
     texto = f"{signo}{abs(q(d['monto']))} USD"
     label = d.get("nota") or d.get("categoria") or d.get("fuente")
     if label:
-        texto += f"{sep}{etiqueta(label)}"
+        texto += f"{sep}{etiqueta(label, lang)}"
     if d.get("moneda_original", "USD") != "USD":
         moneda = str(d["moneda_original"]).upper()
         texto += f" ({_cifra(Decimal(d['monto_original']))} {moneda})"
@@ -177,7 +168,7 @@ def registrar_gasto(
     batch = f"g{ctx.update_id}"
     docs = {}
     for i, item in enumerate(items):
-        usd = _fx(item["monto"], moneda, fecha)
+        usd = _fx(item["monto"], moneda, fecha, ctx.idioma)
         if isinstance(usd, str):
             return usd
         docs[f"{ctx.update_id}-{i}"] = {
@@ -192,7 +183,14 @@ def registrar_gasto(
         }
     _crear(ctx.chat_id, docs)
     _state().set_last_batch(ctx.chat_id, batch)
-    return "; ".join(texto(d) for d in docs.values())
+    return "; ".join(_con_categoria(d, ctx.idioma) for d in docs.values())
+
+
+def _con_categoria(d: dict, lang: str) -> str:
+    """ "−12.00 USD · Lunch · Restaurants": the category even when a note shows."""
+    linea = texto(d, lang=lang)
+    cat = d.get("categoria")
+    return f"{linea} · {etiqueta(cat, lang)}" if cat and d.get("nota") else linea
 
 
 def registrar_ingreso(
@@ -203,7 +201,7 @@ def registrar_ingreso(
     fecha: date,
     nota: str | None = None,
 ) -> str:
-    usd = _fx(monto, moneda, fecha)
+    usd = _fx(monto, moneda, fecha, ctx.idioma)
     if isinstance(usd, str):
         return usd
     batch = f"i{ctx.update_id}"
@@ -219,7 +217,7 @@ def registrar_ingreso(
     }
     _crear(ctx.chat_id, {f"{ctx.update_id}-i0": doc})
     _state().set_last_batch(ctx.chat_id, batch)
-    return texto(doc)
+    return texto(doc, lang=ctx.idioma)
 
 
 def clave(chat_id: str, update_id: int, tipo_mov: str) -> str:
@@ -245,14 +243,14 @@ def _reverso(ctx: ToolContext, doc_id: str, d: dict) -> dict:
 def deshacer(ctx: ToolContext, batch_id: str | None = None) -> str:
     batch = batch_id or _state().last_batch(ctx.chat_id)
     if not batch:
-        return "Nada que deshacer."
+        return t(ctx.idioma, "nada_deshacer")
     consulta = _col(ctx.chat_id).where(filter=FieldFilter("batch_id", "==", batch))
     lote = [(s.id, s.to_dict()) for s in consulta.stream()]
     registros = [(i, d) for i, d in lote if d["tipo"] == "registro"]
     if not registros:
-        return "Lote no encontrado."
-    hecho = f"↩ deshecho: {len(registros)} fila(s)"
-    ya = "Ese lote ya estaba deshecho."
+        return t(ctx.idioma, "lote_no")
+    hecho = t(ctx.idioma, "deshecho", n=len(registros))
+    ya = t(ctx.idioma, "ya_deshecho")
     previos = [d for _, d in lote if d["tipo"] == "reverso"]
     if previos:
         # Same update = Pub/Sub retry: report success again, write nothing.
@@ -307,10 +305,11 @@ def ultimos(ctx: ToolContext, n: int = 5) -> list[dict]:
 
 def ultimos_texto(ctx: ToolContext, n: int = 5) -> str:
     lineas = [
-        f"{m['indice']}) {date.fromisoformat(m['fecha']):%d/%m} {texto(m, ' ')}"
+        f"{m['indice']}) {date.fromisoformat(m['fecha']):%d/%m} "
+        f"{texto(m, ' ', ctx.idioma)}"
         for m in ultimos(ctx, n)
     ]
-    return "\n".join(lineas) or "Sin movimientos."
+    return "\n".join(lineas) or t(ctx.idioma, "sin_movs")
 
 
 def _repetido(ctx: ToolContext) -> dict | None:
@@ -335,15 +334,15 @@ def _elegir(ctx: ToolContext, indice: int) -> tuple[str, dict] | None:
 def anular(ctx: ToolContext, indice: int = 1) -> str:
     previo = _repetido(ctx)
     if previo is not None:
-        return f"✓ anulado: {texto(previo)}"
+        return t(ctx.idioma, "anulado", mov=texto(previo, lang=ctx.idioma))
     elegido = _elegir(ctx, indice)
     if elegido is None:
-        return NO_ENCONTRADO
+        return t(ctx.idioma, "no_encontrado")
     doc_id, d = elegido
     # Reverso id per registro: two updates can never cancel the same row twice.
     if not _crear(ctx.chat_id, {f"{doc_id}-x": _reverso(ctx, doc_id, d)}):
-        return NO_ENCONTRADO
-    return f"✓ anulado: {texto(d)}"
+        return t(ctx.idioma, "no_encontrado")
+    return t(ctx.idioma, "anulado", mov=texto(d, lang=ctx.idioma))
 
 
 def editar(
@@ -357,15 +356,16 @@ def editar(
     """Reverso of the chosen movement plus a new registro with merged fields."""
     previo = _repetido(ctx)
     if previo is not None:
-        return f"✓ editado: {texto(previo)}"
+        return t(ctx.idioma, "editado", mov=_con_categoria(previo, ctx.idioma))
     elegido = _elegir(ctx, indice)
     if elegido is None:
-        return NO_ENCONTRADO
+        return t(ctx.idioma, "no_encontrado")
     doc_id, d = elegido
     usd = _fx(
         d.get("monto_original", d["monto"]) if monto is None else monto,
         moneda or d.get("moneda_original", d.get("moneda", "USD")),
         date.fromisoformat(d["fecha"]),
+        ctx.idioma,
     )
     if isinstance(usd, str):
         return usd
@@ -382,8 +382,8 @@ def editar(
         nuevo["nota"] = nota
     docs = {f"{doc_id}-x": _reverso(ctx, doc_id, d), f"{ctx.update_id}-e0": nuevo}
     if not _crear(ctx.chat_id, docs):
-        return NO_ENCONTRADO
-    return f"✓ editado: {texto(nuevo)}"
+        return t(ctx.idioma, "no_encontrado")
+    return t(ctx.idioma, "editado", mov=_con_categoria(nuevo, ctx.idioma))
 
 
 def del_dia(chat_id: str, dia: date) -> list[dict]:

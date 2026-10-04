@@ -3,19 +3,19 @@
 > **Historical.** This is the prompt that drove the first implementation
 > (roadmap phases 1–5). Some of it was later superseded (Sheets → Firestore
 > ledger, dedicated calendar → own agenda with Cloud Tasks reminders); see the
-> note at the top of [PLAN.md](../PLAN.md).
+> note at the top of [ROADMAP.md](../ROADMAP.md).
 
 You are an engineering agent with access to the repository at
 `~/Code/portfolio/botjonh`. Your job: take the Telegram bot from "template" to
 "working (roadmap phases 1–5)". Do not reinvent what already exists; complete
-what is missing. Where this prompt and `PLAN.md` differ, this prompt wins.
+what is missing. Where this prompt and `ROADMAP.md` differ, this prompt wins.
 
 ## Before you start
 
 - `git init` if there is no repo; initial commit on `main`, create `dev` and
   work on `feat/*` per `CONTRIBUTING.md` (Conventional Commits). One commit per
   step.
-- Read `PLAN.md`, `README.md`, `CONTRIBUTING.md`, `infra/main.tf` and
+- Read `ROADMAP.md`, `README.md`, `CONTRIBUTING.md`, `infra/main.tf` and
   `.github/workflows/deploy.yml` in full.
 
 ## Current state (already exists)

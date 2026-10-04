@@ -13,13 +13,21 @@ import respx
 from fastapi.testclient import TestClient
 
 from assistant import worker
+from assistant.app import app
+from assistant.authz import require_google_oidc
 from assistant.channels.telegram import API_BASE, Telegram
 from assistant.config import get_worker_settings
 from assistant.i18n import t
 from assistant.services import agenda, state
 
 TG = f"{API_BASE}/bot123:test"
-client = TestClient(worker.app)
+client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def google_caller(monkeypatch):
+    """These tests play Pub/Sub and Cloud Tasks; test_authz covers the gate."""
+    monkeypatch.setitem(app.dependency_overrides, require_google_oidc, lambda: None)
 
 
 def envelope(payload) -> dict:

@@ -34,10 +34,11 @@ The full guide, with every command and example, is in the documentation below.
 
 ![telegram-personal-assistant on GCP](docs/architecture/architecture.png)
 
-Two Cloud Run services: `assistant-api` acknowledges the Telegram webhook in
-under 300 ms and publishes to Pub/Sub; `assistant-worker` calls the LLM
-(DeepSeek, tool calling), writes to Firestore and replies. Reminders are Cloud
-Tasks; reports run from an hourly Cloud Scheduler job. Interactive diagrams live
+One Cloud Run service, scaled to zero. The Telegram webhook only verifies the
+update, publishes it to Pub/Sub and acks in under 300 ms; Pub/Sub pushes it
+back to the same service, which calls the LLM (DeepSeek, tool calling), writes
+to Firestore and replies on its own request. Reminders are Cloud Tasks; reports
+run from an hourly Cloud Scheduler job. Interactive diagrams live
 in [`docs/architecture/`](docs/architecture/).
 
 ## Documentation

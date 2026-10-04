@@ -1,9 +1,10 @@
-"""Webhook entrypoint (assistant-api).
+"""Public routes of the assistant service (see ``app.py``).
 
-Verifies the secret token and the secret route before parsing, checks the
-allowlist, deduplicates by update_id and publishes to Pub/Sub. Returns 2xx fast;
-never calls the LLM. The only state it writes is the dedup marker and, for
-``/start <code>`` from an unknown chat, the invite redemption.
+The Telegram webhook verifies the secret token and the secret route before
+parsing, checks the allowlist, deduplicates by update_id and publishes to
+Pub/Sub. Returns 2xx fast; never calls the LLM. The only state it writes is
+the dedup marker and, for ``/start <code>`` from an unknown chat, the invite
+redemption.
 
 Also serves each chat's agenda as a private ICS feed at ``/ics/{token}.ics``
 (read-only; the token is the only secret, so it is never logged), and a
@@ -28,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from fastapi import FastAPI, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -37,7 +38,7 @@ from assistant.config import get_api_settings
 from assistant.services import agenda, pubsub, state, tablero
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="assistant-api")
+router = APIRouter()
 _MES = re.compile(r"(20\d\d)-(0[1-9]|1[0-2])")
 # Telegram's production key for third-party initData (core.telegram.org/bots/webapps)
 TG_PUBLIC_KEY = Ed25519PublicKey.from_public_bytes(
@@ -97,12 +98,12 @@ def init_data_chat(init_data: str, bot_id: str, now: float) -> str | None:
         return None
 
 
-@app.get("/health")
+@router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/ics/{token}.ics")
+@router.get("/ics/{token}.ics")
 def ics_feed(token: str) -> Response:
     chat_id = state.chat_for_ics_token(token)  # checks the format first
     if chat_id is None:
@@ -117,12 +118,12 @@ def ics_feed(token: str) -> Response:
     )
 
 
-@app.get("/visor")
+@router.get("/visor")
 def visor() -> Response:
     return HTMLResponse(VISOR, headers=DASH_HEADERS)
 
 
-@app.post("/visor/datos")
+@router.post("/visor/datos")
 def visor_datos(request: Request, mes: str | None = None) -> Response:
     init_data = request.headers.get("Authorization", "").removeprefix("tma ")
     bot_id = get_api_settings().telegram_bot_id
@@ -144,7 +145,7 @@ def visor_datos(request: Request, mes: str | None = None) -> Response:
     return HTMLResponse(body, headers=DASH_HEADERS)
 
 
-@app.post("/tg/{path}")
+@router.post("/tg/{path}")
 async def webhook(path: str, request: Request) -> Response:
     settings = get_api_settings()
 

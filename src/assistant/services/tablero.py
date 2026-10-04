@@ -1,6 +1,6 @@
 """Web dashboard of one chat's month, rendered server-side as plain HTML.
 
-Served by assistant-api to the ``/visor`` Mini App (see ``api.py``). No
+Served by the assistant service to the ``/visor`` Mini App (see ``api.py``). No
 own JS: bars are CSS widths/heights. Every value from the ledger goes through
 ``html.escape``. Amounts are the ledger's USD.
 """

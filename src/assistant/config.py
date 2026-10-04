@@ -70,13 +70,15 @@ class WorkerSettings:
     project_id: str
     telegram_bot_token: str
     deepseek_api_key: str
-    # Reminders: Cloud Tasks POST to {worker_url}/tasks/reminder with an OIDC
-    # token for worker_sa. Empty worker_url or worker_sa: reminders are skipped.
+    # URL of the assistant service and its runtime account. Cloud Tasks POST to
+    # {worker_url}/tasks/reminder with an OIDC token for worker_sa, and /push
+    # and /tasks/reminder accept only tokens with audience worker_url signed for
+    # worker_sa. Empty: reminders are skipped and those routes refuse (403).
     worker_url: str = ""
     worker_sa: str = ""
     tasks_queue: str = "assistant-reminders"
     tasks_location: str = "us-central1"
-    # Public assistant-api URL, for the ICS subscription link.
+    # Public URL of the assistant service: the ICS link and the Visor.
     api_url: str = ""
     # Cloud KMS key that encrypts each user's secret iCal URL. Empty: /conectar
     # is refused, so the URL is never stored in clear.

@@ -26,6 +26,6 @@ USER app
 ENV HOME=/home/app PATH="/opt/venv/bin:$PATH" PORT=8080 GIT_PYTHON_REFRESH=quiet
 EXPOSE 8080
 
-# Default entrypoint is the webhook; the worker overrides it with
-# `uvicorn assistant.worker:app` (see .github/workflows/deploy.yml).
-CMD ["sh", "-c", "uvicorn assistant.api:app --host 0.0.0.0 --port ${PORT}"]
+# One service serves every route (see src/assistant/app.py). No access log: the
+# webhook path and the ICS tokens in the URLs are secrets.
+CMD ["sh", "-c", "uvicorn assistant.app:app --host 0.0.0.0 --port ${PORT} --no-access-log"]

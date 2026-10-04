@@ -80,7 +80,7 @@ income, spend, savings rate against the 20% target, spend by category and per
 day, and the last 15 movements; ← → move between months. It is shown in the
 user's language.
 
-Nothing sensitive travels in the URL. `assistant-api` serves the shell at `/visor`; the
+Nothing sensitive travels in the URL. The service serves the shell at `/visor`; the
 page posts Telegram's signed `initData` to `/visor/datos`, which checks the
 Ed25519 signature with Telegram's public key and `TELEGRAM_BOT_ID` (the number
 before `:` in the bot token, not a secret), so the api never holds the bot

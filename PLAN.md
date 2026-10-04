@@ -1,49 +1,59 @@
-# Plan: Asistente personal de finanzas y agenda (Telegram)
+# Plan: personal finance and calendar assistant (Telegram)
 
-Un bot de Telegram que es tu asesor de finanzas y tu agenda: registra gastos e
-ingresos en Google Sheets, recomienda presupuestos para ahorrar, agenda citas
-(médicas, personales) en Google Calendar y te avisa de forma proactiva. Costo
-objetivo **≤ US$1/mes** (solo tokens del LLM), sin exposición de datos
-personales.
+> **This is the original plan (phase 0).** It records the decisions and their
+> reasons. The implementation evolved from it: the ledger moved from Google
+> Sheets to Firestore (with a daily CSV export to BigQuery), the dedicated
+> Google Calendar became the bot's own agenda in Firestore (with an optional
+> Google Calendar mirror and an ICS feed), reminders became Cloud Tasks at the
+> exact time, the three Scheduler jobs became one hourly `tick` in each user's
+> time zone, and the bot became Juani (Spanish, English and Chinese, a pinned
+> Mini App dashboard). For how it works today, see the [README](README.md) and
+> [docs/](docs/).
 
-- **Canal:** Telegram Bot API. Gratis, sin plantillas, sin ventana de 24 h.
-- **Usuarios:** tú (owner) + unos pocos beta testers. Lista blanca explícita.
-- **Nube:** GCP, reutilizando la infra ya montada en `portfolio-infra`.
-- **Estado:** plan aprobado = fase 0.
+A Telegram bot that is your finance advisor and your calendar: it logs expenses
+and income in Google Sheets, recommends budgets to save, schedules appointments
+(medical, personal) in Google Calendar and reaches out proactively. Target cost
+**≤ US$1/month** (LLM tokens only), with no exposure of personal data.
+
+- **Channel:** Telegram Bot API. Free, no templates, no 24 h window.
+- **Users:** you (owner) plus a few beta testers. Explicit allowlist.
+- **Cloud:** GCP, reusing the infrastructure already set up in
+  `portfolio-infra`.
+- **Status:** plan approved = phase 0.
 
 ---
 
-## 1. Decisiones y por qué
+## 1. Decisions and why
 
-| Tema | Decisión | Razón |
+| Topic | Decision | Reason |
 |---|---|---|
-| Canal | **Telegram Bot API** | Gratis, mensajes proactivos libres, alta en minutos. WhatsApp queda descartado (ver §8). |
-| Repo | **Un solo repo** `personal-assistant-bot` | Un producto = un repo = un proyecto GCP ([[0006-one-gcp-project-per-product]]). La infra compartida ya vive en `portfolio-infra`. |
-| Cómputo | **Cloud Run**, facturación por request, scale to zero | Free tier cubre de sobra un bot personal. `min-instances=0` obligatorio. |
-| Desacoplamiento | **2 servicios Cloud Run + Pub/Sub** | Cloud Run no garantiza CPU entre requests: un `BackgroundTasks` se pierde. Telegram reintenta si no hay 2xx. `api` ackea en <300 ms, `worker` piensa y escribe. |
-| LLM | **DeepSeek API, `deepseek-flash`** | API pagada y barata (0.30/1M in miss, 0.006 hit, 1.20/1M out), caché de prefijo automática, tool calling. Riesgo aceptado: los datos se procesan en servidores de DeepSeek (China). Se envía el mínimo contexto. |
-| Observabilidad | **MLflow compartido de `jd-portfolio-shared`** ([[0002-shared-mlflow-on-cloud-run]]) | Ya existe, cuesta $0 idle. **No** se monta un e2-micro propio: menos ops, mismo costo. El texto del mensaje se guarda hasheado. |
-| Finanzas | **Google Sheets** (ledger) + **Firestore** (presupuestos, preferencias) | Sheet = legible/editable en el teléfono. Presupuestos son config estructurada por usuario → Firestore. |
-| Agenda | **Google Calendar dedicado** | No toca tu calendario principal. |
-| Proactivo | **Cloud Scheduler → Pub/Sub → worker** | Cloud Scheduler publica directo en Pub/Sub: no hacen falta endpoints `/cron/*` con OIDC. |
-| Acceso a Google | **Cuenta de servicio** + compartir UN sheet y UN calendario | Sin refresh token OAuth personal. La SA solo ve lo que le compartes. |
+| Channel | **Telegram Bot API** | Free, unrestricted proactive messages, set up in minutes. WhatsApp is ruled out (see §8). |
+| Repo | **A single repo** `personal-assistant-bot` | One product = one repo = one GCP project (ADR 0006, one GCP project per product). Shared infrastructure already lives in `portfolio-infra`. |
+| Compute | **Cloud Run**, billed per request, scale to zero | The free tier easily covers a personal bot. `min-instances=0` is mandatory. |
+| Decoupling | **2 Cloud Run services + Pub/Sub** | Cloud Run does not guarantee CPU between requests: a `BackgroundTasks` is lost. Telegram retries without a 2xx. `api` acks in <300 ms, `worker` thinks and writes. |
+| LLM | **DeepSeek API, `deepseek-flash`** | Cheap paid API (0.30/1M in miss, 0.006 hit, 1.20/1M out), automatic prefix cache, tool calling. Accepted risk: data is processed on DeepSeek servers (China). Minimal context is sent. |
+| Observability | **Shared MLflow from `jd-portfolio-shared`** (ADR 0002, shared MLflow on Cloud Run) | Already exists, costs $0 idle. **No** own e2-micro: less ops, same cost. Message text is stored hashed. |
+| Finance | **Google Sheets** (ledger) + **Firestore** (budgets, preferences) | Sheet = readable and editable on the phone. Budgets are structured per-user config → Firestore. |
+| Calendar | **Dedicated Google Calendar** | Does not touch your main calendar. |
+| Proactive | **Cloud Scheduler → Pub/Sub → worker** | Cloud Scheduler publishes straight to Pub/Sub: no `/cron/*` endpoints with OIDC needed. |
+| Google access | **Service account** + share ONE sheet and ONE calendar | No personal OAuth refresh token. The SA only sees what you share with it. |
 
-Modelo de datos: **Firestore** = estado operativo (usuarios, idempotencia,
-confirmaciones, preferencias, presupuestos, contadores de LLM). **Sheets** =
-ledger (Gastos, Ingresos). **Calendar** = eventos.
+Data model: **Firestore** = operational state (users, idempotency,
+confirmations, preferences, budgets, LLM counters). **Sheets** = ledger
+(Gastos, Ingresos). **Calendar** = events.
 
 ---
 
-## 2. Arquitectura
+## 2. Architecture
 
 ```
-Tu Telegram / beta testers
+Your Telegram / beta testers
       │
       ▼
 [Telegram Bot API]──webhook POST──▶ [Cloud Run: assistant-api]        [Cloud Scheduler]
-      ▲                                │  verifica secret-token              │
-      │                                │  lista blanca de chat_id            │ publish
-      │                                │  dedup por update_id                ▼
+      ▲                                │  checks secret token                │
+      │                                │  chat_id allowlist                  │ publish
+      │                                │  dedup by update_id                 ▼
       │                                ▼                              [Pub/Sub: assistant-cron]
       │                          [Pub/Sub: assistant-updates]                │
       │                                │ push (OIDC)                   push (OIDC)
@@ -52,268 +62,278 @@ Tu Telegram / beta testers
       │                                │
       └──sendMessage──────────────────┤
                                        ├─▶ DeepSeek flash (tool calling)
-                                       ├─▶ Firestore   (estado, usuarios, presupuestos)
+                                       ├─▶ Firestore   (state, users, budgets)
                                        ├─▶ Google Sheets (Gastos, Ingresos)
-                                       ├─▶ Google Calendar (calendario dedicado)
-                                       └─▶ MLflow compartido (tokens, latencia, costo)
+                                       ├─▶ Google Calendar (dedicated calendar)
+                                       └─▶ Shared MLflow (tokens, latency, cost)
 
-Secret Manager → token del bot, secret token, ruta del webhook, key de DeepSeek
+Secret Manager → bot token, secret token, webhook route, DeepSeek key
 ```
 
-### Por qué dos servicios
+### Why two services
 
-`assistant-api` responde 200 en <300 ms: verifica `X-Telegram-Bot-Api-Secret-Token`
-en tiempo constante, chequea la lista blanca, deduplica por `update_id` y publica
-en Pub/Sub. No piensa, no escribe datos. `assistant-worker` consume, llama al LLM
-con las herramientas permitidas, escribe en Sheets/Calendar/Firestore y responde.
-La latencia del LLM deja de ser un problema de corrección.
+`assistant-api` returns 200 in <300 ms: it checks
+`X-Telegram-Bot-Api-Secret-Token` in constant time, checks the allowlist,
+deduplicates by `update_id` and publishes to Pub/Sub. It does not think and
+does not write data. `assistant-worker` consumes, calls the LLM with the allowed
+tools, writes to Sheets/Calendar/Firestore and replies. LLM latency stops being
+a correctness problem.
 
-### Servicios
+### Services
 
-1. **assistant-api** — webhook en `/tg/<ruta-aleatoria>`. 403 si el header no
-   coincide; descarta sin gastar tokens si el `chat_id` no está en la lista
-   blanca; dedup por `update_id` en transacción Firestore; publica en
+1. **assistant-api** — webhook at `/tg/<random-route>`. 403 if the header does
+   not match; drops without spending tokens if the `chat_id` is not on the
+   allowlist; dedup by `update_id` in a Firestore transaction; publishes to
    `assistant-updates`.
-2. **assistant-worker** — suscriptor push de `assistant-updates` (mensajes de
-   usuario) y `assistant-cron` (jobs proactivos). Llama al LLM, valida
-   argumentos, ejecuta la escritura, responde por la Bot API, registra la traza
-   en MLflow.
-3. **Cloud Scheduler** — 3 jobs que publican en `assistant-cron`: resumen
-   matutino (07:30), cierre del día (21:00) y revisión semanal (domingo 19:00).
+2. **assistant-worker** — push subscriber of `assistant-updates` (user
+   messages) and `assistant-cron` (proactive jobs). Calls the LLM, validates
+   arguments, runs the write, replies through the Bot API, logs the trace to
+   MLflow.
+3. **Cloud Scheduler** — 3 jobs that publish to `assistant-cron`: morning
+   summary (07:30), end of day (21:00) and weekly review (Sunday 19:00).
 
-### Flujo típico
+### Typical flow
 
-- "Gasté 45 en el almuerzo con Ana" → worker → tool `registrar_gasto` → append en
-  `Gastos` → "✓ 45 → almuerzo" con botón deshacer.
-- "Agéndame dentista jueves 4pm" → `crear_evento` → calendario dedicado.
-- "¿Cómo voy este mes?" → `resumen_finanzas` → cifras en 2 líneas.
-- "¿Dónde puedo ahorrar?" → `recomendar_presupuesto` → comparación categoría vs
-  presupuesto + sugerencia.
+- "I spent 45 on lunch with Ana" → worker → tool `registrar_gasto` → append to
+  `Gastos` → "✓ 45 → lunch" with an undo button.
+- "Book the dentist Thursday 4pm" → `crear_evento` → dedicated calendar.
+- "How am I doing this month?" → `resumen_finanzas` → figures in 2 lines.
+- "Where can I save?" → `recomendar_presupuesto` → category vs budget plus a
+  suggestion.
 
-### Proactivo
+### Proactive
 
-Sin restricciones de ventana ni plantillas. Tres jobs de Cloud Scheduler generan
-mensajes normales y gratis. Condición inicial única: cada usuario pulsa `/start`
-una vez para que el bot guarde su `chat_id`.
-
----
-
-## 3. Lista blanca de usuarios (owner + beta)
-
-Colección Firestore `users/{chat_id}`: `{nombre, rol: owner|beta, moneda,
-zona_horaria}`. Solo el `owner` puede ejecutar `invitar_beta` y `listar_usuarios`. El beta
-entra con `/start <código>` (un solo uso, 24 h).
-Cualquier `chat_id` fuera de la colección se descarta **sin gastar tokens**. Esto
-mantiene la garantía de lista blanca del plan original y admite beta testers.
+No window or template restrictions. Three Cloud Scheduler jobs produce normal,
+free messages. One initial condition: each user taps `/start` once so the bot
+stores their `chat_id`.
 
 ---
 
-## 4. Herramientas del LLM (lista blanca)
+## 3. User allowlist (owner + beta)
 
-| Herramienta | Argumentos | Efecto |
+Firestore collection `users/{chat_id}`: `{nombre, rol: owner|beta, moneda,
+zona_horaria}`. Only the `owner` can run `invitar_beta` and `listar_usuarios`.
+A beta joins with `/start <code>` (single use, 24 h). Any `chat_id` outside the
+collection is dropped **without spending tokens**. This keeps the allowlist
+guarantee of the original plan and admits beta testers.
+
+---
+
+## 4. LLM tools (allowlist)
+
+| Tool | Arguments | Effect |
 |---|---|---|
-| `registrar_gasto` | items[{monto, categoria, nota?}], moneda, fecha | append en `Gastos` |
-| `registrar_ingreso` | monto, moneda, fuente, fecha, nota? | append en `Ingresos` |
-| `resumen_finanzas` | periodo (hoy/mes/semana) | lectura agregada del ledger |
-| `recomendar_presupuesto` | periodo (mes) | categoría vs presupuesto + sugerencia de ahorro |
-| `crear_evento` | titulo, inicio, fin?, ubicacion?, recordatorio_min? | insert en calendario dedicado |
-| `listar_agenda` | rango (hoy/manana/semana) | lectura del calendario |
-| `cancelar_evento` | evento_id, confirmado | borrado, requiere confirmación previa |
-| `recordatorio` | texto, cuando | evento con aviso en el calendario dedicado |
-| `deshacer` | batch_id? | filas de reverso (requiere confirmación) |
-| `invitar_beta` | nombre | owner only: genera código de invitación |
-| `listar_usuarios` | — | owner only: lista la allowlist |
+| `registrar_gasto` | items[{monto, categoria, nota?}], moneda, fecha | append to `Gastos` |
+| `registrar_ingreso` | monto, moneda, fuente, fecha, nota? | append to `Ingresos` |
+| `resumen_finanzas` | periodo (hoy/mes/semana) | aggregated read of the ledger |
+| `recomendar_presupuesto` | periodo (mes) | category vs budget plus a savings suggestion |
+| `crear_evento` | titulo, inicio, fin?, ubicacion?, recordatorio_min? | insert into the dedicated calendar |
+| `listar_agenda` | rango (hoy/manana/semana) | read the calendar |
+| `cancelar_evento` | evento_id, confirmado | delete, requires prior confirmation |
+| `recordatorio` | texto, cuando | event with an alert in the dedicated calendar |
+| `deshacer` | batch_id? | reverso rows (requires confirmation) |
+| `invitar_beta` | nombre | owner only: creates an invite code |
+| `listar_usuarios` | — | owner only: lists the allowlist |
 
-`recomendar_presupuesto` es **basado en reglas**: el código agrega gastos por
-categoría, los compara contra el presupuesto por categoría en
-`preferences/{chat_id}`, y el LLM solo resume en ≤2 líneas. Sin presupuesto
-configurado, se usa la regla 50/30/20 (necesidades/ocio/ahorro). Así el gasto de
-tokens se mantiene bajo: el modelo no tiene que "calcular" el presupuesto, solo
-presentarlo.
+`recomendar_presupuesto` is **rule based**: the code aggregates spend by
+category, compares it with the per-category budget in
+`preferences/{chat_id}`, and the LLM only summarizes in ≤2 lines. Without a
+configured budget, the 50/30/20 rule (needs/wants/savings) applies. This keeps
+token spend low: the model does not "calculate" the budget, it only presents
+it.
 
-El system prompt y los esquemas viven en el repo como artefacto versionado
-(`src/assistant/llm/prompts/system.md`); cada cambio sube la versión y queda
-registrado en MLflow.
+The system prompt and the schemas live in the repo as a versioned artifact
+(`src/assistant/llm/prompts/system.md`); every change bumps the version and is
+recorded in MLflow.
 
-### Estilo de respuesta (requisito de producto)
+### Reply style (product requirement)
 
-El system prompt obliga a respuestas **muy concisas**:
+The system prompt enforces **very concise** replies:
 
-- Máximo 2 líneas cortas. Sin saludos, sin frases de cierre, sin relleno.
-- Cifras solo si el usuario las pide; redondeadas a 2 decimales.
-- Máximo 1 emoji por respuesta; nunca tablas Markdown (Telegram no las renderiza).
-- Confirma con el resultado en una línea: "✓ 45 → almuerzo".
+- At most 2 short lines. No greetings, no closing phrases, no filler.
+- Figures only when the user asks for them; rounded to 2 decimals.
+- At most 1 emoji per reply; never Markdown tables (Telegram does not render
+  them).
+- Confirms with the result in one line: "✓ 45 → lunch".
 
 ---
 
-## 5. Costos (tarifas verificadas, septiembre 2026)
+## 5. Costs (verified rates, September 2026)
 
-| Componente | Franquicia / tarifa | Costo |
+| Component | Free tier / rate | Cost |
 |---|---|---|
-| Telegram Bot API | Gratis | $0.00 |
-| Cloud Run ×2 | 2M requests, 180k vCPU-s, 360k GiB-s gratis/mes | $0.00 |
-| Firestore | 1 GiB, 50k lecturas/día, 20k escrituras/día gratis | $0.00 |
-| Pub/Sub ×2 topics | 10 GiB/mes gratis | $0.00 |
-| Cloud Scheduler ×3 | 3 jobs gratis por cuenta de facturación | $0.00 |
-| Secret Manager | 6 versiones activas, 10k accesos/mes gratis | $0.00 |
-| Google Sheets / Calendar | Gratis (cuenta de servicio) | $0.00 |
-| MLflow compartido | Cloud Run scale-to-zero + Neon free tier | $0.00 |
-| DeepSeek flash | 0.30/1M in (0.006 con caché), 1.20/1M out | ~$0.5–1 |
-| **Total** | | **≈ $0.5–1/mes** |
+| Telegram Bot API | Free | $0.00 |
+| Cloud Run ×2 | 2M requests, 180k vCPU-s, 360k GiB-s free/month | $0.00 |
+| Firestore | 1 GiB, 50k reads/day, 20k writes/day free | $0.00 |
+| Pub/Sub ×2 topics | 10 GiB/month free | $0.00 |
+| Cloud Scheduler ×3 | 3 jobs free per billing account | $0.00 |
+| Secret Manager | 6 active versions, 10k accesses/month free | $0.00 |
+| Google Sheets / Calendar | Free (service account) | $0.00 |
+| Shared MLflow | Cloud Run scale to zero + Neon free tier | $0.00 |
+| DeepSeek flash | 0.30/1M in (0.006 cached), 1.20/1M out | ~$0.5–1 |
+| **Total** | | **≈ $0.5–1/month** |
 
-Trampas de facturación a evitar desde el día uno:
+Billing traps to avoid from day one:
 
-- `min-instances=1` en Cloud Run: acaba con el free tier. Debe ser `0`.
-- IP estática / disco SSD en cualquier VM: se cobran. (No hay VMs en este diseño.)
-- Egress >1 GB/mes se cobra. Irrelevante para un bot de texto.
-- Alertas de presupuesto $1 y $5 **antes** de desplegar. Budget guard a $3.
-
----
-
-## 6. Seguridad
-
-**Autenticidad de entrada**
-- `X-Telegram-Bot-Api-Secret-Token` comparado en tiempo constante *antes* de
-  parsear. Telegram **no firma** el cuerpo; por eso la ruta del webhook es además
-  secreta (`/tg/<32 aleatorios>`).
-- Lista blanca de `chat_id` (colección `users`). Cualquier otro se descarta sin
-  gastar tokens.
-- Dedup por `update_id` en transacción Firestore (un reintento no duplica una fila).
-- Push de Pub/Sub al worker con OIDC obligatorio (`--no-allow-unauthenticated`).
-
-**Credenciales**
-- Todo secreto en Secret Manager; cero secretos en repo o env en claro.
-- Cuentas de servicio separadas: `assistant-webhook` (solo `pubsub.publisher`),
-  `assistant-worker` (`firestore.user` + `secretAccessor` sobre secretos nombrados
-  + acceso a UN sheet y UN calendario), `assistant-deploy` (GitHub WIF).
-- Sin refresh token OAuth personal. La SA tiene Editor sobre un spreadsheet y
-  escritura sobre un calendario dedicado; nunca Drive completo.
-
-**Fuga por logs / LLM**
-- Cero PII en Cloud Logging (ni `chat_id`, ni montos, ni títulos). Se registra id
-  de documento y contador. Retención 30 días.
-- MLflow guarda hash del prompt versionado + git sha + tokens + latencia +
-  herramienta. El texto se guarda hasheado, no en claro.
-- Se envía el mínimo contexto (nunca el ledger completo); el modelo emite JSON
-  validado y el código ejecuta (nunca URLs o código generado por el modelo).
-- Escrituras financieras append-only; operaciones por encima de un monto
-  configurable o borrados de eventos exigen turno de confirmación.
-- Tope diario de gasto de LLM (USD) y de mensajes/minuto (token bucket en Firestore).
-
-**En reposo y respaldo**
-- Firestore, Sheets, GCS y Calendar cifran en reposo. Respaldo semanal: vuelca
-  colecciones a JSON en GCS + copia del spreadsheet.
-- Rotación de token del bot y key de DeepSeek cada 90 días.
+- `min-instances=1` on Cloud Run: ends the free tier. It must be `0`.
+- Static IP / SSD disk on any VM: billed. (There are no VMs in this design.)
+- Egress >1 GB/month is billed. Irrelevant for a text bot.
+- Budget alerts at $1 and $5 **before** deploying. Budget guard at $3.
 
 ---
 
-## 7. Estructura del repositorio (un solo repo)
+## 6. Security
+
+**Input authenticity**
+- `X-Telegram-Bot-Api-Secret-Token` compared in constant time *before*
+  parsing. Telegram does **not sign** the body, so the webhook route is also
+  secret (`/tg/<32 random chars>`).
+- `chat_id` allowlist (`users` collection). Anyone else is dropped without
+  spending tokens.
+- Dedup by `update_id` in a Firestore transaction (a retry never duplicates a
+  row).
+- Pub/Sub push to the worker with mandatory OIDC
+  (`--no-allow-unauthenticated`).
+
+**Credentials**
+- Every secret in Secret Manager; zero secrets in the repo or in plain env.
+- Separate service accounts: `assistant-webhook` (only `pubsub.publisher`),
+  `assistant-worker` (`firestore.user` + `secretAccessor` on named secrets +
+  access to ONE sheet and ONE calendar), `assistant-deploy` (GitHub WIF).
+- No personal OAuth refresh token. The SA has Editor on one spreadsheet and
+  write access to one dedicated calendar; never all of Drive.
+
+**Leaks through logs / LLM**
+- Zero PII in Cloud Logging (no `chat_id`, amounts or titles). Document ids and
+  counters are logged. 30-day retention.
+- MLflow stores the versioned prompt hash + git sha + tokens + latency + tool.
+  Text is stored hashed, never in clear.
+- Minimal context is sent (never the full ledger); the model emits validated
+  JSON and the code executes (never URLs or code generated by the model).
+- Append-only financial writes; operations above a configurable amount or event
+  deletions require a confirmation turn.
+- Daily LLM spend cap (USD) and messages per minute (token bucket in
+  Firestore).
+
+**At rest and backup**
+- Firestore, Sheets, GCS and Calendar encrypt at rest. Weekly backup: dumps the
+  collections to JSON in GCS plus a copy of the spreadsheet.
+- Bot token and DeepSeek key rotated every 90 days.
+
+---
+
+## 7. Repository structure (a single repo)
 
 ```
 personal-assistant-bot/
 ├── PLAN.md
-├── README.md                 # arquitectura + run local + deploy
-├── CONTRIBUTING.md           # flujo de ramas (idéntico a uplift)
+├── README.md                 # architecture + local run + deploy
+├── CONTRIBUTING.md           # branch flow (same as uplift)
 ├── pyproject.toml            # uv + ruff + mypy + pytest
-├── Dockerfile                # una imagen, dos entrypoints (api / worker)
+├── Dockerfile                # one image, two entrypoints (api / worker)
 ├── .github/
 │   ├── workflows/ci.yml      # lint, mypy, pytest (cov ≥80), detect-secrets, gitleaks, pip-audit, build
-│   ├── workflows/deploy.yml  # dev→staging, main→prod, WIF, SHAs fijados
+│   ├── workflows/deploy.yml  # dev→staging, main→prod, WIF, pinned SHAs
 │   └── pull_request_template.md
 ├── infra/
 │   ├── main.tf               # APIs, buckets, SA, WIF, secrets, scheduler, budget guard
 │   └── terraform.tfvars.example
 ├── src/assistant/
-│   ├── config.py             # settings desde Secret Manager
+│   ├── config.py             # settings from Secret Manager
 │   ├── api.py                # webhook: secret token, allowlist, dedup, publish
-│   ├── worker.py             # consumidor Pub/Sub (updates + cron)
+│   ├── worker.py             # Pub/Sub consumer (updates + cron)
 │   ├── channels/
-│   │   ├── base.py           # interfaz común de canal
-│   │   └── telegram.py       # sendMessage, botones inline, /start
+│   │   ├── base.py           # common channel interface
+│   │   └── telegram.py       # sendMessage, inline buttons, /start
 │   ├── llm/
-│   │   ├── client.py         # DeepSeek flash, tope de gasto
-│   │   ├── tools.py          # esquemas + validación (lista blanca)
-│   │   └── prompts/system.md # prompt versionado (estilo conciso)
+│   │   ├── client.py         # DeepSeek flash, spend cap
+│   │   ├── tools.py          # schemas + validation (allowlist)
+│   │   └── prompts/system.md # versioned prompt (concise style)
 │   ├── services/
-│   │   ├── sheets.py         # append-only, cuenta de servicio
-│   │   ├── calendar.py       # calendario dedicado
-│   │   ├── state.py          # Firestore: usuarios, idempotencia, preferencias
-│   │   └── budgets.py        # reglas 50/30/20 + comparación vs presupuesto
+│   │   ├── sheets.py         # append-only, service account
+│   │   ├── calendar.py       # dedicated calendar
+│   │   ├── state.py          # Firestore: users, idempotency, preferences
+│   │   └── budgets.py        # 50/30/20 rules + comparison vs budget
 │   ├── jobs/                 # digest, checkin, weekly, backup
-│   └── observability/trace.py# MLflow compartido (texto hasheado)
+│   └── observability/trace.py# shared MLflow (hashed text)
 └── tests/
 ```
 
-¿Más de un repo? **No.** Un producto = un repo (misma regla que uplift). La
-infra compartida (MLflow, módulo `budget-guard`) ya vive en `portfolio-infra` y se
-consume como módulo pineado por commit. El vault de Obsidian no es un repo de
-producto, es la base de conocimiento.
+More than one repo? **No.** One product = one repo (same rule as uplift). The
+shared infrastructure (MLflow, `budget-guard` module) already lives in
+`portfolio-infra` and is consumed as a module pinned by commit. The Obsidian
+vault is not a product repo; it is the knowledge base.
 
 ---
 
-## 8. Alternativas descartadas
+## 8. Alternatives ruled out
 
-- **WhatsApp Cloud API**: plantillas facturadas (US$0.0113/msg a Panamá),
-  alta de 1–3 semanas, ventana de 24 h, chip +507 que mantener vivo. Para un
-  asistente personal que avisa "cuando necesite", Telegram elimina todo eso.
-- **e2-micro para todo (long polling, $0)**: válido, no expone endpoint, pero
-  obliga a gestionar reinicios/parches con 1 GB compartido. Plan C si Cloud Run
-  diera problemas.
-- **MLflow propio en e2-micro**: descartado; el compartido ya existe y cuesta $0.
-- **Cloudflare Workers / AWS Lambda**: sin Secret Manager/Firestore equivalentes,
-  y Sheets/Calendar/Gemini quedarían fuera del proveedor. Más piezas, no menos.
+- **WhatsApp Cloud API:** billed templates (US$0.0113/msg to Panama), 1–3
+  weeks to get approved, 24 h window, a +507 SIM to keep alive. For a personal
+  assistant that reaches out "when needed", Telegram removes all of that.
+- **e2-micro for everything (long polling, $0):** valid and exposes no
+  endpoint, but means handling restarts and patches with 1 GB shared. Plan C if
+  Cloud Run caused problems.
+- **Own MLflow on an e2-micro:** ruled out; the shared one already exists and
+  costs $0.
+- **Cloudflare Workers / AWS Lambda:** no Secret Manager/Firestore equivalents,
+  and Sheets/Calendar/Gemini would sit outside the provider. More pieces, not
+  fewer.
 
 ---
 
 ## 9. Roadmap
 
-**Fase 0 — Cimientos (1 h)** — Bot con @BotFather, token + secret token + ruta
-en Secret Manager, `/start` captura `chat_id`, proyecto GCP nuevo, presupuestos
-$1/$5, budget guard a $3, `git init`.
-*AC:* `getMe` responde; `getWebhookInfo` muestra `pending_update_count: 0`.
+**Phase 0 — Foundations (1 h)** — Bot with @BotFather, token + secret token +
+route in Secret Manager, `/start` captures `chat_id`, new GCP project, $1/$5
+budgets, budget guard at $3, `git init`.
+*AC:* `getMe` answers; `getWebhookInfo` shows `pending_update_count: 0`.
 
-**Fase 1 — Eco (1 día)** — `assistant-api` (secret token + ruta + allowlist +
-dedup) y `assistant-worker` que responde texto fijo.
-*AC:* responde <5 s; POST sin header → 403; `update_id` repetido no duplica.
+**Phase 1 — Echo (1 day)** — `assistant-api` (secret token + route + allowlist
++ dedup) and an `assistant-worker` that replies with fixed text.
+*AC:* answers in <5 s; POST without the header → 403; a repeated `update_id`
+does not duplicate.
 
-**Fase 2 — Finanzas (2 días)** — SA + compartir spreadsheet; `registrar_gasto`,
-`registrar_ingreso`, `resumen_finanzas`, idempotencia real, botón deshacer.
-*AC:* "gasté 45 en almuerzo" crea exactamente una fila; "¿cuánto llevo este mes?"
-cuadra con la suma del Sheet.
+**Phase 2 — Finance (2 days)** — SA + shared spreadsheet; `registrar_gasto`,
+`registrar_ingreso`, `resumen_finanzas`, real idempotency, undo button.
+*AC:* "I spent 45 on lunch" creates exactly one row; "how much have I spent
+this month?" matches the sum in the Sheet.
 
-**Fase 3 — Presupuesto (1 día)** — `preferences` con presupuesto por categoría,
-`recomendar_presupuesto` (reglas + resumen del LLM), fallback 50/30/20.
-*AC:* "¿dónde ahorro?" devuelve ≤2 líneas con la categoría que más excede.
+**Phase 3 — Budget (1 day)** — `preferences` with a per-category budget,
+`recomendar_presupuesto` (rules + LLM summary), 50/30/20 fallback.
+*AC:* "where can I save?" returns ≤2 lines with the category most over budget.
 
-**Fase 4 — Calendario (1 día)** — Calendario dedicado compartido con la SA,
-`crear_evento`/`listar_agenda`.
-*AC:* "dentista jueves 4pm" aparece en el calendario dedicado con recordatorio.
+**Phase 4 — Calendar (1 day)** — Dedicated calendar shared with the SA,
+`crear_evento` / `listar_agenda`.
+*AC:* "dentist Thursday 4pm" shows up in the dedicated calendar with a
+reminder.
 
-**Fase 5 — Proactivo + beta (1 día)** — 3 jobs de Cloud Scheduler → Pub/Sub,
-tope de gasto de LLM, `invitar_beta`/`listar_usuarios`, botones de confirmación.
-*AC:* 07:30 llega el resumen sin intervención; un beta tester con `/start <código>` queda
-en la allowlist; un `chat_id` ajeno se descarta sin gastar tokens.
+**Phase 5 — Proactive + beta (1 day)** — 3 Cloud Scheduler jobs → Pub/Sub, LLM
+spend cap, `invitar_beta` / `listar_usuarios`, confirmation buttons.
+*AC:* the 07:30 summary arrives on its own; a beta tester with
+`/start <code>` lands on the allowlist; an unknown `chat_id` is dropped without
+spending tokens.
 
-**Fase 6 — Observabilidad (1 día)** — Traza MLflow compartido (hash de prompt,
-tokens, latencia, costo, herramienta) + logging sin PII.
-*AC:* una traza por turno; comparación entre dos versiones de prompt en MLflow.
+**Phase 6 — Observability (1 day)** — Shared MLflow trace (prompt hash, tokens,
+latency, cost, tool) + logging without PII.
+*AC:* one trace per turn; two prompt versions compared in MLflow.
 
-**Fase 7 — Endurecimiento (1 día)** — Rotación de claves, respaldo semanal a GCS,
-retención de logs, revisión IAM, prueba casera (header ausente, ruta equivocada,
-`chat_id` ajeno, intento de inyección).
-*AC:* los cuatro intentos fallan cerrado y quedan registrados.
+**Phase 7 — Hardening (1 day)** — Key rotation, weekly backup to GCS, log
+retention, IAM review, home-made test (missing header, wrong route, unknown
+`chat_id`, injection attempt).
+*AC:* the four attempts fail closed and are logged.
 
 ---
 
-## 10. Riesgos
+## 10. Risks
 
-| Riesgo | Impacto | Mitigación |
+| Risk | Impact | Mitigation |
 |---|---|---|
-| Telegram no firma webhooks | Inyección si se descubre la URL | Ruta aleatoria + secret token + allowlist; sin los tres no se procesa |
-| Latencia del LLM → reintentos | Filas duplicadas | Ack rápido + Pub/Sub + idempotencia por `update_id` |
-| Cloud Run congela CPU entre requests | Tareas en background perdidas | Nada de hilos; todo vía Pub/Sub |
-| 429/5xx de DeepSeek | Respuestas demoradas | 5xx al push de Pub/Sub para reintentar con backoff; modelo configurable |
-| Datos financieros procesados en China | Fuga regulatoria/privacidad | Contexto mínimo, sin nombres ni ledger completo; cambiar `LLM_MODEL`/proveedor si pasa a importar |
-| Free tier roto por opción mal elegida | Factura inesperada | Trampas en §5 + presupuestos + budget guard $3 |
-| Fuga de datos financieros | Irreversible | Allowlist, SA (no OAuth personal), tier pagado, cero PII, append-only |
-| Bloqueo del bot / pérdida de `chat_id` | El bot no puede escribirte | `chat_id` en Firestore con respaldo semanal; `/start` lo recupera |
+| Telegram does not sign webhooks | Injection if the URL is discovered | Random route + secret token + allowlist; without all three nothing is processed |
+| LLM latency → retries | Duplicate rows | Fast ack + Pub/Sub + idempotency by `update_id` |
+| Cloud Run freezes CPU between requests | Lost background tasks | No threads; everything through Pub/Sub |
+| DeepSeek 429/5xx | Delayed replies | 5xx to the Pub/Sub push to retry with backoff; configurable model |
+| Financial data processed in China | Regulatory / privacy leak | Minimal context, no names or full ledger; switch `LLM_MODEL` / provider if it starts to matter |
+| Free tier broken by a wrong option | Unexpected bill | Traps in §5 + budgets + $3 budget guard |
+| Financial data leak | Irreversible | Allowlist, SA (no personal OAuth), paid tier, zero PII, append-only |
+| Bot blocked / `chat_id` lost | The bot cannot write to you | `chat_id` in Firestore with a weekly backup; `/start` recovers it |

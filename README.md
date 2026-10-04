@@ -28,7 +28,7 @@ plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
 - **Speaks your language.** Spanish, English or Chinese, following your phone.
 - **Has fun if you want.** `/fun` turns on reaction GIFs.
 
-Full guide, with every command and example below.
+The full guide, with every command and example, is in the documentation below.
 
 ## How it works
 

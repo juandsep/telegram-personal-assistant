@@ -83,7 +83,6 @@ class WorkerSettings:
     # Cloud KMS key that encrypts each user's secret iCal URL. Empty: /conectar
     # is refused, so the URL is never stored in clear.
     kms_key: str = ""
-    mlflow_tracking_uri: str = ""
     backup_bucket: str = ""
     llm_model: str = "deepseek-flash"
     llm_base_url: str = "https://api.deepseek.com"
@@ -114,7 +113,6 @@ class WorkerSettings:
             tasks_location=get("TASKS_LOCATION", "us-central1"),
             api_url=get("API_URL", "").rstrip("/"),
             kms_key=get("KMS_KEY", ""),
-            mlflow_tracking_uri=get("MLFLOW_TRACKING_URI", ""),
             backup_bucket=get("BACKUP_BUCKET", ""),
             llm_model=get("LLM_MODEL", "deepseek-flash"),
             llm_base_url=get("LLM_BASE_URL", "https://api.deepseek.com"),

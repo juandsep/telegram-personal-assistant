@@ -8,7 +8,8 @@
 > exact time, the three Scheduler jobs became one hourly `tick` in each user's
 > time zone, the two Cloud Run services (`assistant-api`, `assistant-worker`)
 > became one `assistant` service that keeps Pub/Sub between the webhook and the
-> LLM turn, and the bot became Juani (Spanish, English and Chinese, a pinned
+> LLM turn, the shared MLflow gave way to Cloud Monitoring (log-based metrics,
+> alerts) with a local Grafana, and the bot became Juani (Spanish, English and Chinese, a pinned
 > Mini App dashboard). For how it works today, see the [README](README.md) and
 > [docs/](docs/).
 

@@ -567,10 +567,3 @@ output "github_variables" {
 output "bigquery_ledger_table" {
   value = "${var.project_id}.${google_bigquery_dataset.botjonh.dataset_id}.${google_bigquery_table.ledger.table_id}"
 }
-
-# Hand these to portfolio-infra so it can grant MLflow access.
-output "mlflow_clients" {
-  value = {
-    worker = google_service_account.sa["worker"].email
-  }
-}

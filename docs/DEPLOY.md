@@ -68,6 +68,11 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
    curl "https://api.telegram.org/bot$TOKEN/setWebhook?url=$API_URL/tg/$PATH&secret_token=$SECRET"
    ```
 
+Monitoring needs nothing at runtime: `terraform apply` creates the log-based
+metrics, the alert policies (mailed to `alert_email` in `terraform.tfvars`) and
+the read-only `assistant-grafana` account. To explore the metrics, run the local
+Grafana described in [monitoring/README.md](../monitoring/README.md).
+
 For `/vincular` (Google Calendar mirror), enable the Calendar API
 (`calendar-json.googleapis.com`) in the project.
 
@@ -108,7 +113,6 @@ Local runs read the same variables from a git-ignored `.env`.
 | `API_URL` | The service's public URL, for the ICS link and the Visor |
 | `KMS_KEY` | Cloud KMS key that encrypts iCal URLs (empty = `/conectar` refused) |
 | `BACKUP_BUCKET` | Daily ledger CSV and weekly JSON backup |
-| `MLFLOW_TRACKING_URI` | Shared MLflow server |
 | `LLM_MODEL` / `LLM_BASE_URL` | Default `deepseek-flash` / `https://api.deepseek.com` |
 | `MAX_MSGS_PER_MINUTE` | Per-chat rate limit (default 10) |
 | `MAX_LLM_USD_PER_DAY` | Daily LLM spend cap per chat, default 0.10 (fails closed) |

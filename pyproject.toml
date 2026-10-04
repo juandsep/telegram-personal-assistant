@@ -14,7 +14,6 @@ dependencies = [
     "google-cloud-storage>=2.14.0",
     "google-cloud-tasks>=2.16.0",
     "google-auth>=2.27.0",
-    "mlflow-skinny>=2.10.0",
     "icalendar>=7.3.0",
     "recurring-ical-events>=3.8.2",
     "google-cloud-kms>=3.0.0",

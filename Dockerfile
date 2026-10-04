@@ -22,8 +22,7 @@ COPY --from=builder /app/pyproject.toml ./
 RUN useradd --create-home --uid 10001 app && chown -R app:app /app
 USER app
 
-# mlflow-skinny imports GitPython; there is no git binary in the image.
-ENV HOME=/home/app PATH="/opt/venv/bin:$PATH" PORT=8080 GIT_PYTHON_REFRESH=quiet
+ENV HOME=/home/app PATH="/opt/venv/bin:$PATH" PORT=8080
 EXPOSE 8080
 
 # One service serves every route (see src/assistant/app.py). No access log: the

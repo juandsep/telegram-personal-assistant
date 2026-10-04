@@ -1,11 +1,20 @@
-# telegram-personal-assistant
+<p align="center">
+  <img src="docs/assets/juani.gif" alt="Juani" width="320">
+</p>
 
-A single-user Telegram bot that is a finance advisor and a calendar: it logs
-expenses and income to a Firestore ledger, recommends budgets to save, keeps its
-own agenda of appointments (medical, personal) that you subscribe to from
-Google, Apple or Outlook as a private ICS feed, and sends exact-time reminders
-on Telegram. It runs for one owner plus a small allowlist of beta
-testers, on GCP for about $1–2/month (LLM tokens only).
+<h1 align="center">Juani</h1>
+
+<p align="center">
+  Your expense and calendar assistant on Telegram · español · English · 中文
+</p>
+
+**Juani** (repo `telegram-personal-assistant`) is a single-user Telegram bot
+that is a finance advisor and a calendar: it logs expenses and income to a
+Firestore ledger, recommends budgets to save, keeps its own agenda of
+appointments (medical, personal) that you subscribe to from Google, Apple or
+Outlook as a private ICS feed, and sends exact-time reminders on Telegram. It
+runs for one owner plus a small allowlist of beta testers, on GCP for about
+$1–2/month (LLM tokens only).
 
 - **Channel:** Telegram Bot API (webhook → Cloud Run).
 - **LLM:** DeepSeek `deepseek-flash` over its HTTP API (tool calling,
@@ -97,7 +106,9 @@ see [Configuration](#configuration).
 4. Set the bot's profile (Juani): the command menu, the description shown in
    an empty chat and the about text, in Spanish (default for any other
    language), English and Chinese, plus the profile photo
-   ([`docs/assets/juani-avatar.jpg`](docs/assets/juani-avatar.jpg)). Run it
+   ([`docs/assets/juani-avatar.jpg`](docs/assets/juani-avatar.jpg), the square
+   crop of [`juani.png`](docs/assets/juani.png); [`juani.gif`](docs/assets/juani.gif)
+   is the animated version used on this page). Run it
    again after changing the texts in `src/assistant/i18n.py`:
 
    ```bash

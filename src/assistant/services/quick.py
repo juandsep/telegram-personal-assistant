@@ -1,5 +1,8 @@
 """Deterministic quick entry: ``2 usd cafe``, ``1000usd ingreso``. No LLM.
 
+Keywords cover Spanish, English and Chinese (see assistant.i18n). Chinese has
+no spaces, so its keywords match inside a word (``买咖啡`` has ``咖啡``).
+
 Type: the word ``ingreso`` or a leading ``+`` means income; ``gasto`` or a
 leading ``-`` means expense; any other words default to expense. A bare amount
 (``5``, ``5 usd``) has ``tipo == ""``: the worker asks gasto or ingreso.
@@ -16,6 +19,9 @@ import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 
+from assistant.context import CATEGORIES
+from assistant.i18n import CATEGORIAS
+
 CODES = frozenset(
     {"USD", "COP", "EUR", "MXN", "PEN", "CLP", "ARS", "BRL", "GBP", "CAD", "PAB"}
 )
@@ -24,6 +30,9 @@ _CUR = {c.lower(): c for c in CODES} | {
     "€": "EUR",
     "dolar": "USD",
     "dolares": "USD",
+    "dollar": "USD",
+    "dollars": "USD",
+    "美元": "USD",
     "euro": "EUR",
     "euros": "EUR",
 }
@@ -35,22 +44,49 @@ _SKIP = frozenset(
     "sabado domingo semana mes cuanto cuanta que cual como cuando donde "
     "resumen presupuesto ultimo ultima era cambia cambiar corrige corregir "
     "edita editar anula anular borra borrar deshaz deshacer cancela cancelar "
-    "recuerda recuerdame recordar recordatorio cita reunion evento agenda".split()
+    "recuerda recuerdame recordar recordatorio cita reunion evento agenda "
+    "today tomorrow yesterday monday tuesday wednesday thursday friday saturday "
+    "sunday week month how what which when where summary budget last change "
+    "edit fix undo delete remove cancel remind reminder meeting event "
+    "appointment calendar schedule".split()
 )
-_STRIP = frozenset({"gasto", "gaste", "ingreso"})
-_LEAD = frozenset({"en", "de", "por", "para"})
+# Chinese dates, questions, edits and calendar words, matched inside a word.
+_SKIP_ZH = (
+    "今天 明天 昨天 后天 前天 星期 礼拜 周 月 多少 什么 哪 怎么 吗 提醒 会议 "
+    "开会 日程 预约 取消 修改 删除 撤销 预算 总结 上一"
+).split()
+_INGRESO = frozenset({"ingreso", "income", "收入"})
+_GASTO = frozenset({"gasto", "gaste", "expense", "spent", "支出", "花了"})
+_STRIP = _INGRESO | _GASTO
+_LEAD = frozenset({"en", "de", "por", "para", "on", "for", "at"})
 _KEYWORDS = {
-    "restaurantes": "cafe almuerzo restaurante",
-    "transporte": "uber taxi bus gasolina",
-    "supermercado": "mercado super",
-    "suscripciones": "netflix spotify",
-    "vivienda": "arriendo",
-    "servicios": "luz agua internet celular",
-    "salud": "farmacia medico",
-    "entretenimiento": "cine",
-    "compras": "ropa",
+    "restaurantes": "cafe almuerzo desayuno cena restaurante coffee lunch "
+    "breakfast dinner restaurant 咖啡 午饭 午餐 早饭 早餐 晚饭 晚餐 饭店 餐厅 外卖",
+    "transporte": "uber taxi bus gasolina gas fuel metro 打车 出租车 公交 地铁 "
+    "加油 滴滴",
+    "supermercado": "mercado super groceries grocery supermarket 超市 菜 买菜",
+    "suscripciones": "netflix spotify subscription 会员 订阅",
+    "vivienda": "arriendo rent 房租 租金",
+    "servicios": "luz agua internet celular electricity water phone 电费 水费 "
+    "话费 网费",
+    "salud": "farmacia medico pharmacy doctor medicine 药 医院 看病",
+    "entretenimiento": "cine movie movies cinema 电影",
+    "compras": "ropa clothes shopping 衣服 购物",
 }
 _CATEGORIA = {w: cat for cat, words in _KEYWORDS.items() for w in words.split()}
+_CATEGORIA_ZH = [(w, cat) for w, cat in _CATEGORIA.items() if not w.isascii()]
+
+
+def _categoria(palabra: str) -> str | None:
+    """Exact match, else a Chinese keyword inside the word."""
+    exacta = _CATEGORIA.get(palabra)
+    if exacta or palabra.isascii():
+        return exacta
+    return next((cat for w, cat in _CATEGORIA_ZH if w in palabra), None)
+
+
+# "editar: ..." in each language; a category by its key or any shown name.
+EDITAR = frozenset({"editar", "edit", "修改"})
 MAX_WORDS = 8  # ponytail: longer messages are prose; let the LLM read them
 NOT_POSITIVE = "El monto debe ser mayor que 0."
 
@@ -68,6 +104,13 @@ class Entry:
 def norm(text: str) -> str:
     decomposed = unicodedata.normalize("NFKD", text.lower())
     return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
+_CAT_NOMBRES = {
+    norm(nombre): clave
+    for clave in CATEGORIES
+    for nombre in (clave, *CATEGORIAS[clave].values())
+}
 
 
 def number(raw: str) -> Decimal | None:
@@ -119,6 +162,38 @@ def amount(text: str) -> tuple[Decimal, str | None] | None:
     return found[0], found[1] or (_CUR[code] if code else None)
 
 
+def correccion(text: str) -> dict | None:
+    """``editar: 15 cop · almuerzo · restaurantes`` -> the fields to change in
+    the last movement ({} when nothing is recognized); None if not a correction.
+
+    Amount (and currency), category by name in any language, and the other
+    words as the note, in any order.
+    """
+    head, sep, rest = text.replace("：", ":").partition(":")
+    if not sep or norm(head.strip()) not in EDITAR:
+        return None
+    campos: dict = {}
+    nota = []
+    for raw in re.split(r"[\s/·;]+", rest.strip()):
+        tok = norm(raw)
+        found = _amount(tok) if tok else None
+        if not tok:
+            continue
+        if found and "monto" not in campos:
+            campos["monto"] = abs(found[0])
+            if found[1]:
+                campos["moneda"] = found[1]
+        elif tok in _CUR:
+            campos["moneda"] = _CUR[tok]
+        elif tok in _CAT_NOMBRES:
+            campos["categoria"] = _CAT_NOMBRES[tok]
+        else:
+            nota.append(raw)
+    if nota:
+        campos["nota"] = " ".join(nota)
+    return campos
+
+
 def parse(text: str) -> Entry | None:
     raw = text.replace("\u2212", "-").split()  # "−5" (minus sign) as "-5"
     toks = [norm(t).strip(".,;:!") for t in raw]
@@ -129,8 +204,10 @@ def parse(text: str) -> Entry | None:
         or text.lstrip().startswith("/")
         or "?" in text
         or "¿" in text
+        or "？" in text
         or _TIME.search(joined)
         or _SKIP.intersection(toks)
+        or any(w in joined for w in _SKIP_ZH)
     ):
         return None
     amounts = [i for i, t in enumerate(toks) if _amount(t)]
@@ -147,9 +224,9 @@ def parse(text: str) -> Entry | None:
             if 0 <= j < len(toks) and toks[j] in _CUR:
                 moneda, used = _CUR[toks[j]], {i, j}
                 break
-    if "ingreso" in toks or signo == "+":
+    if _INGRESO.intersection(toks) or signo == "+":
         tipo = "ingreso"
-    elif "gasto" in toks or "gaste" in toks or signo == "-":
+    elif _GASTO.intersection(toks) or signo == "-":
         tipo = "gasto"
     else:
         tipo = "gasto"  # words without a type: an expense
@@ -160,13 +237,13 @@ def parse(text: str) -> Entry | None:
     ]
     if words and words[0][1] in _LEAD:
         words = words[1:]
-    decidido = signo or {"ingreso", "gasto", "gaste"}.intersection(toks)
+    decidido = signo or _STRIP.intersection(toks)
     if not words and not decidido:
         tipo = ""  # a bare amount: gasto or ingreso is the user's call
     nota = " ".join(w for w, _ in words)
     categoria = ""
     if tipo != "ingreso":
-        found = (_CATEGORIA.get(n) for _, n in words)
+        found = (_categoria(n) for _, n in words)
         categoria = next((c for c in found if c), "otros")
     return Entry(
         tipo=tipo,

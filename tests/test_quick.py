@@ -99,3 +99,52 @@ def test_parse_leaves_everything_else_to_the_llm(text) -> None:
 )
 def test_amount(text, expected) -> None:
     assert amount(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "tipo", "categoria"),
+    [
+        ("-12 lunch", "gasto", "restaurantes"),
+        ("20 groceries", "gasto", "supermercado"),
+        ("12 dollars dinner", "gasto", "restaurantes"),
+        ("1000 income", "ingreso", ""),
+        ("-12 午饭", "gasto", "restaurantes"),
+        ("买咖啡 5", "gasto", "restaurantes"),  # keyword inside a Chinese word
+        ("30 超市", "gasto", "supermercado"),
+        ("8 书", "gasto", "otros"),
+    ],
+)
+def test_english_and_chinese_keywords(text, tipo, categoria) -> None:
+    e = parse(text)
+    assert e is not None and (e.tipo, e.categoria) == (tipo, categoria)
+
+
+@pytest.mark.parametrize(
+    "text", ["lunch tomorrow 12", "how much 5", "明天 午饭 12", "多少 5", "5 吗？"]
+)
+def test_english_and_chinese_dates_and_questions_go_to_llm(text) -> None:
+    assert parse(text) is None
+
+
+def test_correccion_in_any_language_and_order() -> None:
+    from assistant.services.quick import correccion
+
+    assert correccion("editar: 15 restaurantes") == {
+        "monto": Decimal(15),
+        "categoria": "restaurantes",
+    }
+    assert correccion("Edit: lunch 12,50 cop Restaurants") == {
+        "monto": Decimal("12.50"),
+        "moneda": "COP",
+        "categoria": "restaurantes",
+        "nota": "lunch",
+    }
+    assert correccion("修改：15 午饭 餐饮") == {
+        "monto": Decimal(15),
+        "categoria": "restaurantes",
+        "nota": "午饭",
+    }
+    assert correccion("editar: Transporte") == {"categoria": "transporte"}
+    assert correccion("editar:") == {}
+    assert correccion("editar la cena 5") is None  # no colon: a normal message
+    assert correccion("nota: 5") is None

@@ -50,6 +50,8 @@ class ApiSettings:
     webhook_secret_token: str
     webhook_path: str
     updates_topic: str = "assistant-updates"
+    # Number before ":" in the bot token (public): checks Mini App initData.
+    telegram_bot_id: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> ApiSettings:
@@ -59,6 +61,7 @@ class ApiSettings:
             webhook_secret_token=_require(values, "WEBHOOK_SECRET_TOKEN"),
             webhook_path=_require(values, "WEBHOOK_PATH"),
             updates_topic=values.get("UPDATES_TOPIC", "assistant-updates"),
+            telegram_bot_id=values.get("TELEGRAM_BOT_ID", "").strip(),
         )
 
 

@@ -12,6 +12,7 @@ from google.api_core.exceptions import PreconditionFailed
 
 import assistant.jobs as jobs
 from assistant.config import get_worker_settings
+from assistant.i18n import t
 from assistant.jobs import backup
 from assistant.services import agenda, budgets, ledger
 
@@ -59,6 +60,16 @@ def test_digest_sends_nothing_when_empty(env: SimpleNamespace) -> None:
     assert env.encolar.call_args.args[0].chat_id == "42"
 
 
+def test_checkin_in_user_language(
+    env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env.state.get_user.return_value = {"idioma": "en"}
+    movs = [{"tipo_mov": "gasto", "monto": "3.00"}]
+    monkeypatch.setattr(ledger, "del_dia", lambda *a: movs)
+    jobs.run_job("checkin")
+    env.telegram.send_message.assert_called_with("42", "Your spending today: 3.00 USD.")
+
+
 def test_digest_agenda_and_yesterday(
     env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -72,7 +83,7 @@ def test_digest_agenda_and_yesterday(
     )
 
 
-def test_checkin_lists_the_day(
+def test_checkin_totals_the_day(
     env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(ledger, "del_dia", lambda *a: [])
@@ -92,11 +103,7 @@ def test_checkin_lists_the_day(
     monkeypatch.setattr(ledger, "del_dia", lambda *a: movs)
     jobs.run_job("checkin")
     assert env.telegram.send_message.call_args.args[1] == (
-        "Hoy (3):\n"
-        "−0.49 USD · Café (2,000 COP)\n"
-        "−12.00 USD · Uber\n"
-        "+1000.00 USD · Salario\n"
-        "Total gastos: 12.49 USD"
+        "Tus gastos hoy: 12.49 USD."  # the income is not spend
     )
 
 
@@ -330,7 +337,6 @@ def tick(env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespa
     env.state.list_chat_ids.return_value = ["pa", "es"]
     zonas = {"pa": "America/Panama", "es": "Europe/Madrid"}
     env.state.get_user.side_effect = lambda c: {"zona_horaria": zonas[c]}
-    env.state.dash_token.return_value = "t" * 32
     monkeypatch.setattr(agenda, "agenda", lambda ctx, rango: ["agenda"])
     settings = dataclasses.replace(get_worker_settings(), api_url="https://api")
     monkeypatch.setattr(jobs, "get_worker_settings", lambda: settings)
@@ -348,14 +354,11 @@ def test_tick_sends_per_local_time(
     _at(monkeypatch, 2026, 9, 30, 5)
     jobs.run_job("tick")
     assert _sent(tick) == {"es": "agenda"}
-    # 20:00 UTC: Madrid 22:00 daily list with the 24 h dashboard link.
+    # 20:00 UTC: Madrid 22:00 daily list.
     tick.telegram.reset_mock()
     _at(monkeypatch, 2026, 9, 30, 20)
     jobs.run_job("tick")
-    assert _sent(tick) == {
-        "es": "Hoy no registraste gastos.\nTablero: https://api/tablero/" + "t" * 32
-    }
-    tick.state.dash_token.assert_called_once_with("es", ttl=timedelta(hours=24))
+    assert _sent(tick) == {"es": "Hoy no registraste gastos.\n\n" + t("es", "hint")}
     # 12:00 UTC: Panama 07:00 digest; nobody at 22:00.
     tick.telegram.reset_mock()
     _at(monkeypatch, 2026, 9, 30, 12)
@@ -389,25 +392,7 @@ def test_tick_sunday_one_combined_message(
     assert lines[0] == "Hoy no registraste gastos."
     assert lines[1] == ""
     assert lines[2].startswith("Semana ") and lines[2].endswith(": 5.00 USD")
-    assert lines[-1] == "Tablero: https://api/tablero/" + "t" * 32
-
-
-def test_tick_dashboard_line_absent(
-    tick: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _at(monkeypatch, 2026, 9, 30, 20)
-    tick.state.dash_token.side_effect = RuntimeError("firestore down")
-    jobs.run_job("tick")
-    assert _sent(tick) == {"es": "Hoy no registraste gastos."}
-    settings = dataclasses.replace(get_worker_settings(), api_url="")
-    monkeypatch.setattr(jobs, "get_worker_settings", lambda: settings)
-    tick.state.dash_token.reset_mock()
-    jobs.run_job("tick")
-    tick.state.dash_token.assert_not_called()
-    # Digest never carries the link.
-    _at(monkeypatch, 2026, 9, 30, 5)
-    jobs.run_job("tick")
-    assert _sent(tick)["es"] == "agenda"
+    assert lines[-1] == t("es", "hint")
 
 
 def test_tick_side_effects_once_a_day_from_12_utc(

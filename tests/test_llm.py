@@ -429,3 +429,10 @@ def test_anular_movimiento_needs_confirmation(calls) -> None:
     assert (question, token, calls) == ("¿Anulo el movimiento 2?", "t1", [])
     assert execute_pending(ctx(), "t1") == "ok anular"
     assert calls == [("anular", {"indice": 2})]
+
+
+def test_context_message_names_the_language() -> None:
+    from assistant.llm.client import _context_message
+
+    zh = ToolContext("42", "beta", "USD", "America/Panama", 7, AHORA, idioma="zh")
+    assert _context_message(zh)["content"].endswith("Responde siempre en 简体中文.")

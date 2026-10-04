@@ -26,6 +26,7 @@ def parse_update(update: object) -> InboundMessage | None:
                 update_id=int(update["update_id"]),
                 callback_data=str(cq.get("data", "")),
                 callback_query_id=str(cq["id"]),
+                language_code=(cq.get("from") or {}).get("language_code"),
             )
         msg = update["message"]
         replied = (msg.get("reply_to_message") or {}).get("animation") or {}
@@ -37,6 +38,7 @@ def parse_update(update: object) -> InboundMessage | None:
             animation_file_id=(msg.get("animation") or {}).get("file_id"),
             caption=str(msg.get("caption", "")),
             reply_animation_file_id=replied.get("file_id"),
+            language_code=(msg.get("from") or {}).get("language_code"),
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
@@ -83,3 +85,50 @@ class Telegram(Channel):
 
     def send_animation(self, chat_id: str, file_id: str) -> None:
         self._post("sendAnimation", chat_id=chat_id, animation=file_id)
+
+    def set_profile(self, language_code: str, **textos: object) -> None:
+        """Commands, description and short description for one language
+        ("" = every language without its own)."""
+        self._post(
+            "setMyCommands", commands=textos["commands"], language_code=language_code
+        )
+        self._post(
+            "setMyDescription",
+            description=textos["description"],
+            language_code=language_code,
+        )
+        self._post(
+            "setMyShortDescription",
+            short_description=textos["short_description"],
+            language_code=language_code,
+        )
+
+    def set_photo(self, jpg: bytes) -> None:
+        resp = self._client.post(
+            f"{API_BASE}/bot{self._token}/setMyProfilePhoto",
+            data={"photo": '{"type": "static", "photo": "attach://foto"}'},
+            files={"foto": ("foto.jpg", jpg, "image/jpeg")},
+        )
+        resp.raise_for_status()
+
+    def pin_webapp(self, chat_id: str, text: str, label: str, url: str) -> None:
+        """A pinned message with a Mini App button, and the same app as the
+        chat's menu button. Telegram signs the user into it (no token in url)."""
+        app = {"text": label, "web_app": {"url": url}}
+        sent = self._post(
+            "sendMessage",
+            chat_id=chat_id,
+            text=text,
+            reply_markup={"inline_keyboard": [[app]]},
+        )
+        self._post(
+            "pinChatMessage",
+            chat_id=chat_id,
+            message_id=sent["result"]["message_id"],
+            disable_notification=True,
+        )
+        self._post(
+            "setChatMenuButton",
+            chat_id=chat_id,
+            menu_button={"type": "web_app", **app},
+        )

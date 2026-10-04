@@ -149,7 +149,7 @@ resource "google_artifact_registry_repository" "images" {
 }
 
 # Secrets. Values are added by hand, never through Terraform, so they stay out
-# of state (see README):
+# of state (see docs/DEPLOY.md):
 #   printf '%s' "$VALUE" | gcloud secrets versions add NAME --data-file=-
 locals {
   secrets = [
@@ -560,7 +560,7 @@ resource "google_kms_crypto_key_iam_member" "worker_uses_ics_key" {
   member        = google_service_account.sa["worker"].member
 }
 
-# Values for the GitHub repository variables (see README).
+# Values for the GitHub repository variables (see docs/DEPLOY.md).
 output "github_variables" {
   value = {
     GCP_PROJECT_ID    = var.project_id

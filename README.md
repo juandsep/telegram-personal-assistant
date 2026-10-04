@@ -40,7 +40,7 @@ under 300 ms and publishes to Pub/Sub; `assistant-worker` calls the LLM
 Tasks; reports run from an hourly Cloud Scheduler job. Interactive diagrams live
 in [`docs/architecture/`](docs/architecture/).
 
-Design decisions, costs, security and roadmap: **[PLAN.md](PLAN.md)**.
+Design decisions, costs, security and roadmap: **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 
@@ -49,8 +49,7 @@ Design decisions, costs, security and roadmap: **[PLAN.md](PLAN.md)**.
 | [docs/USAGE.md](docs/USAGE.md) | Logging, corrections, dashboard, reports, GIFs, agenda, languages, commands |
 | [docs/DATA.md](docs/DATA.md) | Ledger model, CSV export and backup, Looker Studio, agenda and other collections |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Reproducing it on GCP, bot profile, configuration variables, admin CLI |
-| [PLAN.md](PLAN.md) | The original plan: decisions, architecture, costs, security, roadmap |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commits and releases |
+| [ROADMAP.md](ROADMAP.md) | The original plan: decisions, architecture, costs, security, roadmap |
 
 ## Run locally
 

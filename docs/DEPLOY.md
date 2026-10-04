@@ -92,6 +92,44 @@ anything else gets a 403. It runs as one service account,
 `assistant-worker@<project>.iam.gserviceaccount.com` (the address users share
 their Google Calendars with).
 
+### Migrating from two services
+
+Deployments from before v0.4 ran `assistant-api` and `assistant-worker` (plus
+`-staging`) with two service accounts. Moving to the one `assistant` service
+changes the URL, so do it per environment, staging first:
+
+1. **Grant first, with `gcloud`.** Give `assistant-worker` the webhook
+   account's permissions: `roles/pubsub.publisher` on `assistant-updates` and
+   `assistant-updates-staging`, and `roles/secretmanager.secretAccessor` on
+   `assistant-webhook-secret` and `assistant-webhook-path`. Without them the
+   new service cannot mount the webhook secrets and the deploy fails. Do not
+   use `terraform apply -target=...` for this: the target pulls in
+   `google_service_account.sa` and would destroy `assistant-webhook`, which
+   the old services still run on. Terraform adopts these bindings later.
+2. **Deploy.** A merge into `dev` (or `main`) creates `assistant-staging` (or
+   `assistant`). The old services keep serving until step 5.
+3. **Point the service at itself.** Set the environment's `API_URL` and
+   `WORKER_URL` to the new URL, rerun the deploy, and check `/health` (200),
+   `/visor` (200) and `POST /push` without a token (403).
+4. **Repoint the push subscriptions** (`assistant-updates[-staging]-push`, and
+   `assistant-cron-push` in production) to `<url>/push`, with
+   `--push-auth-service-account=assistant-worker@…` and
+   `--push-auth-token-audience=<url>`. The audience must equal `WORKER_URL`, or
+   `/push` answers 403. Set the same URL as `service_url[_staging]` in
+   `infra/terraform.tfvars`. The variables were renamed from `worker_url[_staging]`.
+5. **Move the Telegram webhook** to `<url>/tg/<path>` with `setWebhook` and the
+   same secret token. `getWebhookInfo` must show the new host and no
+   `last_error_message`.
+6. **Test** a quick entry, a free-text (LLM) message, `editar:` and, in
+   production, a scheduled `tick` and a reminder.
+7. **Delete the old services only when Cloud Tasks is drained.** Queued
+   reminders carry the old worker URL and audience, so
+   `gcloud tasks list --queue=assistant-reminders` must show none that target
+   it. Until then, leave the old worker up; it costs nothing while idle.
+8. **Final `terraform apply`** once both environments are migrated. It removes
+   `assistant-webhook` and its grants, and adopts the bindings from step 1.
+   Delete the `GCP_WEBHOOK_SA` and `MLFLOW_TRACKING_URI` repository variables.
+
 ## Configuration
 
 All secrets come from Secret Manager; settings from environment variables.

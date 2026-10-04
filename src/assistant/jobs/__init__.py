@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 from assistant.channels.telegram import Telegram
 from assistant.config import get_worker_settings
 from assistant.context import ToolContext
+from assistant.i18n import t
 from assistant.jobs import backup
 from assistant.services import agenda, budgets, ledger
 
@@ -35,20 +36,18 @@ def _digest(ctx: ToolContext) -> str | None:
     ayer = ledger.hoy(ctx) - timedelta(days=1)
     gastado = sum(ledger.gastos_por_categoria(ctx.chat_id, ayer, ayer).values())
     if gastado:
-        lineas.append(f"Ayer: {gastado} USD.")
+        lineas.append(t(ctx.idioma, "ayer", total=gastado))
     return "\n".join(lineas) or None
 
 
 def _checkin(ctx: ToolContext) -> str | None:
-    """22:00: every movement of the day and the day's spend."""
+    """22:00: the day's spend; the detail lives in the Visor de gastos."""
     movs = ledger.del_dia(ctx.chat_id, ledger.hoy(ctx))
     if not movs:
-        return "Hoy no registraste gastos."
+        return t(ctx.idioma, "sin_gastos")
     gastos = [d for d in movs if d["tipo_mov"] == "gasto"]
     total = sum((ledger.q(d["monto"]) for d in gastos), Decimal("0.00"))
-    lineas = [f"Hoy ({len(movs)}):", *(ledger.texto(d) for d in movs)]
-    lineas.append(f"Total gastos: {total} USD")
-    return "\n".join(lineas)
+    return t(ctx.idioma, "gastos_hoy", total=total)
 
 
 def _weekly(ctx: ToolContext) -> str | None:
@@ -61,14 +60,18 @@ def _weekly(ctx: ToolContext) -> str | None:
     ingresos = ledger.total_ingresos(ctx.chat_id, inicio_mes, dia)
     if not total and not ingresos:
         return None
-    lineas = [f"Semana {desde:%d/%m}–{hasta:%d/%m}: {total} USD"]
+    lang = ctx.idioma
+    lineas = [
+        t(lang, "semana", desde=f"{desde:%d/%m}", hasta=f"{hasta:%d/%m}", total=total)
+    ]
     top = sorted((kv for kv in gastos.items() if kv[1] > 0), key=lambda kv: -kv[1])
     if top:
         lineas.append(
-            "Top: " + " · ".join(f"{ledger.etiqueta(c)} {v}" for c, v in top[:3])
+            t(lang, "top")
+            + " · ".join(f"{ledger.etiqueta(c, lang)} {v}" for c, v in top[:3])
         )
     if ingresos <= 0:
-        lineas.append("Sin ingresos este mes: registra uno (1000usd ingreso).")
+        lineas.append(t(lang, "sin_ingresos"))
         return "\n".join(lineas)
     mes = ledger.gastos_por_categoria(ctx.chat_id, inicio_mes, dia)
     gastado = sum(mes.values(), Decimal("0.00"))
@@ -76,14 +79,12 @@ def _weekly(ctx: ToolContext) -> str | None:
     libre = ledger.q(ingresos - ahorro - gastado)
     dias = cal.monthrange(dia.year, dia.month)[1] - dia.day
     semanas = max(Decimal(dias) / 7, Decimal(1))
-    lineas.append(f"Mes: ingresos {ingresos}, gastos {gastado} USD.")
+    lineas.append(t(lang, "mes", ingresos=ingresos, gastos=gastado))
     if libre >= 0:
-        lineas.append(
-            f"Ahorra {ahorro} (20%). Te quedan {libre} USD para el mes "
-            f"(~{ledger.q(libre / semanas)}/semana)."
-        )
+        semanal = ledger.q(libre / semanas)
+        lineas.append(t(lang, "ahorra", ahorro=ahorro, libre=libre, semana=semanal))
     else:
-        lineas.append(f"Te pasaste {-libre} USD: el ahorro de {ahorro} está en riesgo.")
+        lineas.append(t(lang, "pasaste", exceso=-libre, ahorro=ahorro))
     semana = Decimal(7) / cal.monthrange(dia.year, dia.month)[1]
     exceso = budgets.linea_exceso(ctx, gastos, semana)
     if exceso and exceso.startswith("Exceso"):
@@ -98,10 +99,7 @@ JOBS: dict[str, Callable[[ToolContext], str | None]] = {
 }
 
 
-REPORT_DASH_TTL = timedelta(hours=24)
-
-
-def _tick(ctx: ToolContext, state: Any, api_url: str) -> str | None:
+def _tick(ctx: ToolContext) -> str | None:
     """The message due at the user's local hour, or None (ledger left unread).
 
     ponytail: :30/:45 offsets (India, Nepal) get the local hour the tick lands
@@ -114,15 +112,7 @@ def _tick(ctx: ToolContext, state: Any, api_url: str) -> str | None:
     partes = [_checkin(ctx)]
     if ctx.ahora.weekday() == 6:  # Sunday: one message, not two
         partes.append(_weekly(ctx))
-    texto = "\n\n".join(p for p in partes if p)
-    if not texto or not api_url:
-        return texto or None
-    try:
-        token = state.dash_token(ctx.chat_id, ttl=REPORT_DASH_TTL)
-    except Exception as e:
-        log.warning("report_dash_failed error=%s", type(e).__name__)
-        return texto
-    return f"{texto}\nTablero: {api_url}/tablero/{token}"
+    return "\n\n".join([*(p for p in partes if p), t(ctx.idioma, "hint")])
 
 
 def _ctx(
@@ -136,6 +126,7 @@ def _ctx(
         zona_horaria=zona,
         update_id=0,
         ahora=ahora.astimezone(ZoneInfo(zona)),
+        idioma=user.get("idioma", "es"),
     )
 
 
@@ -184,7 +175,7 @@ def run_job(name: str) -> None:
                 continue
             ctx = _ctx(chat_id, user, settings.default_timezone, ahora)
             if name == "tick":
-                texto = _tick(ctx, state, settings.api_url)
+                texto = _tick(ctx)
             else:
                 texto = JOBS[name](ctx)
             if texto:

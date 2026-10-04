@@ -21,6 +21,7 @@ class InboundMessage:
     animation_file_id: str | None = None  # a GIF sent by the user
     caption: str = ""
     reply_animation_file_id: str | None = None  # the GIF a message replies to
+    language_code: str | None = None  # the sender's Telegram app language
 
 
 class Channel(Protocol):
@@ -36,3 +37,5 @@ class Channel(Protocol):
     def delete_message(self, chat_id: str, message_id: int) -> None: ...
 
     def send_animation(self, chat_id: str, file_id: str) -> None: ...
+
+    def pin_webapp(self, chat_id: str, text: str, label: str, url: str) -> None: ...

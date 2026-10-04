@@ -33,6 +33,7 @@ from google.cloud.firestore import FieldFilter
 
 from assistant.config import WorkerSettings, get_worker_settings
 from assistant.context import ToolContext
+from assistant.i18n import t
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +42,6 @@ TASKS_MAX = timedelta(days=30)  # Cloud Tasks schedules at most 30 days ahead
 # ponytail: range queries look back one day, so an item longer than a day that
 # started earlier is missed; add an end-time query if multi-day events appear.
 LOOKBACK = timedelta(days=1)
-DIAS = ("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
 JORNADA = (time(8), time(20))
 _ID = re.compile(r"\d{1,20}(-\d{1,2})?")
 
@@ -245,16 +245,16 @@ def recordatorio(ctx: ToolContext, texto: str, cuando: datetime) -> str:
 
 def cancelar_evento(ctx: ToolContext, evento_id: str) -> str:
     if not _ID.fullmatch(evento_id):
-        return "Evento no encontrado."
+        return t(ctx.idioma, "evento_no")
     ref = _col(ctx.chat_id).document(evento_id)
     snap = ref.get()
     if not snap.exists or (snap.to_dict() or {}).get("estado") != "activo":
-        return "Evento no encontrado."
+        return t(ctx.idioma, "evento_no")
     ref.update({"estado": "cancelado"})
     _borrar_tarea(ctx.chat_id, evento_id)
     _espejo("espejo_cancelar", ctx, evento_id)
     log.info("agenda_cancel")
-    return "✓ evento cancelado"
+    return t(ctx.idioma, "evento_cancelado")
 
 
 def rango_agenda(ctx: ToolContext, rango: str) -> tuple[datetime, datetime]:
@@ -279,7 +279,7 @@ def agenda(ctx: ToolContext, rango: str) -> list[str]:
 
 
 def listar_agenda(ctx: ToolContext, rango: str) -> str:
-    return "\n".join(agenda(ctx, rango)) or "Sin eventos."
+    return "\n".join(agenda(ctx, rango)) or t(ctx.idioma, "sin_eventos")
 
 
 def conflictos(ctx: ToolContext, inicio: datetime, fin: datetime) -> list[str]:
@@ -324,11 +324,12 @@ def libres(ctx: ToolContext, dia: date) -> list[str]:
 
 
 def ver_libres(ctx: ToolContext, fecha: date) -> str:
-    return ", ".join(libres(ctx, fecha)) or "Sin huecos libres."
+    return ", ".join(libres(ctx, fecha)) or t(ctx.idioma, "sin_huecos")
 
 
 def semana(ctx: ToolContext) -> str:
     """/calendario: one line per day with items in the next 7 days."""
+    dias_semana = t(ctx.idioma, "dias").split()
     desde, hasta = rango_agenda(ctx, "semana")
     zone = ZoneInfo(ctx.zona_horaria)
     entradas = [
@@ -340,10 +341,10 @@ def semana(ctx: ToolContext) -> str:
         local = max(inicio, desde).astimezone(zone)
         dias.setdefault(local.date(), []).append(f"{local:%H:%M} {titulo}")
     lineas = [
-        " · ".join([f"{DIAS[dia.weekday()]} {dia.day}", *items])
+        " · ".join([f"{dias_semana[dia.weekday()]} {dia.day}", *items])
         for dia, items in dias.items()
     ]
-    return "\n".join(lineas) or "Sin nada en 7 días."
+    return "\n".join(lineas) or t(ctx.idioma, "sin_7_dias")
 
 
 # --- ICS feed (RFC 5545) ---------------------------------------------------------

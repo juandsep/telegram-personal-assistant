@@ -2,7 +2,8 @@
 
 Collections (Firestore native):
 
-- ``users/{chat_id}``: nombre, rol (owner|beta), moneda, zona_horaria, last_batch.
+- ``users/{chat_id}``: nombre, rol (owner|beta), moneda, zona_horaria, idioma
+  (es|en|zh, from the Telegram app), fun (GIF replies, /fun), last_batch.
 - ``processed/{update_id}``: dedup marker; ``expire_at`` drives a 7-day TTL.
 - ``invites/{code}``: nombre, used, ``expire_at`` (24 h, single use).
 - ``rate/{chat_id}_{minute}``: messages in that minute.
@@ -13,8 +14,6 @@ Collections (Firestore native):
   no nested arrays).
 - ``ics_tokens/{token}``: chat_id of a private ICS feed; ``users.ics_token``
   points back so the link can be shown again or rotated. Never log tokens.
-- ``dash/{token}``: chat_id, ``expire_at`` (1 h) of a web dashboard link.
-  Never log tokens.
 - ``gif_catalog/{tipo}`` (gasto|ingreso): one shared, owner-curated map
   ``{clave: [file_id, ...]}`` (max 20 each, newest last). ``clave`` is a gasto
   categoria, an ingreso fuente or ``general`` (the fallback). A random one is
@@ -22,7 +21,7 @@ Collections (Firestore native):
   production keep separate catalogs. Never log file_ids.
 
 Set a Firestore TTL policy on ``expire_at`` for processed, invites, rate, spend,
-pending and dash. Doc ids contain chat_ids: never log them.
+and pending. Doc ids contain chat_ids: never log them.
 """
 
 from __future__ import annotations
@@ -43,7 +42,6 @@ HISTORY_TURNS = 6
 PENDING_TTL = timedelta(minutes=10)
 INVITE_TTL = timedelta(hours=24)
 PROCESSED_TTL = timedelta(days=7)
-DASH_TTL = timedelta(hours=1)
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{22}")  # secrets.token_urlsafe(16)
 GIF_MAX = 20
 _ICS_TOKEN = re.compile(r"[A-Za-z0-9_-]{32}")  # secrets.token_urlsafe(24)
@@ -95,6 +93,14 @@ def cron_done(key: str) -> bool:
 
 def mark_cron(key: str) -> None:
     _doc("cron", key).set({"expire_at": _now() + timedelta(days=30)})
+
+
+def set_fun(chat_id: str, fun: bool) -> None:
+    _doc("users", chat_id).set({"fun": fun}, merge=True)
+
+
+def set_idioma(chat_id: str, idioma: str) -> None:
+    _doc("users", chat_id).set({"idioma": idioma}, merge=True)
 
 
 def set_zona(chat_id: str, zona: str) -> None:
@@ -268,26 +274,6 @@ def chat_for_ics_token(token: str) -> str | None:
     if not _ICS_TOKEN.fullmatch(token):
         return None
     return (_data(_doc("ics_tokens", token).get()) or {}).get("chat_id")
-
-
-# --- web dashboard tokens -------------------------------------------------------
-
-
-def dash_token(chat_id: str, ttl: timedelta = DASH_TTL) -> str:
-    """A new link to the chat's dashboard (1 h default); the TTL policy deletes it."""
-    token = secrets.token_urlsafe(24)
-    _doc("dash", token).set({"chat_id": chat_id, "expire_at": _now() + ttl})
-    return token
-
-
-def chat_for_dash_token(token: str) -> str | None:
-    """Owner chat of a live dashboard token. The format is checked first."""
-    if not _ICS_TOKEN.fullmatch(token):
-        return None
-    data = _data(_doc("dash", token).get())
-    if not data or data["expire_at"] <= _now():  # TTL deletion lags up to a day
-        return None
-    return str(data["chat_id"])
 
 
 # --- reaction GIF catalog -------------------------------------------------------

@@ -44,3 +44,5 @@ class ToolContext:
     zona_horaria: str
     update_id: int
     ahora: datetime  # timezone-aware, in the user's zone
+    idioma: str = "es"  # es | en | zh, see assistant.i18n
+    fun: bool = False  # /fun: registrations answered with a GIF, not the text

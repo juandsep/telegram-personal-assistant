@@ -66,11 +66,11 @@ def test_recomendar_messages(monkeypatch: pytest.MonkeyPatch, prefs: MagicMock) 
     assert calls[-1] == (date(2026, 9, 1), date(2026, 9, 29))
     ingresos.return_value = D("1000.00")
     assert budgets.recomendar_presupuesto(CTX).startswith(
-        "Exceso en ocio (50/30/20): 400.00 de 300.00 USD (+100.00)."
+        "Exceso en Ocio (50/30/20): 400.00 de 300.00 USD (+100.00)."
     )
     prefs.get_preferences.return_value = {"presupuesto": {"restaurantes": "500"}}
     assert budgets.recomendar_presupuesto(CTX) == "Dentro del presupuesto."
     # A week pro-rates the monthly cap: 500 * 2/30 over Mon-Tue.
     assert budgets.recomendar_presupuesto(CTX, "semana").startswith(
-        "Exceso en restaurantes: 400.00 de 33.33 USD"
+        "Exceso en Restaurantes: 400.00 de 33.33 USD"
     )

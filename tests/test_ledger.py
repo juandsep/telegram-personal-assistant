@@ -46,7 +46,7 @@ BASE = "ledger/42/movimientos"
 @respx.mock  # USD: any HTTP call would fail as unmatched
 def test_gasto_writes_decimal_strings(db: FakeDB, state: MagicMock) -> None:
     out = ledger.registrar_gasto(make_ctx(), ITEMS, "USD", date(2026, 9, 29))
-    assert out == "−2.00 USD · Pan; −3.01 USD · Mercado"
+    assert out == "−2.00 USD · Pan · Mercado; −3.01 USD · Mercado"
     assert sorted(db.store) == [f"{BASE}/100-0", f"{BASE}/100-1"]
     assert db.store[f"{BASE}/100-0"] == {
         "fecha": "2026-09-29",
@@ -237,7 +237,7 @@ def test_gasto_in_cop_converts_with_trm(db: FakeDB, state: MagicMock) -> None:
     route = respx.get(TRM).mock(return_value=trm())
     items = [{"monto": 2000, "categoria": "", "nota": "café"}]
     out = ledger.registrar_gasto(make_ctx(), items, "COP", date(2026, 9, 29))
-    assert out == "−0.49 USD · Café (2,000 COP)"
+    assert out == "−0.49 USD · Café (2,000 COP) · Otros"
     params = route.calls.last.request.url.params
     assert params["$where"] == "vigenciadesde <= '2026-09-29T00:00:00'"
     assert (params["$order"], params["$limit"]) == ("vigenciadesde DESC", "1")
@@ -370,7 +370,7 @@ def test_editar_appends_reverso_and_new_registro(db: FakeDB, state: MagicMock) -
     seed(db)
     before = copy.deepcopy(db.store)
     out = ledger.editar(make_ctx(20), 1, monto=Decimal(4000), categoria="restaurantes")
-    assert out == "✓ editado: −1.00 USD · Café (4,000 COP)"
+    assert out == "✓ editado: −1.00 USD · Café (4,000 COP) · Restaurantes"
     assert {k: db.store[k] for k in before} == before  # originals untouched
     rev = db.store[f"{BASE}/3-0-x"]
     assert (rev["tipo"], rev["reversa"], rev["monto"], rev["monto_original"]) == (

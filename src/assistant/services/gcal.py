@@ -31,6 +31,7 @@ from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
 
 from assistant.context import ToolContext
+from assistant.i18n import t
 
 log = logging.getLogger(__name__)
 # httpx logs every request URL at INFO; the URL holds the calendar id.
@@ -44,11 +45,6 @@ LABEL = "Ocupado"
 DEFAULT_ZONE = "America/Panama"
 _CAL_ID = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _MIO = re.compile(r"bj[0-9a-f]{40}")  # ids of our mirrored events
-
-NO_ACCESS = (
-    f"No tengo acceso. Comparte el calendario con {SA_EMAIL} "
-    "(Hacer cambios en eventos)."
-)
 
 
 @cache
@@ -100,9 +96,9 @@ def vincular(ctx: ToolContext, calendar_id: str) -> str:
     if cal.lower() == "off":
         ref.set({"gcal_id": firestore.DELETE_FIELD}, merge=True)
         log.info("gcal_unlink")
-        return "Google Calendar desvinculado."
+        return t(ctx.idioma, "gcal_desvinculado")
     if len(cal) > 200 or not _CAL_ID.fullmatch(cal):
-        return "Id de calendario no válido."
+        return t(ctx.idioma, "gcal_id_invalido")
     inicio = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
     probe = {
         "summary": "botjonh",
@@ -115,16 +111,16 @@ def vincular(ctx: ToolContext, calendar_id: str) -> str:
         resp = _call("POST", _events(cal), json=probe)
         if resp.status_code in (403, 404):
             log.info("gcal_link_rejected code=%s", resp.status_code)
-            return NO_ACCESS
+            return t(ctx.idioma, "gcal_sin_acceso", sa=SA_EMAIL)
         resp.raise_for_status()
         _call("DELETE", f"{_events(cal)}/{resp.json()['id']}")
     except Exception as exc:
         log.error("gcal_link_failed code=%s", type(exc).__name__)
-        return "No pude verificar el calendario, intenta luego."
+        return t(ctx.idioma, "gcal_no_verifica")
     ref.set({"gcal_id": cal}, merge=True)
     log.info("gcal_link")
     n = _backfill(ctx)
-    return f"✓ Google Calendar vinculado ({n} eventos copiados)."
+    return t(ctx.idioma, "gcal_vinculado", n=n)
 
 
 def _backfill(ctx: ToolContext) -> int:

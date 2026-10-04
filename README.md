@@ -5,7 +5,7 @@
 <h1 align="center">Juani</h1>
 
 <p align="center">
-  Your expense and calendar assistant on Telegram · español · English · 中文
+  Your expense and calendar assistant on Telegram · Español · English · 中文
 </p>
 
 **Juani** (repo `telegram-personal-assistant`) is a Telegram bot that logs your
@@ -28,7 +28,7 @@ plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
 - **Speaks your language.** Spanish, English or Chinese, following your phone.
 - **Has fun if you want.** `/fun` turns on reaction GIFs.
 
-Full guide, with every command and example: **[docs/USAGE.md](docs/USAGE.md)**.
+Full guide, with every command and example below.
 
 ## How it works
 
@@ -39,8 +39,6 @@ under 300 ms and publishes to Pub/Sub; `assistant-worker` calls the LLM
 (DeepSeek, tool calling), writes to Firestore and replies. Reminders are Cloud
 Tasks; reports run from an hourly Cloud Scheduler job. Interactive diagrams live
 in [`docs/architecture/`](docs/architecture/).
-
-Design decisions, costs, security and roadmap: **[ROADMAP.md](ROADMAP.md)**.
 
 ## Documentation
 

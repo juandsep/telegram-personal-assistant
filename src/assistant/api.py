@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -40,19 +40,19 @@ from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import get_api_settings, get_worker_settings
 from assistant.context import ToolContext
 from assistant.i18n import t
-from assistant.services import agenda, gcal, pubsub, state, tablero
+from assistant.services import agenda, dashboard, gcal, pubsub, state
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-_MES = re.compile(r"(20\d\d)-(0[1-9]|1[0-2])")
+_MONTH = re.compile(r"(20\d\d)-(0[1-9]|1[0-2])")
 # Telegram's production key for third-party initData (core.telegram.org/bots/webapps)
 TG_PUBLIC_KEY = Ed25519PublicKey.from_public_bytes(
     bytes.fromhex("e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d")  # noqa: E501 # pragma: allowlist secret
 )
 INIT_DATA_MAX_AGE = 24 * 3600  # seconds; Telegram signs at each Mini App launch
-VISOR_JS = """const tg = window.Telegram.WebApp;
-async function cargar(mes) {
-  const r = await fetch("/visor/datos" + (mes ? "?mes=" + mes : ""), {
+VIEWER_JS = """const tg = window.Telegram.WebApp;
+async function load(month) {
+  const r = await fetch("/visor/datos" + (month ? "?mes=" + month : ""), {
     method: "POST", headers: {Authorization: "tma " + tg.initData,
       "X-Tz": Intl.DateTimeFormat().resolvedOptions().timeZone || ""}});
   if (r.ok) document.documentElement.innerHTML = await r.text();
@@ -60,19 +60,19 @@ async function cargar(mes) {
 }
 document.addEventListener("click", (e) => {
   const a = e.target.closest("a[href^='?mes=']");
-  if (a) { e.preventDefault(); cargar(a.getAttribute("href").slice(5)); }
+  if (a) { e.preventDefault(); load(a.getAttribute("href").slice(5)); }
 });
 tg.ready();
-cargar("");
+load("");
 """
-VISOR = f"""<!doctype html>
+VIEWER_HTML = f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Visor de gastos</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-</head><body><script>{VISOR_JS}</script></body></html>
+</head><body><script>{VIEWER_JS}</script></body></html>
 """
-_JS_HASH = base64.b64encode(hashlib.sha256(VISOR_JS.encode()).digest()).decode()
+_JS_HASH = base64.b64encode(hashlib.sha256(VIEWER_JS.encode()).digest()).decode()
 DASH_HEADERS = {
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
@@ -87,19 +87,20 @@ DASH_HEADERS = {
 def init_data_chat(init_data: str, bot_id: str, now: float) -> str | None:
     """The chat_id (= user id in a private chat) of fresh, Telegram-signed
     Mini App initData; None if unsigned, tampered, stale or malformed."""
-    campos = dict(parse_qsl(init_data, keep_blank_values=True))
-    firma = campos.pop("signature", "")
-    campos.pop("hash", None)
+    fields = dict(parse_qsl(init_data, keep_blank_values=True))
+    signature = fields.pop("signature", "")
+    fields.pop("hash", None)
     check = f"{bot_id}:WebAppData\n" + "\n".join(
-        f"{k}={v}" for k, v in sorted(campos.items())
+        f"{k}={v}" for k, v in sorted(fields.items())
     )
     try:
         TG_PUBLIC_KEY.verify(
-            base64.urlsafe_b64decode(firma + "=" * (-len(firma) % 4)), check.encode()
+            base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4)),
+            check.encode(),
         )
-        if now - int(campos["auth_date"]) > INIT_DATA_MAX_AGE:
+        if now - int(fields["auth_date"]) > INIT_DATA_MAX_AGE:
             return None
-        return str(json.loads(campos["user"])["id"])
+        return str(json.loads(fields["user"])["id"])
     except (InvalidSignature, ValueError, KeyError, TypeError):
         return None
 
@@ -125,7 +126,7 @@ def ics_feed(token: str) -> Response:
 
 
 @router.get("/ics/{token}/suscribir")
-def ics_suscribir(token: str, request: Request) -> Response:
+def ics_subscribe(token: str, request: Request) -> Response:
     """Telegram link buttons take http(s) only; calendar apps open webcal://."""
     if state.chat_for_ics_token(token) is None:
         logger.info("ics_subscribe status=404")
@@ -135,11 +136,11 @@ def ics_suscribir(token: str, request: Request) -> Response:
     return RedirectResponse(feed, status_code=302, headers=DASH_HEADERS)
 
 
-def _pagina(lang: str, clave: str, status: int = 200) -> Response:
+def _page(lang: str, key: str, status: int = 200) -> Response:
     body = (
         f'<!doctype html><html lang="{lang}"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>Juani</title><p>{t(lang, clave)}</p></html>"
+        f"<title>Juani</title><p>{t(lang, key)}</p></html>"
     )
     return HTMLResponse(body, status_code=status, headers=DASH_HEADERS)
 
@@ -150,7 +151,7 @@ def oauth_google(s: str = "") -> Response:
     settings = get_worker_settings()
     if not settings.google_client_id or not state._TOKEN.fullmatch(s):
         logger.info("oauth_start status=404")
-        return _pagina("es", "oauth_error", 404)
+        return _page("es", "oauth_error", 404)
     logger.info("oauth_start status=302")
     return RedirectResponse(gcal.auth_url(settings, s), 302, headers=DASH_HEADERS)
 
@@ -164,48 +165,50 @@ def oauth_google_callback(request: Request) -> Response:
     user = state.get_user(chat_id) if chat_id else None
     if user is None:  # bogus, used, expired, or not (any longer) a user
         logger.info("oauth_callback status=bad_state")
-        return _pagina("es", "oauth_error", 400)
+        return _page("es", "oauth_error", 400)
     lang = user.get("idioma", "es")
     settings = get_worker_settings()
     if q.get("error") or not q.get("code"):  # the user said no
         logger.info("oauth_callback status=denied")
-        return _pagina(lang, "oauth_error", 400)
+        return _page(lang, "oauth_error", 400)
     if not settings.kms_key:  # fail closed: never store the token in clear
         logger.warning("oauth_callback status=no_kms_key")
-        return _pagina(lang, "oauth_error", 503)
+        return _page(lang, "oauth_error", 503)
     try:
-        gcal.conectar(str(chat_id), q["code"], settings)
+        gcal.connect(str(chat_id), q["code"], settings)
     except Exception as exc:  # the body may echo tokens: class only
         logger.error("oauth_callback status=failed error=%s", type(exc).__name__)
-        return _pagina(lang, "oauth_error", 502)
-    zona = user.get("zona_horaria") or settings.default_timezone
+        return _page(lang, "oauth_error", 502)
+    tz = user.get("zona_horaria") or settings.default_timezone
     ctx = ToolContext(
         chat_id=str(chat_id),
-        rol=user.get("rol", "beta"),
-        moneda=user.get("moneda", "USD"),
-        zona_horaria=zona,
+        role=user.get("rol", "beta"),
+        currency=user.get("moneda", "USD"),
+        timezone=tz,
         update_id=0,
-        ahora=datetime.now(ZoneInfo(zona)),
-        idioma=lang,
+        now=datetime.now(ZoneInfo(tz)),
+        lang=lang,
     )
     try:
         n = gcal._backfill(ctx)
         Telegram(settings.telegram_bot_token).send_message(
-            ctx.chat_id, t(lang, "gcal_vinculado", n=n)
+            ctx.chat_id, t(lang, "gcal_linked", n=n)
         )
     except Exception as exc:  # linked anyway; the page still says done
         logger.warning("oauth_notify_failed error=%s", type(exc).__name__)
     logger.info("oauth_callback status=200")
-    return _pagina(lang, "oauth_ok")
+    return _page(lang, "oauth_ok")
 
 
 @router.get("/visor")
-def visor() -> Response:
-    return HTMLResponse(VISOR, headers=DASH_HEADERS)
+def viewer() -> Response:
+    return HTMLResponse(VIEWER_HTML, headers=DASH_HEADERS)
 
 
 @router.post("/visor/datos")
-def visor_datos(request: Request, mes: str | None = None) -> Response:
+def viewer_data(
+    request: Request, month: str | None = Query(None, alias="mes")
+) -> Response:
     init_data = request.headers.get("Authorization", "").removeprefix("tma ")
     bot_id = get_api_settings().telegram_bot_id
     chat_id = init_data_chat(init_data, bot_id, time.time()) if bot_id else None
@@ -213,34 +216,34 @@ def visor_datos(request: Request, mes: str | None = None) -> Response:
     if user is None:  # unsigned, stale, or not (any longer) a user
         logger.info("visor status=403")
         return Response(status_code=403, headers=DASH_HEADERS)
-    zona = _zona_auto(str(chat_id), user, request.headers.get("X-Tz", ""))
-    if mes is None:
-        dia = datetime.now(ZoneInfo(zona)).date()
-    elif match := _MES.fullmatch(mes):
-        dia = date(int(match[1]), int(match[2]), 1)
+    tz = _auto_timezone(str(chat_id), user, request.headers.get("X-Tz", ""))
+    if month is None:
+        day = datetime.now(ZoneInfo(tz)).date()
+    elif match := _MONTH.fullmatch(month):
+        day = date(int(match[1]), int(match[2]), 1)
     else:
         logger.info("visor status=400")
         return Response(status_code=400, headers=DASH_HEADERS)
-    body = tablero.render(
-        str(chat_id), dia, user.get("idioma", "es"), user.get("moneda", "USD")
+    body = dashboard.render(
+        str(chat_id), day, user.get("idioma", "es"), user.get("moneda", "USD")
     )
     logger.info("visor status=200")
     return HTMLResponse(body, headers=DASH_HEADERS)
 
 
-def _zona_auto(chat_id: str, user: dict, tz: str) -> str:
+def _auto_timezone(chat_id: str, user: dict, tz: str) -> str:
     """The phone's IANA zone (sent by the Mini App) when valid, stored if it
     changed; else the stored one or the default."""
-    actual = user.get("zona_horaria") or "America/Panama"
+    current = user.get("zona_horaria") or "America/Panama"
     try:
         if "/" not in tz or len(tz) > 64:
-            return actual
+            return current
         ZoneInfo(tz)
     except (ValueError, KeyError):  # ZoneInfoNotFoundError is a KeyError
-        return actual
+        return current
     if tz != user.get("zona_horaria"):
         try:  # best effort: the page still renders in the phone's zone
-            state.set_zona(chat_id, tz)
+            state.set_timezone(chat_id, tz)
             logger.info("zona_auto")
         except Exception as exc:
             logger.warning("zona_auto_failed error=%s", type(exc).__name__)

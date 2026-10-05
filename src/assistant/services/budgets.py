@@ -21,10 +21,10 @@ from assistant.services import ledger
 CAPS = {"necesidades": Decimal("0.50"), "ocio": Decimal("0.30")}
 
 
-def mayor_exceso(
-    gastos: Mapping[str, Decimal],
-    presupuesto: Mapping[str, str] | None,
-    ingresos: Decimal,
+def largest_excess(
+    expenses: Mapping[str, Decimal],
+    budget: Mapping[str, str] | None,
+    income: Decimal,
     factor: Decimal = Decimal(1),
 ) -> tuple[str, Decimal, Decimal] | None:
     """Key with the largest spend over its cap, as ``(key, spent, cap)``.
@@ -32,67 +32,71 @@ def mayor_exceso(
     Keys are categories when ``presupuesto`` is set, else 50/30/20 buckets.
     ``factor`` pro-rates monthly caps (e.g. 7/30 for a week). None if no excess.
     """
-    if presupuesto:
-        gasto = dict(gastos)
-        caps = {k: Decimal(v) for k, v in presupuesto.items()}
+    if budget:
+        spend = dict(expenses)
+        caps = {k: Decimal(v) for k, v in budget.items()}
     else:
-        gasto = {}
-        for cat, monto in gastos.items():
+        spend = {}
+        for cat, amount in expenses.items():
             bucket = BUCKET_OF.get(cat, "ocio")
-            gasto[bucket] = gasto.get(bucket, Decimal(0)) + monto
-        caps = {b: ingresos * pct for b, pct in CAPS.items()}
-    peor = max(
+            spend[bucket] = spend.get(bucket, Decimal(0)) + amount
+        caps = {b: income * pct for b, pct in CAPS.items()}
+    worst = max(
         (
-            (k, gasto.get(k, Decimal(0)), ledger.q(cap * factor))
+            (k, spend.get(k, Decimal(0)), ledger.q(cap * factor))
             for k, cap in caps.items()
         ),
         key=lambda t: t[1] - t[2],
         default=None,
     )
-    return peor if peor is not None and peor[1] > peor[2] else None
+    return worst if worst is not None and worst[1] > worst[2] else None
 
 
-def linea_exceso(
-    ctx: ToolContext, gastos: Mapping[str, Decimal], factor: Decimal
+def excess_line(
+    ctx: ToolContext, expenses: Mapping[str, Decimal], factor: Decimal
 ) -> str | None:
     """One line on the largest excess; None when there is nothing to compare to."""
-    dia = ledger.hoy(ctx)
+    day = ledger.today(ctx)
     prefs = importlib.import_module("assistant.services.state").get_preferences(
         ctx.chat_id
     )
-    presupuesto = (prefs or {}).get("presupuesto")
-    if presupuesto and ctx.moneda != "USD":
-        tasa = importlib.import_module("assistant.services.fx").tasa(ctx.moneda, dia)[0]
-        presupuesto = {k: str(Decimal(v) * tasa) for k, v in presupuesto.items()}
-    ingresos = ledger.total_ingresos(ctx.chat_id, dia.replace(day=1), dia, ctx.moneda)
-    if not presupuesto and ingresos <= 0:
+    budget = (prefs or {}).get("presupuesto")
+    if budget and ctx.currency != "USD":
+        rate = importlib.import_module("assistant.services.fx").rate(ctx.currency, day)[
+            0
+        ]
+        budget = {k: str(Decimal(v) * rate) for k, v in budget.items()}
+    income = ledger.total_income(ctx.chat_id, day.replace(day=1), day, ctx.currency)
+    if not budget and income <= 0:
         return None
-    exceso = mayor_exceso(gastos, presupuesto, ingresos, factor)
-    if exceso is None:
-        return t(ctx.idioma, "dentro")
-    key, gastado, cap = exceso
-    regla = "" if presupuesto else " (50/30/20)"
-    cat = ledger.etiqueta(key, ctx.idioma)
-    extra = gastado - cap
+    excess = largest_excess(expenses, budget, income, factor)
+    if excess is None:
+        return t(ctx.lang, "within_budget")
+    key, spent, cap = excess
+    rule = "" if budget else " (50/30/20)"
+    cat = ledger.display_label(key, ctx.lang)
+    extra = spent - cap
     return t(
-        ctx.idioma,
-        "exceso",
+        ctx.lang,
+        "over_budget",
         cat=cat,
-        regla=regla,
-        gastado=gastado,
+        rule=rule,
+        spent=spent,
         cap=cap,
         extra=extra,
-        moneda=ctx.moneda,
+        currency=ctx.currency,
     )
 
 
-def recomendar_presupuesto(ctx: ToolContext, periodo: str = "mes") -> str:
-    dia = ledger.hoy(ctx)
-    desde, hasta = ledger.rango(periodo, dia)
-    gastos = ledger.gastos_por_categoria(ctx.chat_id, desde, hasta, ctx.moneda)
-    dias_mes = cal.monthrange(dia.year, dia.month)[1]
+def recommend_budget(ctx: ToolContext, period: str = "mes") -> str:
+    day = ledger.today(ctx)
+    since, until = ledger.date_range(period, day)
+    expenses = ledger.spend_by_category(ctx.chat_id, since, until, ctx.currency)
+    days_in_month = cal.monthrange(day.year, day.month)[1]
     factor = (
-        Decimal(1) if periodo == "mes" else Decimal((hasta - desde).days + 1) / dias_mes
+        Decimal(1)
+        if period == "mes"
+        else Decimal((until - since).days + 1) / days_in_month
     )
-    linea = linea_exceso(ctx, gastos, factor)
-    return linea or t(ctx.idioma, "sin_presupuesto")
+    line = excess_line(ctx, expenses, factor)
+    return line or t(ctx.lang, "no_budget")

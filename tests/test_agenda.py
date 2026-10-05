@@ -24,9 +24,9 @@ SETTINGS = dataclasses.replace(
 )
 
 
-def make_ctx(update_id: int = 100, ahora: datetime | None = None) -> ToolContext:
-    ahora = ahora or datetime(2026, 9, 29, 12, tzinfo=PANAMA)  # a Tuesday
-    return ToolContext("42", "owner", "USD", "America/Panama", update_id, ahora)
+def make_ctx(update_id: int = 100, now: datetime | None = None) -> ToolContext:
+    now = now or datetime(2026, 9, 29, 12, tzinfo=PANAMA)  # a Tuesday
+    return ToolContext("42", "owner", "USD", "America/Panama", update_id, now)
 
 
 class Snap:
@@ -103,8 +103,8 @@ def tasks(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 def busy(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
     """No external calendar unless a test sets busy.bloques."""
     mod = types.ModuleType("assistant.services.busy")
-    mod.bloques = []  # type: ignore[attr-defined]
-    mod.ocupados = lambda chat_id, desde, hasta: mod.bloques  # type: ignore[attr-defined]
+    mod.blocks = []  # type: ignore[attr-defined]
+    mod.busy_blocks = lambda chat_id, since, until: mod.blocks  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "assistant.services.busy", mod)
     return mod
 
@@ -113,9 +113,9 @@ def busy(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
 def gcal(monkeypatch: pytest.MonkeyPatch) -> types.SimpleNamespace:
     """No linked Google Calendar unless a test sets gcal.bloques."""
     mod = types.SimpleNamespace(
-        bloques=[], espejo_crear=MagicMock(), espejo_cancelar=MagicMock()
+        blocks=[], mirror_create=MagicMock(), mirror_cancel=MagicMock()
     )
-    mod.ocupados = lambda chat_id, desde, hasta: mod.bloques
+    mod.busy_blocks = lambda chat_id, since, until: mod.blocks
     monkeypatch.setitem(sys.modules, "assistant.services.gcal", mod)
     return mod
 
@@ -128,10 +128,10 @@ def at(day: int, hour: int, minute: int = 0) -> datetime:
 # --- writes ----------------------------------------------------------------------
 
 
-def test_crear_evento_is_idempotent_on_retry(
+def test_create_event_is_idempotent_on_retry(
     db: FakeDB, tasks: MagicMock, busy: types.ModuleType
 ) -> None:
-    out = agenda.crear_evento(make_ctx(), "Dentista", datetime(2026, 9, 30, 9))
+    out = agenda.create_event(make_ctx(), "Dentista", datetime(2026, 9, 30, 9))
     assert out == "✓ 30/09 09:00 Dentista [100]"
     doc = db.store[f"{BASE}/100"]
     assert doc["inicio"] == "2026-09-30T09:00:00-05:00"
@@ -142,26 +142,24 @@ def test_crear_evento_is_idempotent_on_retry(
         "activo",
         None,
     )
-    retry = agenda.crear_evento(make_ctx(), "Dentista", datetime(2026, 9, 30, 9))
+    retry = agenda.create_event(make_ctx(), "Dentista", datetime(2026, 9, 30, 9))
     assert retry == out and list(db.store) == [f"{BASE}/100"]
     tasks.create_task.assert_not_called()  # no reminder asked
 
 
 def test_second_item_of_same_turn_gets_its_own_id(db: FakeDB, tasks: MagicMock) -> None:
-    agenda.crear_evento(make_ctx(), "A", datetime(2026, 9, 30, 9))
-    out = agenda.crear_evento(make_ctx(), "B", datetime(2026, 10, 1, 9))
+    agenda.create_event(make_ctx(), "A", datetime(2026, 9, 30, 9))
+    out = agenda.create_event(make_ctx(), "B", datetime(2026, 10, 1, 9))
     assert out.endswith("[100-1]")
-    assert agenda.crear_evento(make_ctx(), "B", datetime(2026, 10, 1, 9)) == out
+    assert agenda.create_event(make_ctx(), "B", datetime(2026, 10, 1, 9)) == out
     assert sorted(db.store) == [f"{BASE}/100", f"{BASE}/100-1"]
 
 
 def test_reminder_task_is_deterministic_and_already_exists_is_done(
     db: FakeDB, tasks: MagicMock
 ) -> None:
-    inicio = datetime(2026, 9, 30, 14, tzinfo=UTC)
-    agenda.crear_evento(
-        make_ctx(), "Cita", inicio, ubicacion="Clínica", recordatorio_min=30
-    )
+    start = datetime(2026, 9, 30, 14, tzinfo=UTC)
+    agenda.create_event(make_ctx(), "Cita", start, location="Clínica", reminder_min=30)
     task = tasks.create_task.call_args.kwargs["task"]
     queue = "projects/test-project/locations/us-central1/queues/assistant-reminders"
     assert tasks.create_task.call_args.kwargs["parent"] == queue
@@ -178,9 +176,7 @@ def test_reminder_task_is_deterministic_and_already_exists_is_done(
     assert http.oidc_token.audience == "https://w.run.app"
     # A retry: the task already exists, which counts as done.
     tasks.create_task.side_effect = AlreadyExists("dup")
-    agenda.crear_evento(
-        make_ctx(), "Cita", inicio, ubicacion="Clínica", recordatorio_min=30
-    )
+    agenda.create_event(make_ctx(), "Cita", start, location="Clínica", reminder_min=30)
     assert tasks.create_task.call_count == 2
 
 
@@ -189,20 +185,20 @@ def test_enqueue_errors_and_missing_config_do_not_fail(
 ) -> None:
     caplog.set_level("INFO")
     tasks.create_task.side_effect = RuntimeError("down")
-    agenda.recordatorio(make_ctx(1), "Pagar luz", datetime(2026, 10, 1, 8))
+    agenda.create_reminder(make_ctx(1), "Pagar luz", datetime(2026, 10, 1, 8))
     assert "reminder_enqueue_failed error=RuntimeError" in caplog.text
     unset = dataclasses.replace(SETTINGS, worker_url="")
     monkeypatch.setattr(agenda, "get_worker_settings", lambda: unset)
     tasks.reset_mock()
-    agenda.recordatorio(make_ctx(2), "Pagar agua", datetime(2026, 10, 1, 8))
-    assert agenda.cancelar_evento(make_ctx(), "2") == "✓ evento cancelado"
+    agenda.create_reminder(make_ctx(2), "Pagar agua", datetime(2026, 10, 1, 8))
+    assert agenda.cancel_event(make_ctx(), "2") == "✓ evento cancelado"
     tasks.create_task.assert_not_called()
     tasks.delete_task.assert_not_called()
     assert "reminder_skipped" in caplog.text and "Pagar" not in caplog.text
 
 
-def test_recordatorio_is_15_min_with_task_at_time(db: FakeDB, tasks: MagicMock) -> None:
-    agenda.recordatorio(make_ctx(), "Pagar luz", datetime(2026, 10, 1, 8))
+def test_reminder_is_15_min_with_task_at_time(db: FakeDB, tasks: MagicMock) -> None:
+    agenda.create_reminder(make_ctx(), "Pagar luz", datetime(2026, 10, 1, 8))
     doc = db.store[f"{BASE}/100"]
     assert doc["fin_utc"] - doc["inicio_utc"] == timedelta(minutes=15)
     assert (doc["tipo"], doc["recordatorio_min"]) == ("recordatorio", 0)
@@ -213,47 +209,47 @@ def test_recordatorio_is_15_min_with_task_at_time(db: FakeDB, tasks: MagicMock) 
 def test_reminder_beyond_30_days_is_enqueued_later_by_digest(
     db: FakeDB, tasks: MagicMock
 ) -> None:
-    agenda.recordatorio(make_ctx(), "Renovar pasaporte", datetime(2026, 11, 20, 9))
-    agenda.recordatorio(make_ctx(101), "Ayer", datetime(2026, 9, 28, 9))  # past
+    agenda.create_reminder(make_ctx(), "Renovar pasaporte", datetime(2026, 11, 20, 9))
+    agenda.create_reminder(make_ctx(101), "Ayer", datetime(2026, 9, 28, 9))  # past
     tasks.create_task.assert_not_called()
-    agenda.encolar_recordatorios(make_ctx(0))  # still too far
+    agenda.enqueue_reminders(make_ctx(0))  # still too far
     tasks.create_task.assert_not_called()
     later = make_ctx(0, datetime(2026, 10, 25, 7, 30, tzinfo=PANAMA))
-    agenda.encolar_recordatorios(later)
+    agenda.enqueue_reminders(later)
     task = tasks.create_task.call_args.kwargs["task"]
     assert task.name == agenda.task_name(SETTINGS, "42", "100")
     tasks.create_task.side_effect = AlreadyExists("dup")
-    agenda.encolar_recordatorios(later)  # next day's digest: idempotent
+    agenda.enqueue_reminders(later)  # next day's digest: idempotent
     assert tasks.create_task.call_count == 2
 
 
 def test_cancel_keeps_doc_and_deletes_task(db: FakeDB, tasks: MagicMock) -> None:
-    agenda.crear_evento(make_ctx(), "Dentista", at(30, 9), recordatorio_min=10)
-    assert agenda.cancelar_evento(make_ctx(), "100") == "✓ evento cancelado"
+    agenda.create_event(make_ctx(), "Dentista", at(30, 9), reminder_min=10)
+    assert agenda.cancel_event(make_ctx(), "100") == "✓ evento cancelado"
     assert db.store[f"{BASE}/100"]["estado"] == "cancelado"
     tasks.delete_task.assert_called_once_with(
         name=agenda.task_name(SETTINGS, "42", "100")
     )
-    assert agenda.cancelar_evento(make_ctx(), "100") == "Evento no encontrado."
-    assert agenda.listar_agenda(make_ctx(), "manana") == "Sin eventos."
+    assert agenda.cancel_event(make_ctx(), "100") == "Evento no encontrado."
+    assert agenda.list_agenda(make_ctx(), "manana") == "Sin eventos."
 
 
 def test_cancel_task_not_found_or_failing_is_fine(
     db: FakeDB, tasks: MagicMock, caplog
 ) -> None:
-    agenda.crear_evento(make_ctx(1), "A", at(30, 9))
-    agenda.crear_evento(make_ctx(2), "B", at(30, 11))
+    agenda.create_event(make_ctx(1), "A", at(30, 9))
+    agenda.create_event(make_ctx(2), "B", at(30, 11))
     tasks.delete_task.side_effect = NotFound("gone")
-    assert agenda.cancelar_evento(make_ctx(), "1") == "✓ evento cancelado"
+    assert agenda.cancel_event(make_ctx(), "1") == "✓ evento cancelado"
     tasks.delete_task.side_effect = RuntimeError("down")
-    assert agenda.cancelar_evento(make_ctx(), "2") == "✓ evento cancelado"
+    assert agenda.cancel_event(make_ctx(), "2") == "✓ evento cancelado"
     assert "reminder_delete_failed" in caplog.text
 
 
 def test_cancel_only_own_and_well_formed_ids(db: FakeDB, tasks: MagicMock) -> None:
     db.store["agenda/7/eventos/5"] = {"estado": "activo"}
-    assert agenda.cancelar_evento(make_ctx(), "5") == "Evento no encontrado."
-    assert agenda.cancelar_evento(make_ctx(), "../../7/eventos/5") == (
+    assert agenda.cancel_event(make_ctx(), "5") == "Evento no encontrado."
+    assert agenda.cancel_event(make_ctx(), "../../7/eventos/5") == (
         "Evento no encontrado."
     )
     assert db.store["agenda/7/eventos/5"]["estado"] == "activo"
@@ -264,38 +260,38 @@ def test_cancel_only_own_and_well_formed_ids(db: FakeDB, tasks: MagicMock) -> No
 
 
 @pytest.mark.parametrize(
-    ("rango", "lineas"),
+    ("period", "lines"),
     [
         ("hoy", ["29/09 18:00 Cena [1]"]),
         ("manana", ["30/09 09:00 Dentista [2]"]),
         ("semana", ["29/09 18:00 Cena [1]", "30/09 09:00 Dentista [2]"]),
     ],
 )
-def test_agenda_ranges(db: FakeDB, tasks: MagicMock, rango: str, lineas: list) -> None:
-    agenda.crear_evento(make_ctx(2), "Dentista", at(30, 9))
-    agenda.crear_evento(make_ctx(1), "Cena", at(29, 18))
-    agenda.crear_evento(make_ctx(3), "Lejos", datetime(2026, 12, 1, 9))
-    assert agenda.agenda(make_ctx(), rango) == lineas
+def test_agenda_ranges(db: FakeDB, tasks: MagicMock, period: str, lines: list) -> None:
+    agenda.create_event(make_ctx(2), "Dentista", at(30, 9))
+    agenda.create_event(make_ctx(1), "Cena", at(29, 18))
+    agenda.create_event(make_ctx(3), "Lejos", datetime(2026, 12, 1, 9))
+    assert agenda.agenda_lines(make_ctx(), period) == lines
     with pytest.raises(ValueError):
-        agenda.listar_agenda(make_ctx(), "mes")
+        agenda.list_agenda(make_ctx(), "mes")
 
 
 def test_conflicts_against_agenda_and_busy(
     db: FakeDB, tasks: MagicMock, busy: types.ModuleType
 ) -> None:
-    agenda.crear_evento(make_ctx(1), "Dentista", at(30, 9))
-    agenda.recordatorio(make_ctx(2), "Pastilla", at(30, 9, 30))
-    agenda.crear_evento(make_ctx(3), "Viejo", at(30, 9, 15))
-    agenda.cancelar_evento(make_ctx(), "3")
+    agenda.create_event(make_ctx(1), "Dentista", at(30, 9))
+    agenda.create_reminder(make_ctx(2), "Pastilla", at(30, 9, 30))
+    agenda.create_event(make_ctx(3), "Viejo", at(30, 9, 15))
+    agenda.cancel_event(make_ctx(), "3")
     ctx = make_ctx()
-    assert agenda.conflictos(ctx, at(30, 9, 30), at(30, 10, 30)) == [
+    assert agenda.conflicts(ctx, at(30, 9, 30), at(30, 10, 30)) == [
         "Dentista 09:00–10:00"
     ]
-    assert agenda.conflictos(ctx, at(30, 10), at(30, 11)) == []  # [inicio, fin)
-    busy.bloques = [  # type: ignore[attr-defined]
+    assert agenda.conflicts(ctx, at(30, 10), at(30, 11)) == []  # [inicio, fin)
+    busy.blocks = [  # type: ignore[attr-defined]
         (at(30, 10, 30).astimezone(UTC), at(30, 11).astimezone(UTC), "Ocupado")
     ]
-    assert agenda.conflictos(ctx, datetime(2026, 9, 30, 10), at(30, 11)) == [
+    assert agenda.conflicts(ctx, datetime(2026, 9, 30, 10), at(30, 11)) == [
         "Ocupado 10:30–11:00"
     ]
 
@@ -303,80 +299,80 @@ def test_conflicts_against_agenda_and_busy(
 def test_conflicts_ignore_missing_or_failing_busy(
     db: FakeDB, tasks: MagicMock, monkeypatch: pytest.MonkeyPatch, caplog
 ) -> None:
-    agenda.crear_evento(make_ctx(1), "Dentista", at(30, 9))
+    agenda.create_event(make_ctx(1), "Dentista", at(30, 9))
     monkeypatch.setitem(sys.modules, "assistant.services.busy", None)  # missing
-    assert agenda.conflictos(make_ctx(), at(30, 9), at(30, 10)) == [
+    assert agenda.conflicts(make_ctx(), at(30, 9), at(30, 10)) == [
         "Dentista 09:00–10:00"
     ]
     boom = types.ModuleType("assistant.services.busy")
 
-    def ocupados(*a: object) -> list:
+    def busy_blocks(*a: object) -> list:
         raise RuntimeError("ics down https://secret.example/x.ics")
 
-    boom.ocupados = ocupados  # type: ignore[attr-defined]
+    boom.busy_blocks = busy_blocks  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "assistant.services.busy", boom)
-    assert agenda.conflictos(make_ctx(), at(30, 9), at(30, 10)) == [
+    assert agenda.conflicts(make_ctx(), at(30, 9), at(30, 10)) == [
         "Dentista 09:00–10:00"
     ]
     assert "busy_failed error=RuntimeError" in caplog.text
     assert "secret" not in caplog.text
 
 
-def test_libres_merges_agenda_and_busy(
+def test_free_slots_merge_agenda_and_busy(
     db: FakeDB, tasks: MagicMock, busy: types.ModuleType
 ) -> None:
-    agenda.crear_evento(make_ctx(1), "Dentista", at(30, 9), at(30, 10))
-    agenda.recordatorio(make_ctx(2), "Pastilla", at(30, 12))  # not busy time
-    busy.bloques = [  # type: ignore[attr-defined]
+    agenda.create_event(make_ctx(1), "Dentista", at(30, 9), at(30, 10))
+    agenda.create_reminder(make_ctx(2), "Pastilla", at(30, 12))  # not busy time
+    busy.blocks = [  # type: ignore[attr-defined]
         (at(30, 9, 30), at(30, 11), "Ocupado"),
         (at(30, 19), at(30, 21), "Ocupado"),
     ]
-    assert agenda.libres(make_ctx(), date(2026, 9, 30)) == [
+    assert agenda.free_slot_list(make_ctx(), date(2026, 9, 30)) == [
         "08:00–09:00",
         "11:00–19:00",
     ]
-    busy.bloques = [(at(30, 7), at(30, 21), "Ocupado")]  # type: ignore[attr-defined]
-    assert agenda.ver_libres(make_ctx(), date(2026, 9, 30)) == "Sin huecos libres."
-    busy.bloques = []  # type: ignore[attr-defined]
-    assert agenda.ver_libres(make_ctx(), date(2026, 10, 2)) == "08:00–20:00"
+    busy.blocks = [(at(30, 7), at(30, 21), "Ocupado")]  # type: ignore[attr-defined]
+    assert agenda.free_slots(make_ctx(), date(2026, 9, 30)) == "Sin huecos libres."
+    busy.blocks = []  # type: ignore[attr-defined]
+    assert agenda.free_slots(make_ctx(), date(2026, 10, 2)) == "08:00–20:00"
 
 
-def test_semana_format(db: FakeDB, tasks: MagicMock, busy: types.ModuleType) -> None:
-    assert agenda.semana(make_ctx()) == "Sin nada en 7 días."
-    agenda.crear_evento(make_ctx(1), "Llamada banco", at(1, 16))
-    agenda.crear_evento(make_ctx(2), "Dentista", at(1, 9))
-    agenda.crear_evento(make_ctx(3), "Fuera", at(6, 9))  # day 8: outside
-    busy.bloques = [(at(29, 15), at(29, 16), "Ocupado")]  # type: ignore[attr-defined]
-    assert agenda.semana(make_ctx()) == (
+def test_week_text_format(db: FakeDB, tasks: MagicMock, busy: types.ModuleType) -> None:
+    assert agenda.week_text(make_ctx()) == "Sin nada en 7 días."
+    agenda.create_event(make_ctx(1), "Llamada banco", at(1, 16))
+    agenda.create_event(make_ctx(2), "Dentista", at(1, 9))
+    agenda.create_event(make_ctx(3), "Fuera", at(6, 9))  # day 8: outside
+    busy.blocks = [(at(29, 15), at(29, 16), "Ocupado")]  # type: ignore[attr-defined]
+    assert agenda.week_text(make_ctx()) == (
         "Mar 29 · 15:00 Ocupado\nJue 1 · 09:00 Dentista · 16:00 Llamada banco"
     )
 
 
-def test_aviso(db: FakeDB, tasks: MagicMock) -> None:
-    agenda.crear_evento(make_ctx(), "Dentista", at(30, 9), recordatorio_min=15)
-    assert agenda.aviso("42", "100") == "⏰ Dentista 09:00"
-    assert agenda.aviso("42", "999") is None
-    assert agenda.aviso("42", "a/b") is None
-    agenda.cancelar_evento(make_ctx(), "100")
-    assert agenda.aviso("42", "100") is None
+def test_reminder_text(db: FakeDB, tasks: MagicMock) -> None:
+    agenda.create_event(make_ctx(), "Dentista", at(30, 9), reminder_min=15)
+    assert agenda.reminder_text("42", "100") == "⏰ Dentista 09:00"
+    assert agenda.reminder_text("42", "999") is None
+    assert agenda.reminder_text("42", "a/b") is None
+    agenda.cancel_event(make_ctx(), "100")
+    assert agenda.reminder_text("42", "100") is None
 
 
 # --- ICS -------------------------------------------------------------------------
 
 
 def test_ics_escapes_folds_and_alarms(db: FakeDB, tasks: MagicMock) -> None:
-    titulo = "Cena, vino; y \\ más\nnotas " + "ñ" * 60
-    agenda.crear_evento(
+    title = "Cena, vino; y \\ más\nnotas " + "ñ" * 60
+    agenda.create_event(
         make_ctx(1),
-        titulo,
+        title,
         at(30, 20),
-        ubicacion="Calle 5, Local 2",
-        recordatorio_min=30,
+        location="Calle 5, Local 2",
+        reminder_min=30,
     )
-    agenda.crear_evento(make_ctx(2), "Sin aviso", at(30, 9))
-    agenda.crear_evento(make_ctx(3), "Cancelado", at(30, 10))
-    agenda.cancelar_evento(make_ctx(), "3")
-    agenda.crear_evento(make_ctx(4), "Viejo", datetime(2026, 7, 1, 9))
+    agenda.create_event(make_ctx(2), "Sin aviso", at(30, 9))
+    agenda.create_event(make_ctx(3), "Cancelado", at(30, 10))
+    agenda.cancel_event(make_ctx(), "3")
+    agenda.create_event(make_ctx(4), "Viejo", datetime(2026, 7, 1, 9))
     body = agenda.ics("42", datetime(2026, 9, 29, 17, tzinfo=UTC))
     assert body.startswith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n")
     assert body.endswith("END:VCALENDAR\r\n")
@@ -410,22 +406,22 @@ def test_tasks_client_is_lazy_and_cached(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_create_and_cancel_are_mirrored(
     db: FakeDB, tasks: MagicMock, gcal: types.SimpleNamespace
 ) -> None:
-    agenda.crear_evento(make_ctx(), "Dentista", at(30, 9), recordatorio_min=10)
-    ctx, evento_id, data = gcal.espejo_crear.call_args.args
-    assert (ctx.chat_id, evento_id, data["titulo"]) == ("42", "100", "Dentista")
-    agenda.crear_evento(make_ctx(), "Dentista", at(30, 9), recordatorio_min=10)
-    assert gcal.espejo_crear.call_count == 2  # a retry re-mirrors (409 = done)
-    agenda.cancelar_evento(make_ctx(), "100")
-    assert gcal.espejo_cancelar.call_args.args[1] == "100"
+    agenda.create_event(make_ctx(), "Dentista", at(30, 9), reminder_min=10)
+    ctx, event_id, data = gcal.mirror_create.call_args.args
+    assert (ctx.chat_id, event_id, data["titulo"]) == ("42", "100", "Dentista")
+    agenda.create_event(make_ctx(), "Dentista", at(30, 9), reminder_min=10)
+    assert gcal.mirror_create.call_count == 2  # a retry re-mirrors (409 = done)
+    agenda.cancel_event(make_ctx(), "100")
+    assert gcal.mirror_cancel.call_args.args[1] == "100"
 
 
 def test_mirror_failure_never_breaks_the_turn(
     db: FakeDB, tasks: MagicMock, gcal: types.SimpleNamespace, caplog
 ) -> None:
-    gcal.espejo_crear.side_effect = RuntimeError("Dentista")
-    gcal.espejo_cancelar.side_effect = RuntimeError("Dentista")
-    assert agenda.crear_evento(make_ctx(), "Dentista", at(30, 9)).startswith("✓")
-    assert agenda.cancelar_evento(make_ctx(), "100") == "✓ evento cancelado"
+    gcal.mirror_create.side_effect = RuntimeError("Dentista")
+    gcal.mirror_cancel.side_effect = RuntimeError("Dentista")
+    assert agenda.create_event(make_ctx(), "Dentista", at(30, 9)).startswith("✓")
+    assert agenda.cancel_event(make_ctx(), "100") == "✓ evento cancelado"
     assert "gcal_failed error=RuntimeError" in caplog.text
     assert "Dentista" not in caplog.text
 
@@ -433,13 +429,13 @@ def test_mirror_failure_never_breaks_the_turn(
 def test_conflicts_merge_gcal_blocks(
     db: FakeDB, tasks: MagicMock, busy: types.ModuleType, gcal: types.SimpleNamespace
 ) -> None:
-    agenda.crear_evento(make_ctx(1), "Dentista", at(30, 9))
-    gcal.bloques = [(at(30, 11).astimezone(UTC), at(30, 12).astimezone(UTC), "Ocupado")]
-    assert agenda.conflictos(make_ctx(), at(30, 9), at(30, 12)) == [
+    agenda.create_event(make_ctx(1), "Dentista", at(30, 9))
+    gcal.blocks = [(at(30, 11).astimezone(UTC), at(30, 12).astimezone(UTC), "Ocupado")]
+    assert agenda.conflicts(make_ctx(), at(30, 9), at(30, 12)) == [
         "Dentista 09:00–10:00",
         "Ocupado 11:00–12:00",
     ]
-    assert agenda.libres(make_ctx(), date(2026, 9, 30)) == [
+    assert agenda.free_slot_list(make_ctx(), date(2026, 9, 30)) == [
         "08:00–09:00",
         "10:00–11:00",
         "12:00–20:00",

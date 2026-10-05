@@ -8,7 +8,7 @@ def test_add_owner(monkeypatch) -> None:
     upsert = MagicMock()
     monkeypatch.setattr(state, "upsert_user", upsert)
     admin.main(["add-owner", "42", "Ana"])
-    upsert.assert_called_once_with("42", "Ana", rol="owner")
+    upsert.assert_called_once_with("42", "Ana", role="owner")
 
 
 def test_migrate_gifs(monkeypatch, capsys) -> None:

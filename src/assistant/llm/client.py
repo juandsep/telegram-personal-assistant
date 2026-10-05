@@ -22,7 +22,7 @@ import httpx
 
 from assistant.config import get_worker_settings
 from assistant.context import ToolContext
-from assistant.i18n import NOMBRE
+from assistant.i18n import LANG_NAMES
 from assistant.llm.tools import (
     CLASH,
     DIRECT,
@@ -42,7 +42,7 @@ HISTORY_MESSAGES = 12  # 6 turns of user + assistant
 TIMEOUT_S = 30.0
 FALLBACK_REPLY = "No pude completarlo, intenta de nuevo."
 PRIVATE_REPLY = "(agenda mostrada al usuario)"
-_DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+_WEEKDAYS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 _MILLION = Decimal(1_000_000)
 
 
@@ -67,13 +67,13 @@ class TurnResult:
 
 
 def _context_message(ctx: ToolContext) -> dict[str, str]:
-    now = ctx.ahora
+    now = ctx.now
     return {
         "role": "system",
         "content": (
-            f"Ahora: {_DIAS[now.weekday()]} {now:%Y-%m-%d %H:%M} "
-            f"({ctx.zona_horaria}). Moneda: {ctx.moneda}. "
-            f"Responde siempre en {NOMBRE.get(ctx.idioma, 'español')}."
+            f"Ahora: {_WEEKDAYS[now.weekday()]} {now:%Y-%m-%d %H:%M} "
+            f"({ctx.timezone}). Moneda: {ctx.currency}. "
+            f"Responde siempre en {LANG_NAMES.get(ctx.lang, 'español')}."
         ),
     }
 

@@ -8,7 +8,7 @@ refresh token is stored encrypted with Cloud KMS in
 OAuth keep ``preferences/{chat_id}.gcal_id``, a calendar shared with the
 service account, which is still served with the service's own ADC token.
 Firestore stays the source of truth; every mirror call is best effort and never
-raises into the turn. Google event ids derive from ``chat_id:evento_id`` so a
+raises into the turn. Google event ids derive from ``chat_id:event_id`` so a
 retry is idempotent (409 on insert and 404/410 on delete count as done).
 
 Busy times come from ``events.list`` (freeBusy needs a broader scope), skipping
@@ -51,7 +51,7 @@ CALLBACK = "/oauth/google/callback"
 TIMEOUT_S = 5.0
 LABEL = "Ocupado"
 DEFAULT_ZONE = "America/Panama"
-_MIO = re.compile(r"bj[0-9a-f]{40}")  # ids of our mirrored events
+_OURS = re.compile(r"bj[0-9a-f]{40}")  # ids of our mirrored events
 
 
 @cache
@@ -144,9 +144,9 @@ def _linked(chat_id: str) -> tuple[str, str | None] | None:
     return None
 
 
-def evento_gid(chat_id: str, evento_id: str) -> str:
+def event_gid(chat_id: str, event_id: str) -> str:
     """Google event id: base32hex (0-9a-v), so hex digits are valid as is."""
-    return "bj" + hashlib.sha256(f"{chat_id}:{evento_id}".encode()).hexdigest()[:40]
+    return "bj" + hashlib.sha256(f"{chat_id}:{event_id}".encode()).hexdigest()[:40]
 
 
 def auth_url(s: WorkerSettings, state_token: str) -> str:
@@ -164,7 +164,7 @@ def auth_url(s: WorkerSettings, state_token: str) -> str:
     return f"{AUTH_URL}?{urlencode(query)}"
 
 
-def conectar(chat_id: str, code: str, s: WorkerSettings) -> None:
+def connect(chat_id: str, code: str, s: WorkerSettings) -> None:
     """Swap the sign-in code for tokens and keep the refresh token, encrypted.
     The chat's only calendar: an iCal link or a legacy shared id is dropped."""
     data = {
@@ -192,7 +192,7 @@ def conectar(chat_id: str, code: str, s: WorkerSettings) -> None:
     log.info("gcal_link")
 
 
-def desconectar(chat_id: str) -> None:
+def disconnect(chat_id: str) -> None:
     """Forget the chat's calendar; revoke the Google grant best effort."""
     state = importlib.import_module("assistant.services.state")
     enc = state.get_preferences(chat_id).get("gcal_token_enc")
@@ -211,18 +211,18 @@ def desconectar(chat_id: str) -> None:
 def _backfill(ctx: ToolContext) -> int:
     """Mirror the upcoming active items created before linking; the ids are
     deterministic, so linking again only gets 409s."""
-    futuros = (
+    upcoming = (
         _db()
         .collection("agenda")
         .document(ctx.chat_id)
         .collection("eventos")
-        .where(filter=FieldFilter("fin_utc", ">", ctx.ahora.astimezone(UTC)))
+        .where(filter=FieldFilter("fin_utc", ">", ctx.now.astimezone(UTC)))
     )
     n = 0
-    for snap in futuros.stream():
-        evento = snap.to_dict() or {}
-        if evento.get("estado") == "activo":
-            espejo_crear(ctx, snap.id, evento)
+    for snap in upcoming.stream():
+        event = snap.to_dict() or {}
+        if event.get("estado") == "activo":
+            mirror_create(ctx, snap.id, event)
             n += 1
     return n
 
@@ -245,35 +245,35 @@ def _best_effort(
         log.error("gcal_%s_failed code=%s", op, type(exc).__name__)
 
 
-def espejo_crear(ctx: ToolContext, evento_id: str, evento: dict) -> None:
+def mirror_create(ctx: ToolContext, event_id: str, event: dict) -> None:
     body: dict[str, Any] = {
-        "id": evento_gid(ctx.chat_id, evento_id),
-        "summary": evento["titulo"],
-        "start": {"dateTime": evento["inicio"]},
-        "end": {"dateTime": evento["fin"]},
+        "id": event_gid(ctx.chat_id, event_id),
+        "summary": event["titulo"],
+        "start": {"dateTime": event["inicio"]},
+        "end": {"dateTime": event["fin"]},
     }
-    if evento.get("ubicacion"):
-        body["location"] = evento["ubicacion"]
-    if evento.get("recordatorio_min") is not None:
-        popup = {"method": "popup", "minutes": evento["recordatorio_min"]}
+    if event.get("ubicacion"):
+        body["location"] = event["ubicacion"]
+    if event.get("recordatorio_min") is not None:
+        popup = {"method": "popup", "minutes": event["recordatorio_min"]}
         body["reminders"] = {"useDefault": False, "overrides": [popup]}
     _best_effort("mirror", ctx.chat_id, "POST", "", (409,), json=body)
 
 
-def espejo_cancelar(ctx: ToolContext, evento_id: str) -> None:
-    sub = f"/{evento_gid(ctx.chat_id, evento_id)}"
+def mirror_cancel(ctx: ToolContext, event_id: str) -> None:
+    sub = f"/{event_gid(ctx.chat_id, event_id)}"
     _best_effort("unmirror", ctx.chat_id, "DELETE", sub, (404, 410))
 
 
 def _as_dt(value: dict, zone: ZoneInfo) -> datetime:
     if "dateTime" in value:
         return datetime.fromisoformat(value["dateTime"]).astimezone(UTC)
-    dia = date.fromisoformat(value["date"])  # all-day: midnight in the user's zone
-    return datetime.combine(dia, time(), zone).astimezone(UTC)
+    day = date.fromisoformat(value["date"])  # all-day: midnight in the user's zone
+    return datetime.combine(day, time(), zone).astimezone(UTC)
 
 
-def ocupados(
-    chat_id: str, desde: datetime, hasta: datetime
+def busy_blocks(
+    chat_id: str, since: datetime, until: datetime
 ) -> list[tuple[datetime, datetime, str]]:
     """Busy blocks of the linked calendar minus our mirrors, UTC; [] on failure."""
     try:
@@ -282,8 +282,8 @@ def ocupados(
             return []
         cal, token = linked
         params = {
-            "timeMin": desde.astimezone(UTC).isoformat(),
-            "timeMax": hasta.astimezone(UTC).isoformat(),
+            "timeMin": since.astimezone(UTC).isoformat(),
+            "timeMax": until.astimezone(UTC).isoformat(),
             "singleEvents": "true",
             "maxResults": 250,
             "fields": "items(id,status,transparency,start,end)",
@@ -297,7 +297,7 @@ def ocupados(
         return sorted(
             (_as_dt(ev["start"], zone), _as_dt(ev["end"], zone), LABEL)
             for ev in resp.json().get("items", [])
-            if not _MIO.fullmatch(ev.get("id", ""))
+            if not _OURS.fullmatch(ev.get("id", ""))
             and ev.get("status") != "cancelled"
             and ev.get("transparency") != "transparent"
         )

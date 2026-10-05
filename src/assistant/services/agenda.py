@@ -1,11 +1,15 @@
 """Bot-native agenda on Firestore, published as a private ICS feed.
 
-Layout: ``agenda/{chat_id}/eventos/{evento_id}`` with ``titulo``, ``inicio`` and
-``fin`` (ISO with the user's offset), ``inicio_utc``/``fin_utc`` (timestamps for
-range queries), ``ubicacion``, ``recordatorio_min``, ``tipo``
-(evento|recordatorio), ``estado`` (activo|cancelado) and ``creado``.
+Layout: ``agenda/{chat_id}/eventos/{event_id}``. Stored field names are
+Spanish; the code maps them at this boundary:
 
-``evento_id`` is the update_id (``{update_id}-{n}`` for another item of the same
+- ``titulo``: title; ``inicio``/``fin``: start/end, ISO with the user's offset;
+- ``inicio_utc``/``fin_utc``: start/end as timestamps for range queries;
+- ``ubicacion``: location; ``recordatorio_min``: reminder minutes before;
+- ``tipo``: kind (evento|recordatorio); ``estado``: status (activo|cancelado);
+- ``creado``: server timestamp.
+
+``event_id`` is the update_id (``{update_id}-{n}`` for another item of the same
 turn), created with ``create()``: a Pub/Sub retry hits AlreadyExists and answers
 the same. Cancelling sets ``estado`` and never deletes. A reminder is a Cloud
 Task with a deterministic name that POSTs to the worker at the exact time.
@@ -37,12 +41,12 @@ from assistant.i18n import t
 
 log = logging.getLogger(__name__)
 
-DURACION = {"evento": timedelta(minutes=60), "recordatorio": timedelta(minutes=15)}
+DURATION = {"evento": timedelta(minutes=60), "recordatorio": timedelta(minutes=15)}
 TASKS_MAX = timedelta(days=30)  # Cloud Tasks schedules at most 30 days ahead
 # ponytail: range queries look back one day, so an item longer than a day that
 # started earlier is missed; add an end-time query if multi-day events appear.
 LOOKBACK = timedelta(days=1)
-JORNADA = (time(8), time(20))
+WORKDAY = (time(8), time(20))
 _ID = re.compile(r"\d{1,20}(-\d{1,2})?")
 
 
@@ -64,38 +68,38 @@ def _col(chat_id: str) -> Any:
 
 
 def _local(ctx: ToolContext, dt: datetime) -> datetime:
-    zone = ZoneInfo(ctx.zona_horaria)
+    zone = ZoneInfo(ctx.timezone)
     return dt.replace(tzinfo=zone) if dt.tzinfo is None else dt.astimezone(zone)
 
 
-def _items(chat_id: str, desde: datetime, hasta: datetime) -> list[dict]:
-    """Active items of one chat overlapping [desde, hasta), by start."""
-    consulta = (
+def _items(chat_id: str, since: datetime, until: datetime) -> list[dict]:
+    """Active items of one chat overlapping [since, until), by start."""
+    query = (
         _col(chat_id)
-        .where(filter=FieldFilter("inicio_utc", ">=", desde.astimezone(UTC) - LOOKBACK))
-        .where(filter=FieldFilter("inicio_utc", "<", hasta.astimezone(UTC)))
+        .where(filter=FieldFilter("inicio_utc", ">=", since.astimezone(UTC) - LOOKBACK))
+        .where(filter=FieldFilter("inicio_utc", "<", until.astimezone(UTC)))
     )
-    docs = [{**s.to_dict(), "id": s.id} for s in consulta.stream()]
-    activos = [d for d in docs if d["estado"] == "activo" and d["fin_utc"] > desde]
-    return sorted(activos, key=lambda d: d["inicio_utc"])
+    docs = [{**s.to_dict(), "id": s.id} for s in query.stream()]
+    active = [d for d in docs if d["estado"] == "activo" and d["fin_utc"] > since]
+    return sorted(active, key=lambda d: d["inicio_utc"])
 
 
-def _ocupados(
-    ctx: ToolContext, desde: datetime, hasta: datetime
+def _busy(
+    ctx: ToolContext, since: datetime, until: datetime
 ) -> list[tuple[datetime, datetime, str]]:
     """External busy blocks (ICS feed and linked Google Calendar, which already
     skips our own mirrored events); a missing or failing source counts as none."""
-    bloques = []
-    for fuente in ("busy", "gcal"):
+    blocks = []
+    for source in ("busy", "gcal"):
         try:
-            mod = importlib.import_module(f"assistant.services.{fuente}")
-            bloques += mod.ocupados(ctx.chat_id, desde, hasta)
+            mod = importlib.import_module(f"assistant.services.{source}")
+            blocks += mod.busy_blocks(ctx.chat_id, since, until)
         except Exception as e:  # ImportError included: sources ship separately
-            log.error("%s_failed error=%s", fuente, type(e).__name__)
-    return [(a, b, label) for a, b, label in bloques if a < hasta and b > desde]
+            log.error("%s_failed error=%s", source, type(e).__name__)
+    return [(a, b, label) for a, b, label in blocks if a < until and b > since]
 
 
-def _espejo(fn: str, *args: Any) -> None:
+def _mirror(fn: str, *args: Any) -> None:
     """Best-effort mirror into the linked Google Calendar; never raises."""
     try:
         getattr(importlib.import_module("assistant.services.gcal"), fn)(*args)
@@ -112,26 +116,26 @@ def _queue(s: WorkerSettings) -> str:
     )
 
 
-def task_name(s: WorkerSettings, chat_id: str, evento_id: str) -> str:
-    digest = hashlib.sha256(f"{chat_id}:{evento_id}".encode()).hexdigest()[:32]
+def task_name(s: WorkerSettings, chat_id: str, event_id: str) -> str:
+    digest = hashlib.sha256(f"{chat_id}:{event_id}".encode()).hexdigest()[:32]
     return f"{_queue(s)}/tasks/r-{digest}"
 
 
-def _programar(chat_id: str, evento_id: str, d: dict, ahora: datetime) -> None:
+def _schedule(chat_id: str, event_id: str, d: dict, now: datetime) -> None:
     """Enqueue the reminder when it falls within Cloud Tasks' 30-day horizon."""
     if d.get("recordatorio_min") is None:
         return
-    cuando = d["inicio_utc"] - timedelta(minutes=d["recordatorio_min"])
-    if not ahora < cuando <= ahora + TASKS_MAX:
+    when = d["inicio_utc"] - timedelta(minutes=d["recordatorio_min"])
+    if not now < when <= now + TASKS_MAX:
         return  # past, or too far: the daily digest enqueues it later
     s = get_worker_settings()
     if not (s.worker_url and s.worker_sa):
         log.info("reminder_skipped reason=no_worker_url")
         return
-    body = {"chat_id": chat_id, "evento_id": evento_id}
+    body = {"chat_id": chat_id, "evento_id": event_id}
     task = tasks_v2.Task(
-        name=task_name(s, chat_id, evento_id),
-        schedule_time=cuando,
+        name=task_name(s, chat_id, event_id),
+        schedule_time=when,
         http_request={
             "http_method": tasks_v2.HttpMethod.POST,
             "url": f"{s.worker_url}/tasks/reminder",
@@ -155,31 +159,31 @@ def _programar(chat_id: str, evento_id: str, d: dict, ahora: datetime) -> None:
     log.info("reminder_enqueued")
 
 
-def _borrar_tarea(chat_id: str, evento_id: str) -> None:
+def _delete_task(chat_id: str, event_id: str) -> None:
     s = get_worker_settings()
     if not (s.worker_url and s.worker_sa):
         return
     try:
-        _tasks().delete_task(name=task_name(s, chat_id, evento_id))
+        _tasks().delete_task(name=task_name(s, chat_id, event_id))
     except NotFound:
         pass  # never enqueued, or already ran
     except Exception as e:  # the worker skips cancelled items anyway
         log.error("reminder_delete_failed error=%s", type(e).__name__)
 
 
-def encolar_recordatorios(ctx: ToolContext) -> None:
+def enqueue_reminders(ctx: ToolContext) -> None:
     """Digest backstop: enqueue reminders that entered the 30-day horizon."""
     # ponytail: rescans 60 days per chat daily; index a reminder field at scale.
-    hasta = ctx.ahora + 2 * TASKS_MAX
-    for d in _items(ctx.chat_id, ctx.ahora, hasta):
-        _programar(ctx.chat_id, d["id"], d, ctx.ahora)
+    until = ctx.now + 2 * TASKS_MAX
+    for d in _items(ctx.chat_id, ctx.now, until):
+        _schedule(ctx.chat_id, d["id"], d, ctx.now)
 
 
-def aviso(chat_id: str, evento_id: str) -> str | None:
+def reminder_text(chat_id: str, event_id: str) -> str | None:
     """The reminder text for an active item; None if cancelled or missing."""
-    if not _ID.fullmatch(evento_id):
+    if not _ID.fullmatch(event_id):
         return None
-    snap = _col(chat_id).document(evento_id).get()
+    snap = _col(chat_id).document(event_id).get()
     d = snap.to_dict() if snap.exists else None
     if not d or d["estado"] != "activo":
         return None
@@ -189,193 +193,196 @@ def aviso(chat_id: str, evento_id: str) -> str | None:
 # --- tools -----------------------------------------------------------------------
 
 
-def _guardar(
+def _save(
     ctx: ToolContext,
-    tipo: str,
-    titulo: str,
-    inicio: datetime,
-    fin: datetime | None,
-    ubicacion: str | None,
-    recordatorio_min: int | None,
+    kind: str,
+    title: str,
+    start: datetime,
+    end: datetime | None,
+    location: str | None,
+    reminder_min: int | None,
 ) -> str:
-    inicio = _local(ctx, inicio)
-    fin = _local(ctx, fin) if fin else inicio + DURACION[tipo]
+    start = _local(ctx, start)
+    end = _local(ctx, end) if end else start + DURATION[kind]
     data = {
-        "titulo": titulo,
-        "inicio": inicio.isoformat(),
-        "fin": fin.isoformat(),
-        "inicio_utc": inicio.astimezone(UTC),
-        "fin_utc": fin.astimezone(UTC),
-        "ubicacion": ubicacion or "",
-        "recordatorio_min": recordatorio_min,
-        "tipo": tipo,
+        "titulo": title,
+        "inicio": start.isoformat(),
+        "fin": end.isoformat(),
+        "inicio_utc": start.astimezone(UTC),
+        "fin_utc": end.astimezone(UTC),
+        "ubicacion": location or "",
+        "recordatorio_min": reminder_min,
+        "tipo": kind,
         "estado": "activo",
     }
     for n in range(10):
-        evento_id = f"{ctx.update_id}-{n}" if n else str(ctx.update_id)
-        ref = _col(ctx.chat_id).document(evento_id)
+        event_id = f"{ctx.update_id}-{n}" if n else str(ctx.update_id)
+        ref = _col(ctx.chat_id).document(event_id)
         try:
             ref.create({**data, "creado": firestore.SERVER_TIMESTAMP})
-            log.info("agenda_write tipo=%s", tipo)
+            log.info("agenda_write tipo=%s", kind)
         except Conflict:
-            previo = ref.get().to_dict() or {}
-            if (previo.get("titulo"), previo.get("inicio")) != (titulo, data["inicio"]):
+            previous = ref.get().to_dict() or {}
+            if (previous.get("titulo"), previous.get("inicio")) != (
+                title,
+                data["inicio"],
+            ):
                 continue  # another item of the same turn
             log.info("agenda_retry")
-        _programar(ctx.chat_id, evento_id, data, ctx.ahora)
-        _espejo("espejo_crear", ctx, evento_id, data)
-        return f"✓ {inicio:%d/%m %H:%M} {titulo} [{evento_id}]"
+        _schedule(ctx.chat_id, event_id, data, ctx.now)
+        _mirror("mirror_create", ctx, event_id, data)
+        return f"✓ {start:%d/%m %H:%M} {title} [{event_id}]"
     raise RuntimeError("agenda_ids_exhausted")
 
 
-def crear_evento(
+def create_event(
     ctx: ToolContext,
-    titulo: str,
-    inicio: datetime,
-    fin: datetime | None = None,
-    ubicacion: str | None = None,
-    recordatorio_min: int | None = None,
+    title: str,
+    start: datetime,
+    end: datetime | None = None,
+    location: str | None = None,
+    reminder_min: int | None = None,
 ) -> str:
-    return _guardar(ctx, "evento", titulo, inicio, fin, ubicacion, recordatorio_min)
+    return _save(ctx, "evento", title, start, end, location, reminder_min)
 
 
-def recordatorio(ctx: ToolContext, texto: str, cuando: datetime) -> str:
-    return _guardar(ctx, "recordatorio", texto, cuando, None, None, 0)
+def create_reminder(ctx: ToolContext, text: str, when: datetime) -> str:
+    return _save(ctx, "recordatorio", text, when, None, None, 0)
 
 
-def cancelar_evento(ctx: ToolContext, evento_id: str) -> str:
-    if not _ID.fullmatch(evento_id):
-        return t(ctx.idioma, "evento_no")
-    ref = _col(ctx.chat_id).document(evento_id)
+def cancel_event(ctx: ToolContext, event_id: str) -> str:
+    if not _ID.fullmatch(event_id):
+        return t(ctx.lang, "event_not_found")
+    ref = _col(ctx.chat_id).document(event_id)
     snap = ref.get()
     if not snap.exists or (snap.to_dict() or {}).get("estado") != "activo":
-        return t(ctx.idioma, "evento_no")
+        return t(ctx.lang, "event_not_found")
     ref.update({"estado": "cancelado"})
-    _borrar_tarea(ctx.chat_id, evento_id)
-    _espejo("espejo_cancelar", ctx, evento_id)
+    _delete_task(ctx.chat_id, event_id)
+    _mirror("mirror_cancel", ctx, event_id)
     log.info("agenda_cancel")
-    return t(ctx.idioma, "evento_cancelado")
+    return t(ctx.lang, "event_cancelled")
 
 
-def rango_agenda(ctx: ToolContext, rango: str) -> tuple[datetime, datetime]:
+def agenda_range(ctx: ToolContext, period: str) -> tuple[datetime, datetime]:
     """[start, end) in the user's zone for hoy|manana|semana (next 7 days)."""
-    zone = ZoneInfo(ctx.zona_horaria)
-    dia = ctx.ahora.astimezone(zone).date()
-    inicio = datetime(dia.year, dia.month, dia.day, tzinfo=zone)
-    dias = {"hoy": (0, 1), "manana": (1, 2), "semana": (0, 7)}.get(rango)
-    if dias is None:
+    zone = ZoneInfo(ctx.timezone)
+    day = ctx.now.astimezone(zone).date()
+    start = datetime(day.year, day.month, day.day, tzinfo=zone)
+    days = {"hoy": (0, 1), "manana": (1, 2), "semana": (0, 7)}.get(period)
+    if days is None:
         raise ValueError("rango")
-    return inicio + timedelta(days=dias[0]), inicio + timedelta(days=dias[1])
+    return start + timedelta(days=days[0]), start + timedelta(days=days[1])
 
 
-def agenda(ctx: ToolContext, rango: str) -> list[str]:
+def agenda_lines(ctx: ToolContext, period: str) -> list[str]:
     """Compact lines ``dd/mm HH:MM title [id]``, one per item."""
-    desde, hasta = rango_agenda(ctx, rango)
-    zone = ZoneInfo(ctx.zona_horaria)
+    since, until = agenda_range(ctx, period)
+    zone = ZoneInfo(ctx.timezone)
     return [
         f"{d['inicio_utc'].astimezone(zone):%d/%m %H:%M} {d['titulo']} [{d['id']}]"
-        for d in _items(ctx.chat_id, desde, hasta)
+        for d in _items(ctx.chat_id, since, until)
     ]
 
 
-def listar_agenda(ctx: ToolContext, rango: str) -> str:
-    return "\n".join(agenda(ctx, rango)) or t(ctx.idioma, "sin_eventos")
+def list_agenda(ctx: ToolContext, period: str) -> str:
+    return "\n".join(agenda_lines(ctx, period)) or t(ctx.lang, "no_events")
 
 
-def conflictos(ctx: ToolContext, inicio: datetime, fin: datetime) -> list[str]:
+def conflicts(ctx: ToolContext, start: datetime, end: datetime) -> list[str]:
     """Events and external busy blocks overlapping [inicio, fin), as short lines."""
-    inicio, fin = _local(ctx, inicio), _local(ctx, fin)
-    zone = ZoneInfo(ctx.zona_horaria)
-    bloques = [
+    start, end = _local(ctx, start), _local(ctx, end)
+    zone = ZoneInfo(ctx.timezone)
+    blocks = [
         (d["inicio_utc"], d["fin_utc"], d["titulo"])
-        for d in _items(ctx.chat_id, inicio, fin)
+        for d in _items(ctx.chat_id, start, end)
         if d["tipo"] == "evento"
     ]
-    bloques += _ocupados(ctx, inicio, fin)
+    blocks += _busy(ctx, start, end)
     return [
         f"{label} {a.astimezone(zone):%H:%M}–{b.astimezone(zone):%H:%M}"
-        for a, b, label in sorted(bloques, key=lambda b: b[0])
+        for a, b, label in sorted(blocks, key=lambda b: b[0])
     ]
 
 
-def libres(ctx: ToolContext, dia: date) -> list[str]:
-    """Free slots between 08:00 and 20:00 of ``dia`` (agenda + busy blocks)."""
-    zone = ZoneInfo(ctx.zona_horaria)
-    cursor = datetime.combine(dia, JORNADA[0], zone)
-    fin = datetime.combine(dia, JORNADA[1], zone)
-    bloques = [
+def free_slot_list(ctx: ToolContext, day: date) -> list[str]:
+    """Free slots between 08:00 and 20:00 of ``day`` (agenda + busy blocks)."""
+    zone = ZoneInfo(ctx.timezone)
+    cursor = datetime.combine(day, WORKDAY[0], zone)
+    end = datetime.combine(day, WORKDAY[1], zone)
+    blocks = [
         (d["inicio_utc"], d["fin_utc"])
-        for d in _items(ctx.chat_id, cursor, fin)
+        for d in _items(ctx.chat_id, cursor, end)
         if d["tipo"] == "evento"
     ]
-    bloques += [(a, b) for a, b, _ in _ocupados(ctx, cursor, fin)]
-    huecos = []
-    for a, b in sorted(bloques):
+    blocks += [(a, b) for a, b, _ in _busy(ctx, cursor, end)]
+    gaps = []
+    for a, b in sorted(blocks):
         if a > cursor:
-            huecos.append((cursor, min(a, fin)))
+            gaps.append((cursor, min(a, end)))
         cursor = max(cursor, b)
-    if cursor < fin:
-        huecos.append((cursor, fin))
+    if cursor < end:
+        gaps.append((cursor, end))
     return [
         f"{a.astimezone(zone):%H:%M}–{b.astimezone(zone):%H:%M}"
-        for a, b in huecos
+        for a, b in gaps
         if b > a
     ]
 
 
-def ver_libres(ctx: ToolContext, fecha: date) -> str:
-    return ", ".join(libres(ctx, fecha)) or t(ctx.idioma, "sin_huecos")
+def free_slots(ctx: ToolContext, day: date) -> str:
+    return ", ".join(free_slot_list(ctx, day)) or t(ctx.lang, "no_free_slots")
 
 
-def semana(ctx: ToolContext) -> str:
+def week_text(ctx: ToolContext) -> str:
     """/calendario: one line per day with items in the next 7 days."""
-    dias_semana = t(ctx.idioma, "dias").split()
-    desde, hasta = rango_agenda(ctx, "semana")
-    zone = ZoneInfo(ctx.zona_horaria)
-    entradas = [
-        (d["inicio_utc"], d["titulo"]) for d in _items(ctx.chat_id, desde, hasta)
+    weekday_names = t(ctx.lang, "weekdays").split()
+    since, until = agenda_range(ctx, "semana")
+    zone = ZoneInfo(ctx.timezone)
+    entries = [
+        (d["inicio_utc"], d["titulo"]) for d in _items(ctx.chat_id, since, until)
     ]
-    entradas += [(a, label) for a, _, label in _ocupados(ctx, desde, hasta)]
-    dias: dict[date, list[str]] = {}
-    for inicio, titulo in sorted(entradas, key=lambda e: e[0]):
-        local = max(inicio, desde).astimezone(zone)
-        dias.setdefault(local.date(), []).append(f"{local:%H:%M} {titulo}")
-    lineas = [
-        " · ".join([f"{dias_semana[dia.weekday()]} {dia.day}", *items])
-        for dia, items in dias.items()
+    entries += [(a, label) for a, _, label in _busy(ctx, since, until)]
+    days: dict[date, list[str]] = {}
+    for start, title in sorted(entries, key=lambda e: e[0]):
+        local = max(start, since).astimezone(zone)
+        days.setdefault(local.date(), []).append(f"{local:%H:%M} {title}")
+    lines = [
+        " · ".join([f"{weekday_names[day.weekday()]} {day.day}", *items])
+        for day, items in days.items()
     ]
-    return "\n".join(lineas) or t(ctx.idioma, "sin_7_dias")
+    return "\n".join(lines) or t(ctx.lang, "empty_7_days")
 
 
 # --- ICS feed (RFC 5545) ---------------------------------------------------------
 
 
-def _escape(texto: str) -> str:
-    texto = texto.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
-    return texto.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
+def _escape(text: str) -> str:
+    text = text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+    return text.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
 
 
-def _fold(linea: str) -> str:
+def _fold(line: str) -> str:
     """Fold at 75 octets without splitting a UTF-8 character."""
-    partes, actual, octetos = [], "", 0
-    for ch in linea:
+    parts, current, octets = [], "", 0
+    for ch in line:
         n = len(ch.encode())
-        if octetos + n > 75:
-            partes.append(actual)
-            actual, octetos = " ", 1
-        actual += ch
-        octetos += n
-    partes.append(actual)
-    return "\r\n".join(partes)
+        if octets + n > 75:
+            parts.append(current)
+            current, octets = " ", 1
+        current += ch
+        octets += n
+    parts.append(current)
+    return "\r\n".join(parts)
 
 
 def _utc_ics(dt: datetime) -> str:
     return dt.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def ics(chat_id: str, ahora: datetime) -> str:
+def ics(chat_id: str, now: datetime) -> str:
     """VCALENDAR with active items from 30 days ago to 365 days ahead."""
-    lineas = [
+    lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//botjonh//agenda//ES",
@@ -383,27 +390,27 @@ def ics(chat_id: str, ahora: datetime) -> str:
         "METHOD:PUBLISH",
         "X-WR-CALNAME:botjonh",
     ]
-    desde, hasta = ahora - timedelta(days=30), ahora + timedelta(days=365)
-    for d in _items(chat_id, desde, hasta):
-        titulo = _escape(d["titulo"])
-        lineas += [
+    since, until = now - timedelta(days=30), now + timedelta(days=365)
+    for d in _items(chat_id, since, until):
+        title = _escape(d["titulo"])
+        lines += [
             "BEGIN:VEVENT",
             f"UID:{d['id']}@botjonh",
-            f"DTSTAMP:{_utc_ics(ahora)}",
+            f"DTSTAMP:{_utc_ics(now)}",
             f"DTSTART:{_utc_ics(d['inicio_utc'])}",
             f"DTEND:{_utc_ics(d['fin_utc'])}",
-            f"SUMMARY:{titulo}",
+            f"SUMMARY:{title}",
         ]
         if d.get("ubicacion"):
-            lineas.append(f"LOCATION:{_escape(d['ubicacion'])}")
+            lines.append(f"LOCATION:{_escape(d['ubicacion'])}")
         if d.get("recordatorio_min") is not None:
-            lineas += [
+            lines += [
                 "BEGIN:VALARM",
                 "ACTION:DISPLAY",
-                f"DESCRIPTION:{titulo}",
+                f"DESCRIPTION:{title}",
                 f"TRIGGER:-PT{d['recordatorio_min']}M",
                 "END:VALARM",
             ]
-        lineas.append("END:VEVENT")
-    lineas.append("END:VCALENDAR")
-    return "".join(f"{_fold(linea)}\r\n" for linea in lineas)
+        lines.append("END:VEVENT")
+    lines.append("END:VCALENDAR")
+    return "".join(f"{_fold(line)}\r\n" for line in lines)

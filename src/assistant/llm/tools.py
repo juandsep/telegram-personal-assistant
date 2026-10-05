@@ -33,19 +33,19 @@ class ToolRejected(ValueError):
     """A tool call that never reaches a service. The message is a short code."""
 
 
-def _categoria(value: str) -> str:
+def _category(value: str) -> str:
     if value not in CATEGORIES:
-        raise ValueError("categoria fuera del enum")
+        raise ValueError("category not in the enum")
     return value
 
 
-Monto = Annotated[
+Amount = Annotated[
     Decimal, Field(gt=0), WithJsonSchema({"type": "number", "exclusiveMinimum": 0})
 ]
-Moneda = Annotated[str, Field(pattern=r"^[A-Z]{3}$", description="ISO 4217, ej. USD")]
-Categoria = Annotated[
+Currency = Annotated[str, Field(pattern=r"^[A-Z]{3}$", description="ISO 4217, ej. USD")]
+Category = Annotated[
     str,
-    AfterValidator(_categoria),
+    AfterValidator(_category),
     WithJsonSchema({"type": "string", "enum": list(CATEGORIES)}),
 ]
 
@@ -56,153 +56,153 @@ class _Args(BaseModel):
 
 
 class Item(_Args):
-    monto: Monto
-    categoria: Categoria
-    nota: str | None = None
+    amount: Amount
+    category: Category
+    note: str | None = None
 
 
-class RegistrarGasto(_Args):
+class RecordExpense(_Args):
     """Registra uno o varios gastos (append-only)."""
 
     items: list[Item] = Field(min_length=1, max_length=20)
-    moneda: Moneda
-    fecha: date
+    currency: Currency
+    day: date
 
 
-class RegistrarIngreso(_Args):
+class RecordIncome(_Args):
     """Registra un ingreso (append-only)."""
 
-    monto: Monto
-    moneda: Moneda
-    fuente: str
-    fecha: date
-    nota: str | None = None
+    amount: Amount
+    currency: Currency
+    source: str
+    day: date
+    note: str | None = None
 
 
-class ResumenFinanzas(_Args):
+class FinanceSummary(_Args):
     """Resumen de gastos e ingresos del periodo."""
 
-    periodo: Literal["hoy", "semana", "mes"]
+    period: Literal["hoy", "semana", "mes"]
 
 
-class RecomendarPresupuesto(_Args):
+class RecommendBudget(_Args):
     """Compara gasto por categoría contra el presupuesto y sugiere ahorro."""
 
-    periodo: Literal["mes"]
+    period: Literal["mes"]
 
 
-class CrearEvento(_Args):
+class CreateEvent(_Args):
     """Crea un evento en la agenda (hora local del usuario)."""
 
-    titulo: str
-    inicio: datetime
-    fin: datetime | None = None
-    ubicacion: str | None = None
-    recordatorio_min: int | None = Field(default=None, ge=0, le=40320)
+    title: str
+    start: datetime
+    end: datetime | None = None
+    location: str | None = None
+    reminder_min: int | None = Field(default=None, ge=0, le=40320)
 
 
-class ListarAgenda(_Args):
+class ListAgenda(_Args):
     """Lista los eventos del rango."""
 
-    rango: Literal["hoy", "manana", "semana"]
+    period: Literal["hoy", "manana", "semana"]
 
 
-class CancelarEvento(_Args):
+class CancelEvent(_Args):
     """Cancela un evento por id (el usuario confirma con un botón)."""
 
-    evento_id: str
+    event_id: str
 
 
-class Recordatorio(_Args):
+class CreateReminder(_Args):
     """Crea un recordatorio a una hora (hora local del usuario)."""
 
-    texto: str
-    cuando: datetime
+    text: str
+    when: datetime
 
 
-class VerLibres(_Args):
+class FreeSlots(_Args):
     """Huecos libres de 08:00 a 20:00 de un día (agenda y calendario conectado)."""
 
-    fecha: date
+    day: date
 
 
-class Deshacer(_Args):
+class Undo(_Args):
     """Deshace un lote de registros; sin batch_id, el último (con confirmación)."""
 
     batch_id: str | None = None
 
 
-Indice = Annotated[int, Field(ge=1, le=50, description="1 = el más reciente")]
+Index = Annotated[int, Field(ge=1, le=50, description="1 = el más reciente")]
 
 
-class UltimosMovimientos(_Args):
+class LatestEntries(_Args):
     """Últimos movimientos numerados (1 = el más reciente)."""
 
     n: int = Field(default=5, ge=1, le=20)
 
 
-class EditarMovimiento(_Args):
+class EditEntry(_Args):
     """Corrige un movimiento por índice; solo cambia los campos no nulos."""
 
-    indice: Indice
-    monto: Monto | None = None
-    moneda: Moneda | None = None
-    categoria: Categoria | None = None
-    nota: str | None = None
+    index: Index
+    amount: Amount | None = None
+    currency: Currency | None = None
+    category: Category | None = None
+    note: str | None = None
 
 
-class AnularMovimiento(_Args):
+class VoidEntry(_Args):
     """Anula un movimiento por índice (el usuario confirma con un botón)."""
 
-    indice: Indice
+    index: Index
 
 
-class InvitarBeta(_Args):
+class InviteBeta(_Args):
     """Solo owner: genera un código de invitación para un beta tester."""
 
-    nombre: str
+    name: str
 
 
-class ListarUsuarios(_Args):
+class ListUsers(_Args):
     """Solo owner: lista los usuarios permitidos."""
 
 
 # name -> (args model, "module:function"). Order is the order sent to the LLM.
 TOOLS: dict[str, tuple[type[_Args], str]] = {
-    "registrar_gasto": (RegistrarGasto, "assistant.services.ledger:registrar_gasto"),
-    "registrar_ingreso": (
-        RegistrarIngreso,
-        "assistant.services.ledger:registrar_ingreso",
+    "record_expense": (RecordExpense, "assistant.services.ledger:record_expense"),
+    "record_income": (
+        RecordIncome,
+        "assistant.services.ledger:record_income",
     ),
-    "resumen_finanzas": (
-        ResumenFinanzas,
-        "assistant.services.ledger:resumen_finanzas",
+    "finance_summary": (
+        FinanceSummary,
+        "assistant.services.ledger:finance_summary",
     ),
-    "recomendar_presupuesto": (
-        RecomendarPresupuesto,
-        "assistant.services.budgets:recomendar_presupuesto",
+    "recommend_budget": (
+        RecommendBudget,
+        "assistant.services.budgets:recommend_budget",
     ),
-    "crear_evento": (CrearEvento, "assistant.services.agenda:crear_evento"),
-    "listar_agenda": (ListarAgenda, "assistant.services.agenda:listar_agenda"),
-    "cancelar_evento": (CancelarEvento, "assistant.services.agenda:cancelar_evento"),
-    "recordatorio": (Recordatorio, "assistant.services.agenda:recordatorio"),
-    "ver_libres": (VerLibres, "assistant.services.agenda:ver_libres"),
-    "deshacer": (Deshacer, "assistant.services.ledger:deshacer"),
-    "ultimos_movimientos": (
-        UltimosMovimientos,
-        "assistant.services.ledger:ultimos_texto",
+    "create_event": (CreateEvent, "assistant.services.agenda:create_event"),
+    "list_agenda": (ListAgenda, "assistant.services.agenda:list_agenda"),
+    "cancel_event": (CancelEvent, "assistant.services.agenda:cancel_event"),
+    "create_reminder": (CreateReminder, "assistant.services.agenda:create_reminder"),
+    "free_slots": (FreeSlots, "assistant.services.agenda:free_slots"),
+    "undo": (Undo, "assistant.services.ledger:undo"),
+    "latest_entries": (
+        LatestEntries,
+        "assistant.services.ledger:latest_text",
     ),
-    "editar_movimiento": (EditarMovimiento, "assistant.services.ledger:editar"),
-    "anular_movimiento": (AnularMovimiento, "assistant.services.ledger:anular"),
-    "invitar_beta": (InvitarBeta, "assistant.services.state:invitar_beta"),
-    "listar_usuarios": (ListarUsuarios, "assistant.services.state:listar_usuarios"),
+    "edit_entry": (EditEntry, "assistant.services.ledger:edit"),
+    "void_entry": (VoidEntry, "assistant.services.ledger:void"),
+    "invite_beta": (InviteBeta, "assistant.services.state:invite_beta"),
+    "list_users": (ListUsers, "assistant.services.state:list_users"),
 }
-OWNER_ONLY = frozenset({"invitar_beta", "listar_usuarios"})
+OWNER_ONLY = frozenset({"invite_beta", "list_users"})
 # Their output can hold the connected calendar's busy times: it goes to the user
 # as is and never back to the LLM (Google user data stays out of the model).
-DIRECT = frozenset({"listar_agenda", "ver_libres"})
+DIRECT = frozenset({"list_agenda", "free_slots"})
 # Their confirmation question can name those busy times (a clash).
-CLASH = frozenset({"crear_evento", "recordatorio"})
+CLASH = frozenset({"create_event", "create_reminder"})
 
 # DeepSeek strict mode supports neither these keywords nor date formats.
 _DROP = {"title", "default", "format", "minLength", "maxLength", "minItems", "maxItems"}
@@ -273,7 +273,7 @@ def _state() -> Any:
 
 
 def _run(ctx: ToolContext, name: str, args: _Args) -> str:
-    if name in OWNER_ONLY and ctx.rol != "owner":
+    if name in OWNER_ONLY and ctx.role != "owner":
         raise ToolRejected("owner_only")
     module, _, func = TOOLS[name][1].partition(":")
     fn: Callable[..., str] = getattr(importlib.import_module(module), func)
@@ -282,30 +282,30 @@ def _run(ctx: ToolContext, name: str, args: _Args) -> str:
 
 def _confirm_question(name: str, args: _Args) -> str | None:
     """The question to ask before running this call, or None to run it now."""
-    if name == "cancelar_evento":
+    if name == "cancel_event":
         return "¿Cancelo el evento?"
-    if name == "deshacer":
+    if name == "undo":
         return "¿Deshago el último registro?"
-    if isinstance(args, AnularMovimiento):
-        return f"¿Anulo el movimiento {args.indice}?"
-    if isinstance(args, RegistrarGasto):
-        total = sum((i.monto for i in args.items), Decimal(0))
+    if isinstance(args, VoidEntry):
+        return f"¿Anulo el movimiento {args.index}?"
+    if isinstance(args, RecordExpense):
+        total = sum((i.amount for i in args.items), Decimal(0))
         if total > get_worker_settings().confirm_above:
-            return f"¿Registro {total:.2f} {args.moneda}?"
+            return f"¿Registro {total:.2f} {args.currency}?"
     return None
 
 
 def _conflict_question(ctx: ToolContext, args: _Args) -> str | None:
     """Ask before scheduling over an event or an external busy block."""
-    if isinstance(args, CrearEvento):
-        inicio, fin, tipo = args.inicio, args.fin, "evento"
-    elif isinstance(args, Recordatorio):
-        inicio, fin, tipo = args.cuando, None, "recordatorio"
+    if isinstance(args, CreateEvent):
+        start, end, kind = args.start, args.end, "evento"
+    elif isinstance(args, CreateReminder):
+        start, end, kind = args.when, None, "recordatorio"
     else:
         return None
     agenda = importlib.import_module("assistant.services.agenda")
-    choques = agenda.conflictos(ctx, inicio, fin or inicio + agenda.DURACION[tipo])
-    return f"Choca con {', '.join(choques)}. ¿Agendo igual?" if choques else None
+    clashes = agenda.conflicts(ctx, start, end or start + agenda.DURATION[kind])
+    return f"Choca con {', '.join(clashes)}. ¿Agendo igual?" if clashes else None
 
 
 def buttons(token: str) -> list[list[tuple[str, str]]]:
@@ -320,7 +320,7 @@ def handle_call(ctx: ToolContext, name: str, raw: str) -> tuple[str, str | None]
     Raises ToolRejected for anything invalid or not allowed.
     """
     args = validate_args(name, raw)
-    if name in OWNER_ONLY and ctx.rol != "owner":
+    if name in OWNER_ONLY and ctx.role != "owner":
         raise ToolRejected("owner_only")
     question = _confirm_question(name, args) or _conflict_question(ctx, args)
     if question is None:
@@ -331,42 +331,42 @@ def handle_call(ctx: ToolContext, name: str, raw: str) -> tuple[str, str | None]
     return question, token
 
 
-def ask_tipo(
-    ctx: ToolContext, monto: Decimal, moneda: str
+def ask_kind(
+    ctx: ToolContext, amount: Decimal, currency: str
 ) -> tuple[str, list[list[tuple[str, str]]]]:
     """A bare amount: store it and ask with Gasto / Ingreso buttons."""
     args = {
-        "monto": str(monto),
-        "moneda": moneda,
-        "fecha": ctx.ahora.date().isoformat(),
+        "amount": str(amount),
+        "currency": currency,
+        "day": ctx.now.date().isoformat(),
     }
     token: str = _state().create_pending(
-        ctx.chat_id, {"tool": "elegir_tipo", "args": args}
+        ctx.chat_id, {"tool": "choose_kind", "args": args}
     )
-    pregunta = f"¿{monto:.2f} {moneda}: gasto o ingreso?"
-    return pregunta, [[("Gasto", f"g:{token}"), ("Ingreso", f"i:{token}")]]
+    question = f"¿{amount:.2f} {currency}: gasto o ingreso?"
+    return question, [[("Gasto", f"g:{token}"), ("Ingreso", f"i:{token}")]]
 
 
-def execute_tipo(ctx: ToolContext, token: str, tipo: str) -> str:
-    """Register the amount stored by ``ask_tipo`` as the chosen type."""
+def execute_kind(ctx: ToolContext, token: str, kind: str) -> str:
+    """Register the amount stored by ``ask_kind`` as the chosen type."""
     action = _state().pop_pending(ctx.chat_id, token)
-    if not action or action.get("tool") != "elegir_tipo":
+    if not action or action.get("tool") != "choose_kind":
         return "La confirmación expiró."
     a = action.get("args", {})
-    if tipo == "gasto":
-        name = "registrar_gasto"
+    if kind == "gasto":
+        name = "record_expense"
         raw = {
-            "items": [{"monto": a.get("monto"), "categoria": "otros"}],
-            "moneda": a.get("moneda"),
-            "fecha": a.get("fecha"),
+            "items": [{"amount": a.get("amount"), "category": "otros"}],
+            "currency": a.get("currency"),
+            "day": a.get("day"),
         }
     else:
-        name = "registrar_ingreso"
+        name = "record_income"
         raw = {
-            "monto": a.get("monto"),
-            "moneda": a.get("moneda"),
-            "fuente": "",
-            "fecha": a.get("fecha"),
+            "amount": a.get("amount"),
+            "currency": a.get("currency"),
+            "source": "",
+            "day": a.get("day"),
         }
     # Stored data crosses a trust boundary: validate like any tool call.
     return _run(ctx, name, validate_args(name, json.dumps(raw)))

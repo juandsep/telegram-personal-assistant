@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import sys
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -434,12 +435,73 @@ def test_edit_race_reports_not_found(
     assert ledger.editar(make_ctx(40), nota="x") == "No encontré ese movimiento."
 
 
-def test_totals_in_usd_for_any_user_currency(db: FakeDB, state: MagicMock) -> None:
+def cop_ctx(update_id: int = 50) -> ToolContext:
+    return dataclasses.replace(make_ctx(update_id), moneda="COP")
+
+
+def test_totals_in_the_user_currency(
+    db: FakeDB, state: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     seed(db)
-    ctx = ToolContext("42", "owner", "COP", "America/Panama", 50, make_ctx().ahora)
-    assert ledger.resumen_finanzas(ctx, "mes") == (
-        "mes: gastos 2.00 USD, ingresos 900.00 USD; mayor supermercado 2.00"
+    monkeypatch.setattr(fx, "tasa", lambda cur, dia: (Decimal("4000"), "trm"))
+    assert ledger.resumen_finanzas(cop_ctx(), "mes") == (
+        "mes: gastos 8000.00 COP, ingresos 3600000.00 COP; mayor supermercado 8000.00"
     )
+    assert ledger.ultimos_texto(cop_ctx()) == (
+        "1) 30/09 −2000.00 COP Café\n"
+        "2) 29/09 +3600000.00 COP Salario (900 USD)\n"
+        "3) 28/09 −8000.00 COP Pan (2 USD)"
+    )
+    # The stored ledger is still USD.
+    assert db.store[f"{BASE}/3-0"]["monto"] == "0.50"
+
+
+def test_en_moneda(monkeypatch: pytest.MonkeyPatch) -> None:
+    cop = {"fecha": "2026-09-30", "monto": "0.50", "moneda_original": "COP"}
+    cop["monto_original"] = "2000.00"
+    viejo = {"fecha": "2026-09-30", "monto": "2.00"}  # before the *_original fields
+    tasas = {"EUR": Decimal("0.9"), "COP": Decimal("4000")}
+    pedidas: list[tuple[str, date]] = []
+
+    def tasa(cur: str, dia: date) -> tuple[Decimal, str]:
+        pedidas.append((cur, dia))
+        return tasas[cur], "ecb"
+
+    monkeypatch.setattr(fx, "tasa", tasa)
+    assert ledger.en_moneda(cop, "COP") == Decimal("2000.00")  # exact, no rate
+    assert ledger.en_moneda(cop, "USD") == Decimal("0.50")
+    assert ledger.en_moneda(viejo, "USD") == Decimal("2.00")
+    assert pedidas == []
+    assert ledger.en_moneda(cop, "EUR") == Decimal("0.45")
+    assert ledger.en_moneda(viejo, "COP") == Decimal("8000.00")
+    assert pedidas == [("EUR", date(2026, 9, 30)), ("COP", date(2026, 9, 30))]
+    reverso = {**cop, "monto": "-0.50", "monto_original": "-2000.00"}
+    assert ledger.en_moneda(reverso, "COP") == Decimal("-2000.00")
+    assert ledger.en_moneda(reverso, "EUR") == Decimal("-0.45")
+
+
+def test_reversos_net_out_in_any_currency(
+    db: FakeDB, state: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seed(db)
+    ledger.anular(make_ctx(60))  # the 2000 COP café
+    monkeypatch.setattr(fx, "tasa", lambda cur, dia: (Decimal("0.9"), "ecb"))
+    dia = date(2026, 9, 30)
+    for base in ("USD", "COP", "EUR"):
+        assert ledger.gastos_por_categoria("42", dia, dia, base) == {
+            "otros": Decimal("0.00")
+        }
+
+
+def test_texto_falls_back_to_usd_without_a_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def caido(cur: str, dia: date) -> tuple[Decimal, str]:
+        raise fx.FxError("http")
+
+    monkeypatch.setattr(fx, "tasa", caido)
+    d = {"fecha": "2026-09-30", "monto": "2.00", "tipo_mov": "gasto", "nota": "pan"}
+    assert ledger.texto(d, base="EUR") == "−2.00 USD · Pan"
 
 
 @respx.mock  # USD only

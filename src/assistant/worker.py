@@ -65,7 +65,12 @@ WORDS = {
     "calendar": "/calendario",
     "agenda": "/calendario",
     "fun": "/fun",
+    "moneda": "/moneda",
+    "currency": "/moneda",
 }
+# Display currencies: /moneda and the onboarding buttons.
+MONEDAS = {"USD": "🇺🇸 USD", "EUR": "🇪🇺 EUR", "COP": "🇨🇴 COP", "CNY": "🇨🇳 CNY"}
+MONEDA_BOTONES = [[(label, f"mo:{cur}") for cur, label in MONEDAS.items()]]
 
 
 @router.post("/push")
@@ -166,6 +171,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if msg.text.startswith("/zona"):
         _send(channel, msg, _zona(ctx, msg))
         return ACK
+    if msg.text.startswith("/moneda"):
+        _send(channel, msg, *_moneda(ctx, msg))
+        return ACK
     if msg.text.startswith(("/start", "/ayuda", "/help")):
         guia = [[(t(ctx.idioma, "guia"), GUIDE_URL)]]
         _send(channel, msg, t(ctx.idioma, "welcome"), guia)
@@ -175,6 +183,8 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
                 channel.set_menu_webapp(msg.chat_id, t(ctx.idioma, "visor"), visor)
             except httpx.HTTPError:
                 logger.warning("menu_failed update_id=%s", msg.update_id)
+        if msg.text.startswith("/start"):
+            _send(channel, msg, t(ctx.idioma, "moneda_pregunta"), MONEDA_BOTONES)
         return ACK
     if msg.animation_file_id:
         _send(channel, msg, _gif_command(ctx, msg, msg.caption, msg.animation_file_id))
@@ -218,7 +228,7 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if msg.text.startswith(LEDGER_COMMANDS):
         _send(channel, msg, *_ledger_command(ctx, msg))
         return ACK
-    entry = quick.parse(msg.text)
+    entry = quick.parse(msg.text, default=ctx.moneda)
     if entry is not None:  # deterministic: no LLM, no spend, no history
         _quick(ctx, msg, entry, channel)
         return ACK
@@ -405,6 +415,28 @@ def _zona(ctx: ToolContext, msg: InboundMessage) -> str:
     state.set_zona(ctx.chat_id, zona)
     logger.info("zona_set update_id=%s", msg.update_id)
     return t(ctx.idioma, "zona_ok", zona=zona)
+
+
+def _moneda(
+    ctx: ToolContext, msg: InboundMessage
+) -> tuple[str, list[list[tuple[str, str]]] | None]:
+    """/moneda COP sets it; without a valid code, the question with buttons."""
+    cur = msg.text.strip().partition(" ")[2].strip().upper()
+    if cur not in MONEDAS:
+        return t(ctx.idioma, "moneda_pregunta"), MONEDA_BOTONES
+    return _set_moneda(ctx, msg, cur), None
+
+
+def _set_moneda(ctx: ToolContext, msg: InboundMessage, cur: str) -> str:
+    try:
+        state.set_moneda(ctx.chat_id, cur)
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.idioma, "failed")
+    logger.info("moneda_set update_id=%s moneda=%s", msg.update_id, cur)
+    return t(ctx.idioma, "moneda_ok", moneda=cur)
 
 
 @cache
@@ -602,6 +634,8 @@ def _callback(
     elif action == "no":
         state.pop_pending(msg.chat_id, token)
         _send(channel, msg, t(ctx.idioma, "cancelado"))
+    elif action == "mo" and token in MONEDAS:  # /moneda and onboarding buttons
+        _send(channel, msg, _set_moneda(ctx, msg, token))
     elif action == "rv":  # /usuarios revoke button
         ok = ctx.rol == "owner" and state.revocar(token)
         logger.info("user_revoked update_id=%s ok=%s", msg.update_id, ok)

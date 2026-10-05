@@ -2,7 +2,7 @@
 
 Served by the assistant service to the ``/visor`` Mini App (see ``api.py``). No
 own JS: bars are CSS widths/heights. Every value from the ledger goes through
-``html.escape``. Amounts are the ledger's USD.
+``html.escape``. Amounts are in the user's currency (``ledger.en_moneda``).
 """
 
 from __future__ import annotations
@@ -74,8 +74,9 @@ def _pct(parte: Decimal, total: Decimal) -> Decimal:
     return max(Decimal(0), parte) * 100 / total if total > 0 else Decimal(0)
 
 
-def render(chat_id: str, mes: date, lang: str = "es") -> str:
-    """The month of ``mes`` (any day in it) as a full HTML page in ``lang``."""
+def render(chat_id: str, mes: date, lang: str = "es", moneda: str = "USD") -> str:
+    """The month of ``mes`` (any day in it) as a full HTML page in ``lang``,
+    amounts in ``moneda``."""
     desde = mes.replace(day=1)
     dias = calendar.monthrange(desde.year, desde.month)[1]
     hasta = desde.replace(day=dias)
@@ -85,7 +86,8 @@ def render(chat_id: str, mes: date, lang: str = "es") -> str:
     por_cat: dict[str, Decimal] = defaultdict(Decimal)
     por_dia: dict[int, Decimal] = defaultdict(Decimal)
     for d in movs:
-        monto = ledger.q(d["monto"])
+        # ponytail: one fx cache read per foreign-currency row; memo per day if slow
+        monto = d["_monto"] = ledger.en_moneda(d, moneda)
         if d["tipo_mov"] == "ingreso":
             ingresos += monto
         else:
@@ -97,7 +99,7 @@ def render(chat_id: str, mes: date, lang: str = "es") -> str:
     if ingresos > 0:
         tasa = f"{ledger.q(ahorro * 100 / ingresos)}%"
         cumple = "in" if ahorro >= meta else "out"
-        meta_txt = t(lang, "d_meta", meta=_usd(meta))
+        meta_txt = t(lang, "d_meta", meta=_usd(meta), moneda=moneda)
     else:
         tasa, cumple, meta_txt = "—", "muted", t(lang, "d_sin_ingresos")
 
@@ -117,7 +119,7 @@ def render(chat_id: str, mes: date, lang: str = "es") -> str:
     tope_dia = max(por_dia.values(), default=Decimal(0))
     barras = "".join(
         f'<div style="height:{_pct(por_dia[n], tope_dia):.1f}%" '
-        f'title="{n}: {_usd(por_dia[n])} USD"></div>'
+        f'title="{n}: {_usd(por_dia[n])} {moneda}"></div>'
         for n in range(1, dias + 1)
     )
 
@@ -130,7 +132,7 @@ def render(chat_id: str, mes: date, lang: str = "es") -> str:
             f"{escape(_label(_texto(d), lang))}"
             f'</span><span class="num {"in" if d["tipo_mov"] == "ingreso" else "out"}">'
             f"{'+' if d['tipo_mov'] == 'ingreso' else '−'}"
-            f"{_usd(abs(ledger.q(d['monto'])))}</span></li>"
+            f"{_usd(abs(d['_monto']))}</span></li>"
             for d in recientes
         )
         or f'<li class="muted">{t(lang, "d_sin_movs")}</li>'
@@ -146,7 +148,7 @@ def render(chat_id: str, mes: date, lang: str = "es") -> str:
 <meta name="color-scheme" content="light dark">
 <title>{encabezado}</title><style>{CSS}</style></head>
 <body><main>
-<h1>{encabezado}</h1><p class="muted">{t(lang, "d_usd")}</p>
+<h1>{encabezado}</h1><p class="muted">{t(lang, "d_usd", moneda=moneda)}</p>
 <nav><a href="?mes={antes}">{t(lang, "d_antes")}</a>
 <a href="?mes={despues}">{t(lang, "d_despues")}</a></nav>
 <div class="kpis">

@@ -3,6 +3,7 @@ import dataclasses
 import json
 import time
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import MagicMock
 from urllib.parse import urlencode
 
@@ -13,7 +14,7 @@ from firestore_fake import FakeDB
 
 from assistant import api
 from assistant.app import app
-from assistant.services import agenda, ledger, pubsub, state
+from assistant.services import agenda, fx, ledger, pubsub, state
 
 URL = "/tg/test-path"
 HEADERS = {"X-Telegram-Bot-Api-Secret-Token": "test-secret"}  # pragma: allowlist secret
@@ -254,11 +255,11 @@ def init_data(key, user_id=42, auth_date=None, bot_id="123"):
     return urlencode({**campos, "hash": "h", "signature": firma.decode()})
 
 
-def datos(key, mes="", **kw):
-    return client.post(
-        "/visor/datos" + (f"?mes={mes}" if mes else ""),
-        headers={"Authorization": "tma " + init_data(key, **kw)},
-    )
+def datos(key, mes="", tz=None, **kw):
+    headers = {"Authorization": "tma " + init_data(key, **kw)}
+    if tz is not None:
+        headers["X-Tz"] = tz
+    return client.post("/visor/datos" + (f"?mes={mes}" if mes else ""), headers=headers)
 
 
 def test_visor_shell() -> None:
@@ -328,3 +329,31 @@ def test_visor_other_months(dash_db) -> None:
         resp = datos(dash_db, bad)
         assert resp.status_code == 400
         assert resp.headers["x-robots-tag"] == "noindex"
+
+
+def test_visor_in_user_currency(dash_db, monkeypatch) -> None:
+    monkeypatch.setattr(state, "get_user", {"42": {"moneda": "COP"}}.get)
+    monkeypatch.setattr(fx, "tasa", lambda cur, dia: (Decimal("4000"), "trm"))
+    body = datos(dash_db, "2026-09").text
+    assert "Montos en COP." in body and "Montos en USD." not in body
+    assert '<b class="in">4,000,000.00</b>' in body
+    assert '<b class="out">59,000.00</b>' in body
+    assert "Meta 20%: 800,000.00 COP" in body and "98.53%" in body
+
+
+def test_visor_takes_the_phone_time_zone(dash_db, monkeypatch, caplog) -> None:
+    caplog.set_level("INFO")
+    set_zona = MagicMock()
+    monkeypatch.setattr(state, "set_zona", set_zona)
+    users = {"42": {"zona_horaria": "America/Panama"}}
+    monkeypatch.setattr(state, "get_user", users.get)
+    for bad in ("", "UTC", "Mars/Olympus", "../../etc/passwd", "A/" + "b" * 70):
+        assert datos(dash_db, tz=bad).status_code == 200
+    assert datos(dash_db, tz="America/Panama").status_code == 200  # unchanged
+    set_zona.assert_not_called()
+    assert datos(dash_db, tz="Asia/Shanghai").status_code == 200
+    set_zona.assert_called_once_with("42", "Asia/Shanghai")
+    assert "zona_auto" in caplog.text and "Shanghai" not in caplog.text
+    set_zona.side_effect = RuntimeError("firestore down")  # best effort
+    assert datos(dash_db, tz="Europe/Madrid").status_code == 200
+    assert "X-Tz" in api.VISOR_JS

@@ -6,7 +6,8 @@ the ledger CSV, and on Sunday also runs the backup. ``digest``, ``checkin`` and
 ``weekly`` stay runnable by name for manual use.
 
 The assistant is concise: a job messages a chat only when there is something to
-say. One failing chat never stops the others.
+say. One failing chat never stops the others. Amounts are in the user's
+currency (``users.moneda``), converted from the USD ledger.
 """
 
 from __future__ import annotations
@@ -34,9 +35,9 @@ def _digest(ctx: ToolContext) -> str | None:
     agenda.encolar_recordatorios(ctx)
     lineas = agenda.agenda(ctx, "hoy")
     ayer = ledger.hoy(ctx) - timedelta(days=1)
-    gastado = sum(ledger.gastos_por_categoria(ctx.chat_id, ayer, ayer).values())
-    if gastado:
-        lineas.append(t(ctx.idioma, "ayer", total=gastado))
+    gastos = ledger.gastos_por_categoria(ctx.chat_id, ayer, ayer, ctx.moneda)
+    if gastado := sum(gastos.values()):
+        lineas.append(t(ctx.idioma, "ayer", total=gastado, moneda=ctx.moneda))
     return "\n".join(lineas) or None
 
 
@@ -46,23 +47,31 @@ def _checkin(ctx: ToolContext) -> str | None:
     if not movs:
         return t(ctx.idioma, "sin_gastos")
     gastos = [d for d in movs if d["tipo_mov"] == "gasto"]
-    total = sum((ledger.q(d["monto"]) for d in gastos), Decimal("0.00"))
-    return t(ctx.idioma, "gastos_hoy", total=total)
+    total = sum((ledger.en_moneda(d, ctx.moneda) for d in gastos), Decimal("0.00"))
+    return t(ctx.idioma, "gastos_hoy", total=total, moneda=ctx.moneda)
 
 
 def _weekly(ctx: ToolContext) -> str | None:
     """Sunday 22:00, after the checkin: the week vs income, minus 20% saved."""
     dia = ledger.hoy(ctx)
     desde, hasta = ledger.rango("semana", dia)
-    gastos = ledger.gastos_por_categoria(ctx.chat_id, desde, hasta)
+    moneda = ctx.moneda
+    gastos = ledger.gastos_por_categoria(ctx.chat_id, desde, hasta, moneda)
     total = sum(gastos.values(), Decimal("0.00"))
     inicio_mes = dia.replace(day=1)
-    ingresos = ledger.total_ingresos(ctx.chat_id, inicio_mes, dia)
+    ingresos = ledger.total_ingresos(ctx.chat_id, inicio_mes, dia, moneda)
     if not total and not ingresos:
         return None
     lang = ctx.idioma
     lineas = [
-        t(lang, "semana", desde=f"{desde:%d/%m}", hasta=f"{hasta:%d/%m}", total=total)
+        t(
+            lang,
+            "semana",
+            desde=f"{desde:%d/%m}",
+            hasta=f"{hasta:%d/%m}",
+            total=total,
+            moneda=moneda,
+        )
     ]
     top = sorted((kv for kv in gastos.items() if kv[1] > 0), key=lambda kv: -kv[1])
     if top:
@@ -73,18 +82,27 @@ def _weekly(ctx: ToolContext) -> str | None:
     if ingresos <= 0:
         lineas.append(t(lang, "sin_ingresos"))
         return "\n".join(lineas)
-    mes = ledger.gastos_por_categoria(ctx.chat_id, inicio_mes, dia)
+    mes = ledger.gastos_por_categoria(ctx.chat_id, inicio_mes, dia, moneda)
     gastado = sum(mes.values(), Decimal("0.00"))
     ahorro = ledger.q(ingresos * Decimal("0.20"))
     libre = ledger.q(ingresos - ahorro - gastado)
     dias = cal.monthrange(dia.year, dia.month)[1] - dia.day
     semanas = max(Decimal(dias) / 7, Decimal(1))
-    lineas.append(t(lang, "mes", ingresos=ingresos, gastos=gastado))
+    lineas.append(t(lang, "mes", ingresos=ingresos, gastos=gastado, moneda=moneda))
     if libre >= 0:
         semanal = ledger.q(libre / semanas)
-        lineas.append(t(lang, "ahorra", ahorro=ahorro, libre=libre, semana=semanal))
+        lineas.append(
+            t(
+                lang,
+                "ahorra",
+                ahorro=ahorro,
+                libre=libre,
+                semana=semanal,
+                moneda=moneda,
+            )
+        )
     else:
-        lineas.append(t(lang, "pasaste", exceso=-libre, ahorro=ahorro))
+        lineas.append(t(lang, "pasaste", exceso=-libre, ahorro=ahorro, moneda=moneda))
     semana = Decimal(7) / cal.monthrange(dia.year, dia.month)[1]
     exceso = budgets.linea_exceso(ctx, gastos, semana)
     if exceso and exceso.startswith("Exceso"):

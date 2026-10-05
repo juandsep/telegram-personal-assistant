@@ -1,3 +1,4 @@
+import dataclasses
 import sys
 from datetime import date, datetime
 from decimal import Decimal
@@ -7,12 +8,11 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from assistant.context import ToolContext
-from assistant.services import budgets, ledger
+from assistant.services import budgets, fx, ledger
 
 D = Decimal
-# A user whose old profile says COP still gets USD: the ledger is USD only.
 CTX = ToolContext(
-    "42", "owner", "COP", "America/Panama", 1,
+    "42", "owner", "USD", "America/Panama", 1,
     datetime(2026, 9, 29, 12, tzinfo=ZoneInfo("America/Panama")),
 )  # fmt: skip
 
@@ -53,7 +53,7 @@ def prefs(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 def test_recomendar_messages(monkeypatch: pytest.MonkeyPatch, prefs: MagicMock) -> None:
     calls: list[tuple[date, date]] = []
 
-    def gastos(chat_id: str, desde: date, hasta: date) -> dict[str, Decimal]:
+    def gastos(chat_id: str, desde: date, hasta: date, base: str) -> dict[str, D]:
         calls.append((desde, hasta))
         return {"restaurantes": D("400.00")}
 
@@ -74,3 +74,23 @@ def test_recomendar_messages(monkeypatch: pytest.MonkeyPatch, prefs: MagicMock) 
     assert budgets.recomendar_presupuesto(CTX, "semana").startswith(
         "Exceso en Restaurantes: 400.00 de 33.33 USD"
     )
+
+
+def test_caps_in_usd_compare_in_user_currency(
+    monkeypatch: pytest.MonkeyPatch, prefs: MagicMock
+) -> None:
+    bases: list[str] = []
+
+    def gastos(chat_id: str, desde: date, hasta: date, base: str) -> dict[str, D]:
+        bases.append(base)
+        return {"restaurantes": D("400000.00")}  # already in COP
+
+    monkeypatch.setattr(ledger, "gastos_por_categoria", gastos)
+    monkeypatch.setattr(ledger, "total_ingresos", MagicMock(return_value=D(0)))
+    monkeypatch.setattr(fx, "tasa", lambda cur, dia: (D("4000"), "trm"))
+    prefs.get_preferences.return_value = {"presupuesto": {"restaurantes": "50"}}
+    cop = dataclasses.replace(CTX, moneda="COP")
+    assert budgets.recomendar_presupuesto(cop).startswith(
+        "Exceso en Restaurantes: 400000.00 de 200000.00 COP (+200000.00)."
+    )
+    assert bases == ["COP"]

@@ -1,4 +1,8 @@
-"""Finance ledger on Firestore: append-only, every amount in USD.
+"""Finance ledger on Firestore: append-only, every amount stored in USD.
+
+Users see amounts in their own ``users.moneda`` (``en_moneda``): the original
+amount when it was typed in that currency, else the USD amount at the
+movement day's rate. Storage never changes.
 
 Layout: ``ledger/{chat_id}/movimientos/{doc_id}`` with the fields ``fecha``
 (ISO date), ``monto`` (USD str, quantized to 0.01), ``moneda`` ("USD"),
@@ -147,16 +151,33 @@ def etiqueta(valor: str, lang: str = "es") -> str:
     return categoria(lang, valor) or valor[:1].upper() + valor[1:]
 
 
-def texto(d: dict, sep: str = " · ", lang: str = "es") -> str:
+def en_moneda(d: dict, base: str) -> Decimal:
+    """A movement's amount in ``base``: exact when typed in it, else its USD at
+    the movement day's rate. Keeps the sign, so reversos net out in sums."""
+    if d.get("moneda_original", "USD") == base:
+        return q(d.get("monto_original", d["monto"]))
+    if base == "USD":
+        return q(d["monto"])
+    fx = importlib.import_module("assistant.services.fx")
+    tasa = fx.tasa(base, date.fromisoformat(d["fecha"]))[0]
+    return q(q(d["monto"]) * tasa)
+
+
+def texto(d: dict, sep: str = " · ", lang: str = "es", base: str = "USD") -> str:
     """One movement as "−0.49 USD · café (2,000 COP)"; a reverso as its registro."""
     signo = "−" if d["tipo_mov"] == "gasto" else "+"
-    texto = f"{signo}{abs(q(d['monto']))} USD"
+    fx = importlib.import_module("assistant.services.fx")
+    try:
+        monto = en_moneda(d, base)
+    except fx.FxError:  # rate unavailable: the stored USD, never a failed reply
+        monto, base = q(d["monto"]), "USD"
+    texto = f"{signo}{abs(monto)} {base}"
     label = d.get("nota") or d.get("categoria") or d.get("fuente")
     if label:
         texto += f"{sep}{etiqueta(label, lang)}"
-    if d.get("moneda_original", "USD") != "USD":
-        moneda = str(d["moneda_original"]).upper()
-        texto += f" ({_cifra(Decimal(d['monto_original']))} {moneda})"
+    moneda = str(d.get("moneda_original", "USD")).upper()
+    if moneda != base:
+        texto += f" ({_cifra(Decimal(d.get('monto_original', d['monto'])))} {moneda})"
     return texto
 
 
@@ -183,12 +204,12 @@ def registrar_gasto(
         }
     _crear(ctx.chat_id, docs)
     _state().set_last_batch(ctx.chat_id, batch)
-    return "; ".join(_con_categoria(d, ctx.idioma) for d in docs.values())
+    return "; ".join(_con_categoria(d, ctx.idioma, ctx.moneda) for d in docs.values())
 
 
-def _con_categoria(d: dict, lang: str) -> str:
+def _con_categoria(d: dict, lang: str, base: str = "USD") -> str:
     """ "−12.00 USD · Lunch · Restaurants": the category even when a note shows."""
-    linea = texto(d, lang=lang)
+    linea = texto(d, lang=lang, base=base)
     cat = d.get("categoria")
     return f"{linea} · {etiqueta(cat, lang)}" if cat and d.get("nota") else linea
 
@@ -217,7 +238,7 @@ def registrar_ingreso(
     }
     _crear(ctx.chat_id, {f"{ctx.update_id}-i0": doc})
     _state().set_last_batch(ctx.chat_id, batch)
-    return texto(doc, lang=ctx.idioma)
+    return texto(doc, lang=ctx.idioma, base=ctx.moneda)
 
 
 def clave(chat_id: str, update_id: int, tipo_mov: str) -> str:
@@ -306,7 +327,7 @@ def ultimos(ctx: ToolContext, n: int = 5) -> list[dict]:
 def ultimos_texto(ctx: ToolContext, n: int = 5) -> str:
     lineas = [
         f"{m['indice']}) {date.fromisoformat(m['fecha']):%d/%m} "
-        f"{texto(m, ' ', ctx.idioma)}"
+        f"{texto(m, ' ', ctx.idioma, ctx.moneda)}"
         for m in ultimos(ctx, n)
     ]
     return "\n".join(lineas) or t(ctx.idioma, "sin_movs")
@@ -334,7 +355,9 @@ def _elegir(ctx: ToolContext, indice: int) -> tuple[str, dict] | None:
 def anular(ctx: ToolContext, indice: int = 1) -> str:
     previo = _repetido(ctx)
     if previo is not None:
-        return t(ctx.idioma, "anulado", mov=texto(previo, lang=ctx.idioma))
+        return t(
+            ctx.idioma, "anulado", mov=texto(previo, lang=ctx.idioma, base=ctx.moneda)
+        )
     elegido = _elegir(ctx, indice)
     if elegido is None:
         return t(ctx.idioma, "no_encontrado")
@@ -342,7 +365,7 @@ def anular(ctx: ToolContext, indice: int = 1) -> str:
     # Reverso id per registro: two updates can never cancel the same row twice.
     if not _crear(ctx.chat_id, {f"{doc_id}-x": _reverso(ctx, doc_id, d)}):
         return t(ctx.idioma, "no_encontrado")
-    return t(ctx.idioma, "anulado", mov=texto(d, lang=ctx.idioma))
+    return t(ctx.idioma, "anulado", mov=texto(d, lang=ctx.idioma, base=ctx.moneda))
 
 
 def editar(
@@ -356,7 +379,9 @@ def editar(
     """Reverso of the chosen movement plus a new registro with merged fields."""
     previo = _repetido(ctx)
     if previo is not None:
-        return t(ctx.idioma, "editado", mov=_con_categoria(previo, ctx.idioma))
+        return t(
+            ctx.idioma, "editado", mov=_con_categoria(previo, ctx.idioma, ctx.moneda)
+        )
     elegido = _elegir(ctx, indice)
     if elegido is None:
         return t(ctx.idioma, "no_encontrado")
@@ -383,7 +408,7 @@ def editar(
     docs = {f"{doc_id}-x": _reverso(ctx, doc_id, d), f"{ctx.update_id}-e0": nuevo}
     if not _crear(ctx.chat_id, docs):
         return t(ctx.idioma, "no_encontrado")
-    return t(ctx.idioma, "editado", mov=_con_categoria(nuevo, ctx.idioma))
+    return t(ctx.idioma, "editado", mov=_con_categoria(nuevo, ctx.idioma, ctx.moneda))
 
 
 def del_dia(chat_id: str, dia: date) -> list[dict]:
@@ -415,26 +440,30 @@ def vigentes(chat_id: str, desde: date, hasta: date) -> list[dict]:
     return sorted(vivos, key=lambda d: str(d.get("creado", "")))
 
 
-def gastos_por_categoria(chat_id: str, desde: date, hasta: date) -> dict[str, Decimal]:
+def gastos_por_categoria(
+    chat_id: str, desde: date, hasta: date, base: str = "USD"
+) -> dict[str, Decimal]:
     """Net spend per category (registro + reverso) in the inclusive range."""
     totales: dict[str, Decimal] = {}
     for d in _por_fecha(chat_id, "gasto", desde, hasta):
         cat = d["categoria"]
-        totales[cat] = totales.get(cat, Decimal(0)) + q(d["monto"])
+        totales[cat] = totales.get(cat, Decimal(0)) + en_moneda(d, base)
     return totales
 
 
-def total_ingresos(chat_id: str, desde: date, hasta: date) -> Decimal:
+def total_ingresos(
+    chat_id: str, desde: date, hasta: date, base: str = "USD"
+) -> Decimal:
     docs = _por_fecha(chat_id, "ingreso", desde, hasta)
-    return sum((q(d["monto"]) for d in docs), Decimal("0.00"))
+    return sum((en_moneda(d, base) for d in docs), Decimal("0.00"))
 
 
 def resumen_finanzas(ctx: ToolContext, periodo: str) -> str:
     desde, hasta = rango(periodo, hoy(ctx))
-    gastos = gastos_por_categoria(ctx.chat_id, desde, hasta)
+    gastos = gastos_por_categoria(ctx.chat_id, desde, hasta, ctx.moneda)
     total = sum(gastos.values(), Decimal("0.00"))
-    ingresos = total_ingresos(ctx.chat_id, desde, hasta)
-    texto = f"{periodo}: gastos {total} USD, ingresos {ingresos} USD"
+    ingresos = total_ingresos(ctx.chat_id, desde, hasta, ctx.moneda)
+    texto = f"{periodo}: gastos {total} {ctx.moneda}, ingresos {ingresos} {ctx.moneda}"
     top = max(gastos, key=lambda c: gastos[c], default=None)
     if top is not None and gastos[top] > 0:
         texto += f"; mayor {top} {gastos[top]}"

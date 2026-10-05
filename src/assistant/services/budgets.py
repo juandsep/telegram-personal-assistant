@@ -2,6 +2,8 @@
 
 A per-category budget from ``preferences/{chat_id}`` wins; without one, the
 50/30/20 rule over the month's income caps ``necesidades`` and ``ocio``.
+Budget caps are stored in USD; spend, income and caps are compared and
+shown in the user's currency (caps at today's rate).
 """
 
 from __future__ import annotations
@@ -59,7 +61,10 @@ def linea_exceso(
         ctx.chat_id
     )
     presupuesto = (prefs or {}).get("presupuesto")
-    ingresos = ledger.total_ingresos(ctx.chat_id, dia.replace(day=1), dia)
+    if presupuesto and ctx.moneda != "USD":
+        tasa = importlib.import_module("assistant.services.fx").tasa(ctx.moneda, dia)[0]
+        presupuesto = {k: str(Decimal(v) * tasa) for k, v in presupuesto.items()}
+    ingresos = ledger.total_ingresos(ctx.chat_id, dia.replace(day=1), dia, ctx.moneda)
     if not presupuesto and ingresos <= 0:
         return None
     exceso = mayor_exceso(gastos, presupuesto, ingresos, factor)
@@ -77,13 +82,14 @@ def linea_exceso(
         gastado=gastado,
         cap=cap,
         extra=extra,
+        moneda=ctx.moneda,
     )
 
 
 def recomendar_presupuesto(ctx: ToolContext, periodo: str = "mes") -> str:
     dia = ledger.hoy(ctx)
     desde, hasta = ledger.rango(periodo, dia)
-    gastos = ledger.gastos_por_categoria(ctx.chat_id, desde, hasta)
+    gastos = ledger.gastos_por_categoria(ctx.chat_id, desde, hasta, ctx.moneda)
     dias_mes = cal.monthrange(dia.year, dia.month)[1]
     factor = (
         Decimal(1) if periodo == "mes" else Decimal((hasta - desde).days + 1) / dias_mes

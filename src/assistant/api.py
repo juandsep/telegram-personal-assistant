@@ -48,7 +48,8 @@ INIT_DATA_MAX_AGE = 24 * 3600  # seconds; Telegram signs at each Mini App launch
 VISOR_JS = """const tg = window.Telegram.WebApp;
 async function cargar(mes) {
   const r = await fetch("/visor/datos" + (mes ? "?mes=" + mes : ""), {
-    method: "POST", headers: {Authorization: "tma " + tg.initData}});
+    method: "POST", headers: {Authorization: "tma " + tg.initData,
+      "X-Tz": Intl.DateTimeFormat().resolvedOptions().timeZone || ""}});
   if (r.ok) document.documentElement.innerHTML = await r.text();
   else document.body.textContent = "Telegram → Visor de gastos / Expense viewer";
 }
@@ -132,17 +133,38 @@ def visor_datos(request: Request, mes: str | None = None) -> Response:
     if user is None:  # unsigned, stale, or not (any longer) a user
         logger.info("visor status=403")
         return Response(status_code=403, headers=DASH_HEADERS)
+    zona = _zona_auto(str(chat_id), user, request.headers.get("X-Tz", ""))
     if mes is None:
-        zona = user.get("zona_horaria") or "America/Panama"
         dia = datetime.now(ZoneInfo(zona)).date()
     elif match := _MES.fullmatch(mes):
         dia = date(int(match[1]), int(match[2]), 1)
     else:
         logger.info("visor status=400")
         return Response(status_code=400, headers=DASH_HEADERS)
-    body = tablero.render(str(chat_id), dia, user.get("idioma", "es"))
+    body = tablero.render(
+        str(chat_id), dia, user.get("idioma", "es"), user.get("moneda", "USD")
+    )
     logger.info("visor status=200")
     return HTMLResponse(body, headers=DASH_HEADERS)
+
+
+def _zona_auto(chat_id: str, user: dict, tz: str) -> str:
+    """The phone's IANA zone (sent by the Mini App) when valid, stored if it
+    changed; else the stored one or the default."""
+    actual = user.get("zona_horaria") or "America/Panama"
+    try:
+        if "/" not in tz or len(tz) > 64:
+            return actual
+        ZoneInfo(tz)
+    except (ValueError, KeyError):  # ZoneInfoNotFoundError is a KeyError
+        return actual
+    if tz != user.get("zona_horaria"):
+        try:  # best effort: the page still renders in the phone's zone
+            state.set_zona(chat_id, tz)
+            logger.info("zona_auto")
+        except Exception as exc:
+            logger.warning("zona_auto_failed error=%s", type(exc).__name__)
+    return tz
 
 
 @router.post("/tg/{path}")

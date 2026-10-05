@@ -32,82 +32,86 @@ log = logging.getLogger(__name__)
 
 
 def _digest(ctx: ToolContext) -> str | None:
-    agenda.encolar_recordatorios(ctx)
-    lineas = agenda.agenda(ctx, "hoy")
-    ayer = ledger.hoy(ctx) - timedelta(days=1)
-    gastos = ledger.gastos_por_categoria(ctx.chat_id, ayer, ayer, ctx.moneda)
-    if gastado := sum(gastos.values()):
-        lineas.append(t(ctx.idioma, "ayer", total=gastado, moneda=ctx.moneda))
-    return "\n".join(lineas) or None
+    agenda.enqueue_reminders(ctx)
+    lines = agenda.agenda_lines(ctx, "hoy")
+    yesterday = ledger.today(ctx) - timedelta(days=1)
+    expenses = ledger.spend_by_category(ctx.chat_id, yesterday, yesterday, ctx.currency)
+    if spent := sum(expenses.values()):
+        lines.append(t(ctx.lang, "yesterday", total=spent, currency=ctx.currency))
+    return "\n".join(lines) or None
 
 
 def _checkin(ctx: ToolContext) -> str | None:
     """22:00: the day's spend; the detail lives in the Visor de gastos."""
-    movs = ledger.del_dia(ctx.chat_id, ledger.hoy(ctx))
-    if not movs:
-        return t(ctx.idioma, "sin_gastos")
-    gastos = [d for d in movs if d["tipo_mov"] == "gasto"]
-    total = sum((ledger.en_moneda(d, ctx.moneda) for d in gastos), Decimal("0.00"))
-    return t(ctx.idioma, "gastos_hoy", total=total, moneda=ctx.moneda)
+    entries = ledger.of_day(ctx.chat_id, ledger.today(ctx))
+    if not entries:
+        return t(ctx.lang, "no_spending")
+    expenses = [d for d in entries if d["tipo_mov"] == "gasto"]
+    total = sum(
+        (ledger.in_currency(d, ctx.currency) for d in expenses), Decimal("0.00")
+    )
+    return t(ctx.lang, "spent_today", total=total, currency=ctx.currency)
 
 
 def _weekly(ctx: ToolContext) -> str | None:
     """Sunday 22:00, after the checkin: the week vs income, minus 20% saved."""
-    dia = ledger.hoy(ctx)
-    desde, hasta = ledger.rango("semana", dia)
-    moneda = ctx.moneda
-    gastos = ledger.gastos_por_categoria(ctx.chat_id, desde, hasta, moneda)
-    total = sum(gastos.values(), Decimal("0.00"))
-    inicio_mes = dia.replace(day=1)
-    ingresos = ledger.total_ingresos(ctx.chat_id, inicio_mes, dia, moneda)
-    if not total and not ingresos:
+    day = ledger.today(ctx)
+    since, until = ledger.date_range("semana", day)
+    currency = ctx.currency
+    expenses = ledger.spend_by_category(ctx.chat_id, since, until, currency)
+    total = sum(expenses.values(), Decimal("0.00"))
+    month_start = day.replace(day=1)
+    income = ledger.total_income(ctx.chat_id, month_start, day, currency)
+    if not total and not income:
         return None
-    lang = ctx.idioma
-    lineas = [
+    lang = ctx.lang
+    lines = [
         t(
             lang,
-            "semana",
-            desde=f"{desde:%d/%m}",
-            hasta=f"{hasta:%d/%m}",
+            "week",
+            since=f"{since:%d/%m}",
+            until=f"{until:%d/%m}",
             total=total,
-            moneda=moneda,
+            currency=currency,
         )
     ]
-    top = sorted((kv for kv in gastos.items() if kv[1] > 0), key=lambda kv: -kv[1])
+    top = sorted((kv for kv in expenses.items() if kv[1] > 0), key=lambda kv: -kv[1])
     if top:
-        lineas.append(
+        lines.append(
             t(lang, "top")
-            + " · ".join(f"{ledger.etiqueta(c, lang)} {v}" for c, v in top[:3])
+            + " · ".join(f"{ledger.display_label(c, lang)} {v}" for c, v in top[:3])
         )
-    if ingresos <= 0:
-        lineas.append(t(lang, "sin_ingresos"))
-        return "\n".join(lineas)
-    mes = ledger.gastos_por_categoria(ctx.chat_id, inicio_mes, dia, moneda)
-    gastado = sum(mes.values(), Decimal("0.00"))
-    ahorro = ledger.q(ingresos * Decimal("0.20"))
-    libre = ledger.q(ingresos - ahorro - gastado)
-    dias = cal.monthrange(dia.year, dia.month)[1] - dia.day
-    semanas = max(Decimal(dias) / 7, Decimal(1))
-    lineas.append(t(lang, "mes", ingresos=ingresos, gastos=gastado, moneda=moneda))
-    if libre >= 0:
-        semanal = ledger.q(libre / semanas)
-        lineas.append(
+    if income <= 0:
+        lines.append(t(lang, "no_income"))
+        return "\n".join(lines)
+    month = ledger.spend_by_category(ctx.chat_id, month_start, day, currency)
+    spent = sum(month.values(), Decimal("0.00"))
+    savings = ledger.q(income * Decimal("0.20"))
+    left = ledger.q(income - savings - spent)
+    days = cal.monthrange(day.year, day.month)[1] - day.day
+    weeks = max(Decimal(days) / 7, Decimal(1))
+    lines.append(t(lang, "month", income=income, expenses=spent, currency=currency))
+    if left >= 0:
+        weekly_left = ledger.q(left / weeks)
+        lines.append(
             t(
                 lang,
-                "ahorra",
-                ahorro=ahorro,
-                libre=libre,
-                semana=semanal,
-                moneda=moneda,
+                "save",
+                savings=savings,
+                left=left,
+                week=weekly_left,
+                currency=currency,
             )
         )
     else:
-        lineas.append(t(lang, "pasaste", exceso=-libre, ahorro=ahorro, moneda=moneda))
-    semana = Decimal(7) / cal.monthrange(dia.year, dia.month)[1]
-    exceso = budgets.linea_exceso(ctx, gastos, semana)
-    if exceso and exceso.startswith("Exceso"):
-        lineas.append(exceso)
-    return "\n".join(lineas)
+        lines.append(
+            t(lang, "overspent", excess=-left, savings=savings, currency=currency)
+        )
+    week = Decimal(7) / cal.monthrange(day.year, day.month)[1]
+    excess = budgets.excess_line(ctx, expenses, week)
+    if excess and excess.startswith("Exceso"):
+        lines.append(excess)
+    return "\n".join(lines)
 
 
 JOBS: dict[str, Callable[[ToolContext], str | None]] = {
@@ -123,28 +127,28 @@ def _tick(ctx: ToolContext) -> str | None:
     ponytail: :30/:45 offsets (India, Nepal) get the local hour the tick lands
     in (07:30, 22:30); add half-hour ticks if those users want the exact time.
     """
-    if ctx.ahora.hour == 7:
+    if ctx.now.hour == 7:
         return _digest(ctx)
-    if ctx.ahora.hour != 22:
+    if ctx.now.hour != 22:
         return None
-    partes = [_checkin(ctx)]
-    if ctx.ahora.weekday() == 6:  # Sunday: one message, not two
-        partes.append(_weekly(ctx))
-    return "\n\n".join([*(p for p in partes if p), t(ctx.idioma, "hint")])
+    parts = [_checkin(ctx)]
+    if ctx.now.weekday() == 6:  # Sunday: one message, not two
+        parts.append(_weekly(ctx))
+    return "\n\n".join([*(p for p in parts if p), t(ctx.lang, "hint")])
 
 
 def _ctx(
-    chat_id: str, user: dict[str, Any], default_tz: str, ahora: datetime
+    chat_id: str, user: dict[str, Any], default_tz: str, now: datetime
 ) -> ToolContext:
-    zona = user.get("zona_horaria") or default_tz
+    tz = user.get("zona_horaria") or default_tz
     return ToolContext(
         chat_id=chat_id,
-        rol=user.get("rol", "beta"),
-        moneda=user.get("moneda", "USD"),
-        zona_horaria=zona,
+        role=user.get("rol", "beta"),
+        currency=user.get("moneda", "USD"),
+        timezone=tz,
         update_id=0,
-        ahora=ahora.astimezone(ZoneInfo(zona)),
-        idioma=user.get("idioma", "es"),
+        now=now.astimezone(ZoneInfo(tz)),
+        lang=user.get("idioma", "es"),
     )
 
 
@@ -167,23 +171,23 @@ def run_job(name: str) -> None:
     if name != "tick" and name not in JOBS:
         raise ValueError(f"unknown job: {name}")
     settings = get_worker_settings()
-    ahora = datetime.now(UTC)
+    now = datetime.now(UTC)
     state = importlib.import_module("assistant.services.state")
-    if name == "tick" and ahora.hour >= 12:
+    if name == "tick" and now.hour >= 12:
         # From 12:00 UTC on, until each one succeeds once (export daily, backup
         # on Sundays): a failure or a missed tick is retried an hour later.
-        _once(state, f"export:{ahora:%Y-%m-%d}", lambda: backup.export_ledger(settings))
-        if ahora.weekday() == 6:
-            semana = ahora.isocalendar()
+        _once(state, f"export:{now:%Y-%m-%d}", lambda: backup.export_ledger(settings))
+        if now.weekday() == 6:
+            week = now.isocalendar()
             _once(
                 state,
-                f"backup:{semana.year}-W{semana.week}",
+                f"backup:{week.year}-W{week.week}",
                 lambda: backup.run(settings),
             )
     if name == "weekly":
         backup.run(settings)  # manual run: a failure raises
     if name == "digest":
-        _once(state, f"export:{ahora:%Y-%m-%d}", lambda: backup.export_ledger(settings))
+        _once(state, f"export:{now:%Y-%m-%d}", lambda: backup.export_ledger(settings))
     telegram = Telegram(settings.telegram_bot_token)
     sent = failed = 0
     for chat_id in state.list_chat_ids():
@@ -191,13 +195,13 @@ def run_job(name: str) -> None:
             user = state.get_user(chat_id)
             if not user:
                 continue
-            ctx = _ctx(chat_id, user, settings.default_timezone, ahora)
+            ctx = _ctx(chat_id, user, settings.default_timezone, now)
             if name == "tick":
-                texto = _tick(ctx)
+                text = _tick(ctx)
             else:
-                texto = JOBS[name](ctx)
-            if texto:
-                telegram.send_message(chat_id, texto)
+                text = JOBS[name](ctx)
+            if text:
+                telegram.send_message(chat_id, text)
                 sent += 1
         except Exception as e:  # one chat never blocks the rest
             failed += 1

@@ -1,7 +1,7 @@
 """Shared types between the LLM layer and the services.
 
 Every tool implementation has the signature ``fn(ctx: ToolContext, **args) ->
-str``. Role checks (owner-only tools) use ``ctx.rol`` in code, never the LLM.
+str``. Role checks (owner-only tools) use ``ctx.role`` in code, never the LLM.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-Rol = Literal["owner", "beta"]
+Role = Literal["owner", "beta"]
 
 # Fixed category enum mapped to the 50/30/20 rule.
 BUCKETS: dict[str, tuple[str, ...]] = {
@@ -39,10 +39,10 @@ BUCKET_OF: dict[str, str] = {c: b for b, cats in BUCKETS.items() for c in cats}
 @dataclass(frozen=True)
 class ToolContext:
     chat_id: str
-    rol: Rol
-    moneda: str
-    zona_horaria: str
+    role: Role
+    currency: str
+    timezone: str
     update_id: int
-    ahora: datetime  # timezone-aware, in the user's zone
-    idioma: str = "es"  # es | en | zh, see assistant.i18n
+    now: datetime  # timezone-aware, in the user's zone
+    lang: str = "es"  # es | en | zh, see assistant.i18n
     fun: bool = False  # /fun: registrations answered with a GIF, not the text

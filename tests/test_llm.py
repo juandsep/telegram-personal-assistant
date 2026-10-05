@@ -14,11 +14,11 @@ from assistant.llm import client, tools
 from assistant.llm.tools import ToolRejected, execute_pending, validate_args
 
 URL = "https://api.deepseek.com/chat/completions"
-AHORA = datetime(2026, 9, 29, 18, 30, tzinfo=ZoneInfo("America/Panama"))
+NOW = datetime(2026, 9, 29, 18, 30, tzinfo=ZoneInfo("America/Panama"))
 
 
-def ctx(rol: str = "beta") -> ToolContext:
-    return ToolContext("42", rol, "USD", "America/Panama", 7, AHORA)  # type: ignore[arg-type]
+def ctx(role: str = "beta") -> ToolContext:
+    return ToolContext("42", role, "USD", "America/Panama", 7, NOW)  # type: ignore[arg-type]
 
 
 @pytest.fixture
@@ -36,34 +36,34 @@ def calls(monkeypatch):
 
     for mod, names in {
         "ledger": [
-            "registrar_gasto",
-            "registrar_ingreso",
-            "resumen_finanzas",
-            "ultimos_texto",
-            "editar",
-            "anular",
+            "record_expense",
+            "record_income",
+            "finance_summary",
+            "latest_text",
+            "edit",
+            "void",
         ],
-        "budgets": ["recomendar_presupuesto"],
+        "budgets": ["recommend_budget"],
         "agenda": [
-            "crear_evento",
-            "listar_agenda",
-            "cancelar_evento",
-            "recordatorio",
-            "ver_libres",
+            "create_event",
+            "list_agenda",
+            "cancel_event",
+            "create_reminder",
+            "free_slots",
         ],
-        "state": ["invitar_beta", "listar_usuarios"],
+        "state": ["invite_beta", "list_users"],
     }.items():
         m = types.ModuleType(f"assistant.services.{mod}")
         for n in names:
             setattr(m, n, fake(n))
         if mod == "ledger":
-            m.deshacer = fake("deshacer")
+            m.undo = fake("undo")
         if mod == "agenda":
-            m.DURACION = {"evento": timedelta(hours=1), "recordatorio": timedelta(0)}
-            m.choques = []
-            m.conflictos = lambda ctx, inicio, fin, m=m: (
-                done.append(("conflictos", {"inicio": inicio, "fin": fin}))
-                or list(m.choques)
+            m.DURATION = {"evento": timedelta(hours=1), "recordatorio": timedelta(0)}
+            m.clashes = []
+            m.conflicts = lambda ctx, start, end, m=m: (
+                done.append(("conflicts", {"start": start, "end": end}))
+                or list(m.clashes)
             )
         if mod == "state":
 
@@ -96,14 +96,14 @@ def completion(content=None, tool_calls=None, hit=100, miss=10, out=5):
     return httpx.Response(200, json={"choices": [{"message": msg}], "usage": usage})
 
 
-GASTO = json.dumps(
+EXPENSE_ARGS = json.dumps(
     {
         "items": [
-            {"monto": 2.1, "categoria": "supermercado", "nota": "pan"},
-            {"monto": 3, "categoria": "supermercado", "nota": None},
+            {"amount": 2.1, "category": "supermercado", "note": "pan"},
+            {"amount": 3, "category": "supermercado", "note": None},
         ],
-        "moneda": "USD",
-        "fecha": "2026-09-29",
+        "currency": "USD",
+        "day": "2026-09-29",
     }
 )
 
@@ -111,46 +111,46 @@ GASTO = json.dumps(
 # --- validation -----------------------------------------------------------
 
 
-def test_valid_gasto_keeps_exact_decimals() -> None:
-    args = validate_args("registrar_gasto", GASTO)
-    assert args.model_dump()["items"][0]["monto"] == Decimal("2.1")
-    assert args.model_dump()["fecha"] == date(2026, 9, 29)
+def test_valid_expense_keeps_exact_decimals() -> None:
+    args = validate_args("record_expense", EXPENSE_ARGS)
+    assert args.model_dump()["items"][0]["amount"] == Decimal("2.1")
+    assert args.model_dump()["day"] == date(2026, 9, 29)
 
 
 @pytest.mark.parametrize(
     ("name", "raw", "code"),
     [
         ("borrar_todo", "{}", "tool_not_allowlisted"),
-        ("resumen_finanzas", '{"periodo": "mes", "x": 1}', "invalid_args"),
-        ("resumen_finanzas", "{periodo: mes", "invalid_json"),
-        ("resumen_finanzas", '{"periodo": "año"}', "invalid_args"),
+        ("finance_summary", '{"period": "mes", "x": 1}', "invalid_args"),
+        ("finance_summary", "{period: mes", "invalid_json"),
+        ("finance_summary", '{"period": "año"}', "invalid_args"),
         (
-            "registrar_ingreso",
-            '{"monto": 0, "moneda": "USD", "fuente": "x", "fecha": "2026-09-29"}',
+            "record_income",
+            '{"amount": 0, "currency": "USD", "source": "x", "day": "2026-09-29"}',
             "invalid_args",
         ),
         (
-            "registrar_ingreso",
-            '{"monto": 5, "moneda": "usd", "fuente": "x", "fecha": "2026-09-29"}',
+            "record_income",
+            '{"amount": 5, "currency": "usd", "source": "x", "day": "2026-09-29"}',
             "invalid_args",
         ),
         (
-            "registrar_ingreso",
-            '{"monto": 5, "moneda": "USD", "fuente": "x", "fecha": 1700000000}',
+            "record_income",
+            '{"amount": 5, "currency": "USD", "source": "x", "day": 1700000000}',
             "invalid_args",
         ),
         (
-            "registrar_gasto",
-            '{"items": [{"monto": 1, "categoria": "almuerzo"}], '
-            '"moneda": "USD", "fecha": "2026-09-29"}',
+            "record_expense",
+            '{"items": [{"amount": 1, "category": "almuerzo"}], '
+            '"currency": "USD", "day": "2026-09-29"}',
             "invalid_args",
         ),
         (
-            "registrar_gasto",
-            '{"items": [], "moneda": "USD", "fecha": "2026-09-29"}',
+            "record_expense",
+            '{"items": [], "currency": "USD", "day": "2026-09-29"}',
             "invalid_args",
         ),
-        ("crear_evento", '{"titulo": "x", "inicio": "mañana"}', "invalid_args"),
+        ("create_event", '{"title": "x", "start": "mañana"}', "invalid_args"),
     ],
 )
 def test_invalid_calls_rejected(name, raw, code) -> None:
@@ -168,7 +168,7 @@ def test_tool_specs_are_closed_and_cover_categories() -> None:
         assert params["additionalProperties"] is False
         assert params["required"] == list(params["properties"])
     item = tools.TOOL_SPECS[0]["function"]["parameters"]["properties"]["items"]
-    assert item["items"]["properties"]["categoria"]["enum"] == list(CATEGORIES)
+    assert item["items"]["properties"]["category"]["enum"] == list(CATEGORIES)
     for cat in CATEGORIES:
         assert cat in client.SYSTEM_PROMPT
 
@@ -178,65 +178,63 @@ def test_tool_specs_are_closed_and_cover_categories() -> None:
 
 def test_owner_only_tool_rejected_for_beta(calls) -> None:
     with pytest.raises(ToolRejected, match="owner_only"):
-        tools.handle_call(ctx("beta"), "invitar_beta", '{"nombre": "Ana"}')
+        tools.handle_call(ctx("beta"), "invite_beta", '{"name": "Ana"}')
     assert calls == []
-    assert tools.handle_call(ctx("owner"), "listar_usuarios", "")[0] == (
-        "ok listar_usuarios"
-    )
+    assert tools.handle_call(ctx("owner"), "list_users", "")[0] == ("ok list_users")
 
 
-def test_small_gasto_runs_immediately(calls) -> None:
-    out, token = tools.handle_call(ctx(), "registrar_gasto", GASTO)
-    assert (out, token) == ("ok registrar_gasto", None)
+def test_small_expense_runs_immediately(calls) -> None:
+    out, token = tools.handle_call(ctx(), "record_expense", EXPENSE_ARGS)
+    assert (out, token) == ("ok record_expense", None)
     assert calls[0][1]["items"][1] == {
-        "monto": Decimal(3),
-        "categoria": "supermercado",
-        "nota": None,
+        "amount": Decimal(3),
+        "category": "supermercado",
+        "note": None,
     }
 
 
 def test_execute_pending_runs_stored_call_once(calls) -> None:
-    args = '{"evento_id": "ev1"}'
-    question, token = tools.handle_call(ctx(), "cancelar_evento", args)
+    args = '{"event_id": "ev1"}'
+    question, token = tools.handle_call(ctx(), "cancel_event", args)
     assert token == "t1" and calls == []
-    assert execute_pending(ctx(), "t1") == "ok cancelar_evento"
-    assert calls == [("cancelar_evento", {"evento_id": "ev1"})]
+    assert execute_pending(ctx(), "t1") == "ok cancel_event"
+    assert calls == [("cancel_event", {"event_id": "ev1"})]
     assert execute_pending(ctx(), "t1") == "La confirmación expiró."
 
 
 def test_event_without_conflict_runs_now(calls) -> None:
-    raw = '{"titulo": "Dentista", "inicio": "2026-09-30T09:00"}'
-    out, token = tools.handle_call(ctx(), "crear_evento", raw)
-    assert (out, token) == ("ok crear_evento", None)
+    raw = '{"title": "Dentista", "start": "2026-09-30T09:00"}'
+    out, token = tools.handle_call(ctx(), "create_event", raw)
+    assert (out, token) == ("ok create_event", None)
     assert calls[0] == (
-        "conflictos",
-        {"inicio": datetime(2026, 9, 30, 9), "fin": datetime(2026, 9, 30, 10)},
+        "conflicts",
+        {"start": datetime(2026, 9, 30, 9), "end": datetime(2026, 9, 30, 10)},
     )
 
 
 def test_conflict_asks_and_confirming_skips_the_check(calls) -> None:
-    sys.modules["assistant.services.agenda"].choques = ["Dentista 09:00–10:00"]
-    raw = '{"texto": "Llamar", "cuando": "2026-09-30T09:30"}'
-    question, token = tools.handle_call(ctx(), "recordatorio", raw)
+    sys.modules["assistant.services.agenda"].clashes = ["Dentista 09:00–10:00"]
+    raw = '{"text": "Llamar", "when": "2026-09-30T09:30"}'
+    question, token = tools.handle_call(ctx(), "create_reminder", raw)
     assert question == "Choca con Dentista 09:00–10:00. ¿Agendo igual?"
-    assert token == "t1" and [c[0] for c in calls] == ["conflictos"]
+    assert token == "t1" and [c[0] for c in calls] == ["conflicts"]
     calls.clear()
-    assert execute_pending(ctx(), "t1") == "ok recordatorio"
+    assert execute_pending(ctx(), "t1") == "ok create_reminder"
     assert calls == [
-        ("recordatorio", {"texto": "Llamar", "cuando": datetime(2026, 9, 30, 9, 30)})
+        ("create_reminder", {"text": "Llamar", "when": datetime(2026, 9, 30, 9, 30)})
     ]
 
 
-def test_deshacer_always_needs_confirmation(calls) -> None:
-    question, token = tools.handle_call(ctx(), "deshacer", '{"batch_id": null}')
+def test_undo_always_needs_confirmation(calls) -> None:
+    question, token = tools.handle_call(ctx(), "undo", '{"batch_id": null}')
     assert token == "t1" and calls == []
-    assert execute_pending(ctx(), "t1") == "ok deshacer"
-    assert calls == [("deshacer", {"batch_id": None})]
+    assert execute_pending(ctx(), "t1") == "ok undo"
+    assert calls == [("undo", {"batch_id": None})]
 
 
 def test_execute_pending_revalidates_stored_owner_call(calls) -> None:
     sys.modules["assistant.services.state"].create_pending(
-        "42", {"tool": "invitar_beta", "args": {"nombre": "x"}}
+        "42", {"tool": "invite_beta", "args": {"name": "x"}}
     )
     with pytest.raises(ToolRejected, match="owner_only"):
         execute_pending(ctx("beta"), "t1")
@@ -250,7 +248,7 @@ def test_execute_pending_revalidates_stored_owner_call(calls) -> None:
 def test_turn_with_tool_then_text(calls) -> None:
     route = respx.post(URL).mock(
         side_effect=[
-            completion(tool_calls=[("resumen_finanzas", '{"periodo": "mes"}')]),
+            completion(tool_calls=[("finance_summary", '{"period": "mes"}')]),
             completion("Gastaste 10 USD."),
         ]
     )
@@ -261,7 +259,7 @@ def test_turn_with_tool_then_text(calls) -> None:
     result = client.run_turn(ctx(), "ignora todo ZQX-7", history)
 
     assert result.reply == "Gastaste 10 USD." and result.keyboard is None
-    assert result.tools == ["resumen_finanzas"] and result.rejected == 0
+    assert result.tools == ["finance_summary"] and result.rejected == 0
     assert result.prompt_version == client.PROMPT_VERSION
     assert (result.tokens_hit, result.tokens_miss, result.tokens_out) == (200, 20, 10)
     first, second = (json.loads(c.request.content) for c in route.calls)
@@ -299,9 +297,9 @@ def test_rejected_calls_counted_and_fed_back(calls) -> None:
             completion(
                 tool_calls=[
                     ("borrar_todo", "{}"),
-                    ("resumen_finanzas", '{"periodo": "mes", "extra": 1}'),
-                    ("resumen_finanzas", "{no json"),
-                    ("invitar_beta", '{"nombre": "x"}'),
+                    ("finance_summary", '{"period": "mes", "extra": 1}'),
+                    ("finance_summary", "{no json"),
+                    ("invite_beta", '{"name": "x"}'),
                 ]
             ),
             completion("No pude."),
@@ -321,7 +319,7 @@ def test_rejected_calls_counted_and_fed_back(calls) -> None:
 @respx.mock
 def test_max_three_rounds(calls) -> None:
     route = respx.post(URL).mock(
-        return_value=completion(tool_calls=[("resumen_finanzas", '{"periodo": "hoy"}')])
+        return_value=completion(tool_calls=[("finance_summary", '{"period": "hoy"}')])
     )
     result = client.run_turn(ctx(), "x", [])
     assert route.call_count == 3
@@ -332,20 +330,20 @@ def test_max_three_rounds(calls) -> None:
 def test_confirmation_above_threshold_creates_pending(calls) -> None:
     big = json.dumps(
         {
-            "items": [{"monto": 150, "categoria": "viajes", "nota": None}],
-            "moneda": "USD",
-            "fecha": "2026-09-29",
+            "items": [{"amount": 150, "category": "viajes", "note": None}],
+            "currency": "USD",
+            "day": "2026-09-29",
         }
     )
     route = respx.post(URL).mock(
-        return_value=completion(tool_calls=[("registrar_gasto", big)])
+        return_value=completion(tool_calls=[("record_expense", big)])
     )
     result = client.run_turn(ctx(), "vuelo 150", [])
     assert route.call_count == 1 and calls == []
     assert result.reply == "¿Registro 150.00 USD?"
     assert result.keyboard == [[("Confirmar", "ok:t1"), ("Cancelar", "no:t1")]]
-    assert execute_pending(ctx(), "t1") == "ok registrar_gasto"
-    assert calls[0][1]["items"][0]["monto"] == Decimal(150)
+    assert execute_pending(ctx(), "t1") == "ok record_expense"
+    assert calls[0][1]["items"][0]["amount"] == Decimal(150)
 
 
 def test_cost_math(calls) -> None:
@@ -386,15 +384,15 @@ def test_client_error_raises() -> None:
 @pytest.mark.parametrize(
     ("name", "raw"),
     [
-        ("ultimos_movimientos", '{"n": 5, "x": 1}'),
-        ("ultimos_movimientos", '{"n": 0}'),
-        ("editar_movimiento", '{"indice": 1, "monto": 3, "extra": true}'),
-        ("editar_movimiento", '{"indice": 0, "monto": 3}'),
-        ("editar_movimiento", '{"indice": 1, "monto": -3}'),
-        ("editar_movimiento", '{"indice": 1, "moneda": "dolares"}'),
-        ("editar_movimiento", '{"indice": 1, "categoria": "cafe"}'),
-        ("anular_movimiento", '{"indice": 1, "todo": true}'),
-        ("anular_movimiento", "{}"),
+        ("latest_entries", '{"n": 5, "x": 1}'),
+        ("latest_entries", '{"n": 0}'),
+        ("edit_entry", '{"index": 1, "amount": 3, "extra": true}'),
+        ("edit_entry", '{"index": 0, "amount": 3}'),
+        ("edit_entry", '{"index": 1, "amount": -3}'),
+        ("edit_entry", '{"index": 1, "currency": "dolares"}'),
+        ("edit_entry", '{"index": 1, "category": "cafe"}'),
+        ("void_entry", '{"index": 1, "todo": true}'),
+        ("void_entry", "{}"),
     ],
 )
 def test_edit_tools_reject_bad_args(name, raw) -> None:
@@ -402,58 +400,58 @@ def test_edit_tools_reject_bad_args(name, raw) -> None:
         validate_args(name, raw)
 
 
-def test_ultimos_and_editar_map_to_the_ledger(calls) -> None:
-    assert tools.handle_call(ctx(), "ultimos_movimientos", '{"n": 5}') == (
-        "ok ultimos_texto",
+def test_latest_and_edit_map_to_the_ledger(calls) -> None:
+    assert tools.handle_call(ctx(), "latest_entries", '{"n": 5}') == (
+        "ok latest_text",
         None,
     )
-    raw = '{"indice": 1, "monto": 3, "moneda": "USD", "categoria": null, "nota": null}'
-    assert tools.handle_call(ctx(), "editar_movimiento", raw)[0] == "ok editar"
+    raw = '{"index": 1, "amount": 3, "currency": "USD", "category": null, "note": null}'
+    assert tools.handle_call(ctx(), "edit_entry", raw)[0] == "ok edit"
     assert calls == [
-        ("ultimos_texto", {"n": 5}),
+        ("latest_text", {"n": 5}),
         (
-            "editar",
+            "edit",
             {
-                "indice": 1,
-                "monto": Decimal(3),
-                "moneda": "USD",
-                "categoria": None,
-                "nota": None,
+                "index": 1,
+                "amount": Decimal(3),
+                "currency": "USD",
+                "category": None,
+                "note": None,
             },
         ),
     ]
 
 
-def test_anular_movimiento_needs_confirmation(calls) -> None:
-    question, token = tools.handle_call(ctx(), "anular_movimiento", '{"indice": 2}')
+def test_void_entry_needs_confirmation(calls) -> None:
+    question, token = tools.handle_call(ctx(), "void_entry", '{"index": 2}')
     assert (question, token, calls) == ("¿Anulo el movimiento 2?", "t1", [])
-    assert execute_pending(ctx(), "t1") == "ok anular"
-    assert calls == [("anular", {"indice": 2})]
+    assert execute_pending(ctx(), "t1") == "ok void"
+    assert calls == [("void", {"index": 2})]
 
 
 def test_context_message_names_the_language() -> None:
     from assistant.llm.client import _context_message
 
-    zh = ToolContext("42", "beta", "USD", "America/Panama", 7, AHORA, idioma="zh")
+    zh = ToolContext("42", "beta", "USD", "America/Panama", 7, NOW, lang="zh")
     assert _context_message(zh)["content"].endswith("Responde siempre en 简体中文.")
 
 
 @respx.mock
 def test_agenda_tools_answer_the_user_without_the_llm(calls) -> None:
     route = respx.post(URL).mock(
-        return_value=completion(tool_calls=[("ver_libres", '{"fecha": "2026-10-01"}')])
+        return_value=completion(tool_calls=[("free_slots", '{"day": "2026-10-01"}')])
     )
     result = client.run_turn(ctx(), "¿qué tengo libre el jueves?", [])
     assert route.call_count == 1  # the busy times never go back to the LLM
-    assert result.reply == "ok ver_libres" and result.private
+    assert result.reply == "ok free_slots" and result.private
     assert result.messages[-1] == {"role": "assistant", "content": client.PRIVATE_REPLY}
 
 
 @respx.mock
 def test_clash_question_is_kept_out_of_history(calls) -> None:
-    sys.modules["assistant.services.agenda"].choques = ["Ocupado 09:00–10:00"]
-    raw = '{"texto": "Llamar", "cuando": "2026-09-30T09:30"}'
-    respx.post(URL).mock(return_value=completion(tool_calls=[("recordatorio", raw)]))
+    sys.modules["assistant.services.agenda"].clashes = ["Ocupado 09:00–10:00"]
+    raw = '{"text": "Llamar", "when": "2026-09-30T09:30"}'
+    respx.post(URL).mock(return_value=completion(tool_calls=[("create_reminder", raw)]))
     result = client.run_turn(ctx(), "recuérdame llamar a las 9:30", [])
     assert result.reply.startswith("Choca con Ocupado") and result.keyboard
     assert result.messages[-1]["content"] == client.PRIVATE_REPLY

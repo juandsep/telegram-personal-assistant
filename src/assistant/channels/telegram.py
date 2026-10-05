@@ -96,20 +96,20 @@ class Telegram(Channel):
     def send_animation(self, chat_id: str, file_id: str) -> None:
         self._post("sendAnimation", chat_id=chat_id, animation=file_id)
 
-    def set_profile(self, language_code: str, **textos: object) -> None:
+    def set_profile(self, language_code: str, **texts: object) -> None:
         """Commands, description and short description for one language
         ("" = every language without its own)."""
         self._post(
-            "setMyCommands", commands=textos["commands"], language_code=language_code
+            "setMyCommands", commands=texts["commands"], language_code=language_code
         )
         self._post(
             "setMyDescription",
-            description=textos["description"],
+            description=texts["description"],
             language_code=language_code,
         )
         self._post(
             "setMyShortDescription",
-            short_description=textos["short_description"],
+            short_description=texts["short_description"],
             language_code=language_code,
         )
 

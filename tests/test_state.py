@@ -83,28 +83,28 @@ def db(monkeypatch):
     return fake
 
 
-def ctx(rol="owner"):
-    return ToolContext("1", rol, "USD", "America/Panama", 1, datetime.now(UTC))
+def ctx(role="owner"):
+    return ToolContext("1", role, "USD", "America/Panama", 1, datetime.now(UTC))
 
 
 def test_users(db) -> None:
     assert state.get_user("1") is None
-    state.upsert_user("1", "Ana", rol="owner")
+    state.upsert_user("1", "Ana", role="owner")
     state.set_last_batch("1", "b1")
-    state.upsert_user("1", "Ana", rol="owner", moneda="PAB")
+    state.upsert_user("1", "Ana", role="owner", currency="PAB")
     assert state.get_user("1")["moneda"] == "PAB"
     assert state.last_batch("1") == "b1"
     assert state.last_batch("2") is None
     assert state.list_chat_ids() == ["1"]
 
 
-def test_set_moneda_guesses_the_zone_once(db) -> None:
-    state.set_moneda("1", "COP")  # no zone yet
+def test_set_currency_guesses_the_zone_once(db) -> None:
+    state.set_currency("1", "COP")  # no zone yet
     assert state.get_user("1") == {"moneda": "COP", "zona_horaria": "America/Bogota"}
-    state.set_moneda("1", "EUR")  # a zone set by now is kept
+    state.set_currency("1", "EUR")  # a zone set by now is kept
     assert state.get_user("1") == {"moneda": "EUR", "zona_horaria": "America/Bogota"}
-    state.set_zona("2", "America/Panama")  # the old default is replaced
-    state.set_moneda("2", "CNY")
+    state.set_timezone("2", "America/Panama")  # the old default is replaced
+    state.set_currency("2", "CNY")
     assert state.get_user("2")["zona_horaria"] == "Asia/Shanghai"
 
 
@@ -117,7 +117,7 @@ def test_mark_processed_once(db) -> None:
 
 
 def test_invite_single_use(db) -> None:
-    out = state.invitar_beta(ctx(), "Beto")
+    out = state.invite_beta(ctx(), "Beto")
     code = out.split("/start ")[1].split(" ")[0]
     assert state.redeem_invite(code, "2") is True
     assert state.get_user("2")["rol"] == "beta"
@@ -140,11 +140,11 @@ def test_invite_expired_or_bogus(db) -> None:
 
 
 def test_owner_only_tools(db) -> None:
-    assert state.invitar_beta(ctx("beta"), "x") == state.OWNER_ONLY
-    assert state.listar_usuarios(ctx("beta")) == state.OWNER_ONLY
+    assert state.invite_beta(ctx("beta"), "x") == state.OWNER_ONLY
+    assert state.list_users(ctx("beta")) == state.OWNER_ONLY
     assert not db.store
-    state.upsert_user("1", "Ana", rol="owner")
-    assert state.listar_usuarios(ctx()) == "Ana (owner)"
+    state.upsert_user("1", "Ana", role="owner")
+    assert state.list_users(ctx()) == "Ana (owner)"
 
 
 def test_rate_limit(db) -> None:
@@ -168,9 +168,9 @@ def test_preferences(db) -> None:
 
 
 def test_pending(db) -> None:
-    token = state.create_pending("1", {"tool": "deshacer"})
+    token = state.create_pending("1", {"tool": "undo"})
     assert state.pop_pending("2", token) is None  # other chat
-    assert state.pop_pending("1", token) == {"tool": "deshacer"}
+    assert state.pop_pending("1", token) == {"tool": "undo"}
     assert state.pop_pending("1", token) is None  # single use
     assert state.pop_pending("1", "bad/token") is None
 
@@ -183,11 +183,11 @@ def test_pending_expired(db) -> None:
 
 
 def test_oauth_state_single_use_and_expiry(db) -> None:
-    token = state.crear_oauth_state("1")
+    token = state.create_oauth_state("1")
     assert db.store[("oauth_states", token)]["expire_at"] > datetime.now(UTC)
     assert state.consume_oauth_state(token) == "1"
     assert state.consume_oauth_state(token) is None  # single use
-    old = state.crear_oauth_state("1")
+    old = state.create_oauth_state("1")
     db.store[("oauth_states", old)]["expire_at"] = datetime.now(UTC)
     assert state.consume_oauth_state(old) is None
     assert ("oauth_states", old) not in db.store
@@ -211,11 +211,11 @@ def test_ics_token_created_reused_and_rotated(db) -> None:
     token = state.ics_token("1")
     assert len(token) == 32 and state.ics_token("1") == token
     assert state.chat_for_ics_token(token) == "1"
-    nuevo = state.ics_token("1", rotate=True)
-    assert nuevo != token
+    new = state.ics_token("1", rotate=True)
+    assert new != token
     assert state.chat_for_ics_token(token) is None  # old link revoked
-    assert state.chat_for_ics_token(nuevo) == "1"
-    assert state.get_user("1")["ics_token"] == nuevo
+    assert state.chat_for_ics_token(new) == "1"
+    assert state.get_user("1")["ics_token"] == new
 
 
 def test_ics_token_format_checked_before_lookup(monkeypatch) -> None:
@@ -263,15 +263,15 @@ def test_migrate_gifs_into_general(db) -> None:
     assert state.migrate_gifs("2") == 0
 
 
-def test_valid_clave() -> None:
-    assert state.valid_clave("ñandú") and state.valid_clave("x_1")
-    assert not state.valid_clave("Comida") and not state.valid_clave("a b")
+def test_valid_key() -> None:
+    assert state.valid_key("ñandú") and state.valid_key("x_1")
+    assert not state.valid_key("Comida") and not state.valid_key("a b")
 
 
-def test_revocar_only_betas(db) -> None:
+def test_revoke_only_betas(db) -> None:
     db.store[("users", "1")] = {"nombre": "Yo", "rol": "owner"}
     db.store[("users", "2")] = {"nombre": "Ana", "rol": "beta"}
-    assert state.revocar("1") is False
-    assert state.revocar("3") is False
-    assert state.revocar("2") is True
+    assert state.revoke("1") is False
+    assert state.revoke("3") is False
+    assert state.revoke("2") is True
     assert state.get_user("2") is None and state.get_user("1") is not None

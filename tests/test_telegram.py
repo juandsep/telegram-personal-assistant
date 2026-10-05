@@ -106,8 +106,8 @@ def test_parse_animation_caption_and_reply() -> None:
     )
 
 
-def test_idioma_from_language_code() -> None:
-    from assistant.i18n import idioma, t
+def test_lang_from_language_code() -> None:
+    from assistant.i18n import lang_of, t
 
     update = {
         "update_id": 1,
@@ -116,13 +116,13 @@ def test_idioma_from_language_code() -> None:
     msg = parse_update(update)
     assert msg is not None and msg.language_code == "zh-hant"
     codes = ("zh-hant", "en-GB", "es-CO", "pt-br", None)
-    assert [idioma(c) for c in codes] == ["zh", "en", "es", "es", "es"]
-    assert t("fr", "visor") == "Visor de gastos"  # unknown: Spanish
+    assert [lang_of(c) for c in codes] == ["zh", "en", "es", "es", "es"]
+    assert t("fr", "viewer") == "Visor de gastos"  # unknown: Spanish
 
 
 @respx.mock
 def test_bot_profile_in_three_languages() -> None:
-    from assistant.admin import AVATAR, COMANDOS, bot_profile
+    from assistant.admin import AVATAR, COMMANDS, bot_profile
 
     routes = {
         m: respx.post(f"{API_BASE}/bot1:x/{m}").mock(
@@ -138,7 +138,7 @@ def test_bot_profile_in_three_languages() -> None:
     bot_profile(Telegram("1:x"), photo=True)
     bodies = [json.loads(c.request.read()) for c in routes["setMyCommands"].calls]
     assert [b["language_code"] for b in bodies] == ["", "en", "zh"]
-    assert [c["command"] for c in bodies[1]["commands"]] == list(COMANDOS)
+    assert [c["command"] for c in bodies[1]["commands"]] == list(COMMANDS)
     for b in bodies:
         for c in b["commands"]:
             assert 1 <= len(c["description"]) <= 256

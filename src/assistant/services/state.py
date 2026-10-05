@@ -1,5 +1,9 @@
 """Firestore state: users, dedup, invites, counters, pending confirmations.
 
+Stored field names are Spanish (nombre = name, rol = role, moneda = currency,
+zona_horaria = time zone, idioma = language, presupuesto = budget); the code
+maps them at this boundary.
+
 Collections (Firestore native):
 
 - ``users/{chat_id}``: nombre, rol (owner|beta), moneda (display currency:
@@ -20,7 +24,7 @@ Collections (Firestore native):
 - ``ics_tokens/{token}``: chat_id of a private ICS feed; ``users.ics_token``
   points back so the link can be shown again or rotated. Never log tokens.
 - ``gif_catalog/{tipo}`` (gasto|ingreso): one shared, owner-curated map
-  ``{clave: [file_id, ...]}`` (max 20 each, newest last). ``clave`` is a gasto
+  ``{key: [file_id, ...]}`` (max 20 each, newest last). ``key`` is a gasto
   categoria, an ingreso fuente or ``general`` (the fallback). A random one is
   sent as a reaction after a registration. File ids are per bot, so staging and
   production keep separate catalogs. Never log file_ids.
@@ -81,13 +85,13 @@ def get_user(chat_id: str) -> dict | None:
 
 def upsert_user(
     chat_id: str,
-    nombre: str,
-    rol: str,
-    moneda: str = "USD",
-    zona_horaria: str = "America/Panama",
+    name: str,
+    role: str,
+    currency: str = "USD",
+    timezone: str = "America/Panama",
 ) -> None:
     _doc("users", chat_id).set(
-        {"nombre": nombre, "rol": rol, "moneda": moneda, "zona_horaria": zona_horaria},
+        {"nombre": name, "rol": role, "moneda": currency, "zona_horaria": timezone},
         merge=True,
     )
 
@@ -104,16 +108,16 @@ def set_fun(chat_id: str, fun: bool) -> None:
     _doc("users", chat_id).set({"fun": fun}, merge=True)
 
 
-def set_idioma(chat_id: str, idioma: str) -> None:
-    _doc("users", chat_id).set({"idioma": idioma}, merge=True)
+def set_lang(chat_id: str, lang: str) -> None:
+    _doc("users", chat_id).set({"idioma": lang}, merge=True)
 
 
-def set_zona(chat_id: str, zona: str) -> None:
-    _doc("users", chat_id).set({"zona_horaria": zona}, merge=True)
+def set_timezone(chat_id: str, tz: str) -> None:
+    _doc("users", chat_id).set({"zona_horaria": tz}, merge=True)
 
 
 # A first guess of the time zone from the currency, until the phone's arrives.
-ZONA_POR_MONEDA = {
+TIMEZONE_BY_CURRENCY = {
     "COP": "America/Bogota",
     "EUR": "Europe/Madrid",
     "CNY": "Asia/Shanghai",
@@ -121,13 +125,13 @@ ZONA_POR_MONEDA = {
 }
 
 
-def set_moneda(chat_id: str, moneda: str) -> None:
+def set_currency(chat_id: str, currency: str) -> None:
     """The display currency; a missing or old-default zone gets a first guess."""
     ref = _doc("users", chat_id)
-    datos = {"moneda": moneda}
+    data = {"moneda": currency}
     if (_data(ref.get()) or {}).get("zona_horaria") in (None, "", "America/Panama"):
-        datos["zona_horaria"] = ZONA_POR_MONEDA[moneda]
-    ref.set(datos, merge=True)
+        data["zona_horaria"] = TIMEZONE_BY_CURRENCY[currency]
+    ref.set(data, merge=True)
 
 
 def list_chat_ids() -> list[str]:
@@ -262,7 +266,7 @@ def pop_pending(chat_id: str, token: str) -> dict | None:
 # --- Google sign-in state -------------------------------------------------------
 
 
-def crear_oauth_state(chat_id: str) -> str:
+def create_oauth_state(chat_id: str) -> str:
     token = secrets.token_urlsafe(16)
     _doc("oauth_states", token).set(
         {"chat_id": chat_id, "expire_at": _now() + PENDING_TTL}
@@ -308,11 +312,11 @@ def append_history(chat_id: str, messages: list[dict]) -> None:
 def ics_token(chat_id: str, rotate: bool = False) -> str:
     """The chat's feed token, created if missing; rotate revokes the old one."""
     user = _doc("users", chat_id)
-    actual = (_data(user.get()) or {}).get("ics_token")
-    if actual and not rotate:
-        return str(actual)
-    if actual:
-        _doc("ics_tokens", actual).delete()
+    current = (_data(user.get()) or {}).get("ics_token")
+    if current and not rotate:
+        return str(current)
+    if current:
+        _doc("ics_tokens", current).delete()
     token = secrets.token_urlsafe(24)
     _doc("ics_tokens", token).set({"chat_id": chat_id})
     user.set({"ics_token": token}, merge=True)
@@ -328,45 +332,45 @@ def chat_for_ics_token(token: str) -> str | None:
 
 # --- reaction GIF catalog -------------------------------------------------------
 
-GIF_TIPOS = ("gasto", "ingreso")
+GIF_KINDS = ("gasto", "ingreso")
 GIF_GENERAL = "general"
-_CLAVE = re.compile(r"\w{1,24}")  # letters (ñ, accents), digits and _
+_KEY = re.compile(r"\w{1,24}")  # letters (ñ, accents), digits and _
 
 
-def valid_clave(clave: str) -> bool:
-    return bool(_CLAVE.fullmatch(clave)) and clave == clave.lower()
+def valid_key(key: str) -> bool:
+    return bool(_KEY.fullmatch(key)) and key == key.lower()
 
 
-def gif_catalog(tipo: str) -> dict[str, list[str]]:
-    data = _data(_doc("gif_catalog", tipo).get()) or {}
+def gif_catalog(kind: str) -> dict[str, list[str]]:
+    data = _data(_doc("gif_catalog", kind).get()) or {}
     return {k: list(v) for k, v in data.items()}
 
 
-def add_gif(tipo: str, clave: str, file_id: str) -> None:
+def add_gif(kind: str, key: str, file_id: str) -> None:
     """Newest last; a repeated file_id moves to the end; keeps the last 20."""
-    catalog = gif_catalog(tipo)
-    ids = [f for f in catalog.get(clave, []) if f != file_id] + [file_id]
+    catalog = gif_catalog(kind)
+    ids = [f for f in catalog.get(key, []) if f != file_id] + [file_id]
     # ponytail: read-modify-write without a transaction; one curator (the owner).
-    _doc("gif_catalog", tipo).set({**catalog, clave: ids[-GIF_MAX:]})
+    _doc("gif_catalog", kind).set({**catalog, key: ids[-GIF_MAX:]})
 
 
 def remove_gif(file_id: str) -> int:
-    """Drop a file_id from every tipo and clave; returns how many were removed."""
+    """Drop a file_id from every kind and key; returns how many were removed."""
     removed = 0
-    for tipo in GIF_TIPOS:
-        catalog = gif_catalog(tipo)
+    for kind in GIF_KINDS:
+        catalog = gif_catalog(kind)
         kept = {k: [f for f in v if f != file_id] for k, v in catalog.items()}
         n = sum(map(len, catalog.values())) - sum(map(len, kept.values()))
         if n:
-            _doc("gif_catalog", tipo).set({k: v for k, v in kept.items() if v})
+            _doc("gif_catalog", kind).set({k: v for k, v in kept.items() if v})
             removed += n
     return removed
 
 
-def random_gif(tipo: str, clave: str) -> str | None:
-    """A GIF of the movement's clave, else of ``general``; None when both empty."""
-    catalog = gif_catalog(tipo)
-    ids = catalog.get(clave) or catalog.get(GIF_GENERAL) or []
+def random_gif(kind: str, key: str) -> str | None:
+    """A GIF of the entry's key, else of ``general``; None when both empty."""
+    catalog = gif_catalog(kind)
+    ids = catalog.get(key) or catalog.get(GIF_GENERAL) or []
     return secrets.choice(ids) if ids else None
 
 
@@ -374,9 +378,9 @@ def migrate_gifs(chat_id: str) -> int:
     """Copy a chat's old ``gifs/{chat_id}`` lists into ``general``."""
     old = _data(_doc("gifs", chat_id).get()) or {}
     n = 0
-    for tipo in GIF_TIPOS:
-        for file_id in old.get(tipo, []):
-            add_gif(tipo, GIF_GENERAL, file_id)
+    for kind in GIF_KINDS:
+        for file_id in old.get(kind, []):
+            add_gif(kind, GIF_GENERAL, file_id)
             n += 1
     return n
 
@@ -386,27 +390,27 @@ def migrate_gifs(chat_id: str) -> int:
 OWNER_ONLY = "Solo el owner puede hacer eso."
 
 
-def invitar_beta(ctx: ToolContext, nombre: str) -> str:
-    if ctx.rol != "owner":
+def invite_beta(ctx: ToolContext, name: str) -> str:
+    if ctx.role != "owner":
         return OWNER_ONLY
-    code = crear_invitacion(nombre)
-    return f"Invitación para {nombre}: /start {code} (un uso, válida 24 h)."
+    code = create_invite(name)
+    return f"Invitación para {name}: /start {code} (un uso, válida 24 h)."
 
 
-def crear_invitacion(nombre: str) -> str:
+def create_invite(name: str) -> str:
     """Single-use code, valid 24 h; also the payload of a t.me deep link."""
     code = secrets.token_urlsafe(16)
     _doc("invites", code).set(
-        {"nombre": nombre, "used": False, "expire_at": _now() + INVITE_TTL}
+        {"nombre": name, "used": False, "expire_at": _now() + INVITE_TTL}
     )
     return code
 
 
-def usuarios() -> list[tuple[str, dict]]:
+def all_users() -> list[tuple[str, dict]]:
     return [(s.id, s.to_dict() or {}) for s in _db().collection("users").stream()]
 
 
-def revocar(chat_id: str) -> bool:
+def revoke(chat_id: str) -> bool:
     """Remove a beta from the allowlist; the owner cannot be revoked. Their
     data stays (ledger, agenda), so a new invite restores access."""
     ref = _doc("users", chat_id)
@@ -416,8 +420,8 @@ def revocar(chat_id: str) -> bool:
     return True
 
 
-def listar_usuarios(ctx: ToolContext) -> str:
-    if ctx.rol != "owner":
+def list_users(ctx: ToolContext) -> str:
+    if ctx.role != "owner":
         return OWNER_ONLY
     users = [s.to_dict() or {} for s in _db().collection("users").stream()]
     return "\n".join(f"{u.get('nombre', '?')} ({u.get('rol', '?')})" for u in users)

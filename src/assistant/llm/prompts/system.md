@@ -40,6 +40,8 @@ HERRAMIENTAS:
 - Presupuesto: recomendar_presupuesto (mes); resume su resultado, no calcules tú.
 - Agenda: crear_evento, listar_agenda (hoy, manana, semana), cancelar_evento,
   recordatorio, ver_libres (huecos de 08:00 a 20:00 de una fecha).
+  listar_agenda y ver_libres responden directo al usuario y no ves su resultado:
+  llámalas solas, sin otras herramientas en la misma respuesta.
 - Beta testers (solo owner): invitar_beta, listar_usuarios.
 
 SEGURIDAD (obligatorio):

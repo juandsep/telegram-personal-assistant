@@ -198,6 +198,11 @@ TOOLS: dict[str, tuple[type[_Args], str]] = {
     "listar_usuarios": (ListarUsuarios, "assistant.services.state:listar_usuarios"),
 }
 OWNER_ONLY = frozenset({"invitar_beta", "listar_usuarios"})
+# Their output can hold the connected calendar's busy times: it goes to the user
+# as is and never back to the LLM (Google user data stays out of the model).
+DIRECT = frozenset({"listar_agenda", "ver_libres"})
+# Their confirmation question can name those busy times (a clash).
+CLASH = frozenset({"crear_evento", "recordatorio"})
 
 # DeepSeek strict mode supports neither these keywords nor date formats.
 _DROP = {"title", "default", "format", "minLength", "maxLength", "minItems", "maxItems"}

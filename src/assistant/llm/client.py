@@ -24,6 +24,8 @@ from assistant.config import get_worker_settings
 from assistant.context import ToolContext
 from assistant.i18n import NOMBRE
 from assistant.llm.tools import (
+    CLASH,
+    DIRECT,
     TOOL_SPECS,
     TOOLS_JSON,
     ToolRejected,
@@ -39,6 +41,7 @@ MAX_ROUNDS = 3
 HISTORY_MESSAGES = 12  # 6 turns of user + assistant
 TIMEOUT_S = 30.0
 FALLBACK_REPLY = "No pude completarlo, intenta de nuevo."
+PRIVATE_REPLY = "(agenda mostrada al usuario)"
 _DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 _MILLION = Decimal(1_000_000)
 
@@ -60,6 +63,7 @@ class TurnResult:
     tokens_out: int
     cost_usd: Decimal
     rejected: int
+    private: bool = False  # the reply holds calendar data: kept out of history
 
 
 def _context_message(ctx: ToolContext) -> dict[str, str]:
@@ -148,10 +152,14 @@ def run_turn(ctx: ToolContext, text: str, history: list[dict[str, Any]]) -> Turn
         + result.tokens_miss * settings.price_in_miss
         + result.tokens_out * settings.price_out
     ) / _MILLION
-    # History keeps only the text turns: short, and never a dangling tool call.
+    # History keeps only the text turns: short, and never a dangling tool call;
+    # a reply with calendar data is never sent to the LLM again.
     result.messages = [
         {"role": "user", "content": text},
-        {"role": "assistant", "content": result.reply},
+        {
+            "role": "assistant",
+            "content": PRIVATE_REPLY if result.private else result.reply,
+        },
     ]
     return result
 
@@ -176,6 +184,12 @@ def _run_calls(
             result.tools.append(name)
         if token:
             result.reply, result.keyboard = content, buttons(token)
+            result.private = name in CLASH
+            return True
+        if name in DIRECT and name in result.tools:
+            # ponytail: later calls of the same round are dropped; the prompt
+            # asks for these tools alone.
+            result.reply, result.private = content, True
             return True
         messages.append(
             {"role": "tool", "tool_call_id": call.get("id", ""), "content": content}

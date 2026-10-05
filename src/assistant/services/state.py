@@ -420,6 +420,22 @@ def revoke(chat_id: str) -> bool:
     return True
 
 
+def reset_user(chat_id: str) -> None:
+    """Erase everything stored for the chat except its access (nombre, rol):
+    ledger, agenda, LLM history, preferences, settings and the feed link. The
+    rate and spend counters stay, so a reset never lifts the daily LLM cap."""
+    db = _db()
+    user = _doc("users", chat_id)
+    data = _data(user.get()) or {}
+    if token := data.get("ics_token"):
+        _doc("ics_tokens", token).delete()
+    for name in ("ledger", "agenda"):  # the doc plus movimientos / eventos
+        db.recursive_delete(db.collection(name).document(chat_id))
+    for name in ("history", "preferences"):
+        _doc(name, chat_id).delete()
+    user.set({k: data[k] for k in ("nombre", "rol") if k in data})
+
+
 def list_users(ctx: ToolContext) -> str:
     if ctx.role != "owner":
         return OWNER_ONLY

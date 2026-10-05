@@ -190,6 +190,32 @@ Subscriptions are read-only and refreshed by the app, not pushed (Outlook and
 Google take hours), so a new appointment may take a while to show there. The
 Telegram reminder does not depend on that refresh.
 
+## Talking to Juani
+
+Questions about the bot itself or small talk ("¿cómo te llamas?", "¿quién te
+creó?", "gracias") go to the LLM, which answers in one or two warm sentences
+without tools. The system prompt (`src/assistant/llm/prompts/system.md`) holds
+the identity: the name is Juani, created in September 2026, creator unknown for
+now. Change it there; the prompt version bumps on its own.
+
+## Starting over (`/reset`)
+
+`/reset` (or `reset`, `reiniciar`, `borrar todo`) asks first, with
+**🗑 Sí, borrar todo** / **Cancelar** buttons. Confirming:
+
+- disconnects a linked calendar (revokes the Google grant),
+- deletes the chat's ledger, agenda (pending reminders then fire into nothing),
+  LLM history, preferences, settings (currency, time zone, `/fun`) and the
+  calendar feed link (`state.reset_user`),
+- deletes the chat's recent messages with `deleteMessages`, best effort:
+  Telegram lets a bot delete only messages from the last 48 h, so the reply
+  points to Telegram's own **Clear history** for older ones.
+
+Access stays (`users.nombre`, `users.rol`), so the user keeps using the bot
+from scratch. The daily rate and LLM spend counters also stay, so a reset never
+lifts the cap. Events already copied to the user's own Google Calendar and the
+nightly backups and ledger CSV exports in GCS are not touched.
+
 ## Command list
 
 | Command | What it does |
@@ -202,6 +228,7 @@ Telegram reminder does not depend on that refresh.
 | `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/fun` | GIF replies on or off |
 | `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
+| `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |
 | `/invitar <name>`, `/usuarios`, `/gif` | Owner only, not in the menu |

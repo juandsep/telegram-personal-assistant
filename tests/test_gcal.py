@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 import re
@@ -12,8 +13,8 @@ import pytest
 import respx
 from google.cloud import firestore
 
+from assistant.config import WorkerSettings, get_worker_settings
 from assistant.context import ToolContext
-from assistant.i18n import t
 from assistant.services import gcal
 
 CAL = "yo.secreto@gmail.com"
@@ -66,71 +67,135 @@ def test_event_id_is_deterministic_and_valid_for_google() -> None:
     assert re.fullmatch(r"[a-v0-9]{5,1024}", gid) and gcal._MIO.fullmatch(gid)
 
 
-# --- vincular --------------------------------------------------------------------
+# --- Google sign-in (OAuth) ------------------------------------------------------
 
 
-@respx.mock
-def test_vincular_probes_write_access_and_stores(db: MagicMock) -> None:
-    insert = respx.post(EVENTS).respond(200, json={"id": "probe1"})
-    delete = respx.delete(f"{EVENTS}/probe1").respond(204)
-    assert (
-        gcal.vincular(ctx(), f" {CAL} ")
-        == "✓ Google Calendar vinculado (0 eventos copiados)."
+@pytest.fixture
+def oauth(monkeypatch: pytest.MonkeyPatch) -> WorkerSettings:
+    s = dataclasses.replace(
+        get_worker_settings(),
+        api_url="https://api.example",
+        kms_key="k",
+        google_client_id="cid",
+        google_client_secret="csecret",  # noqa: S106 # pragma: allowlist secret
     )
-    assert insert.calls[0].request.headers["Authorization"] == "Bearer tok"
-    assert delete.called
-    db.collection.assert_any_call("preferences")
-    db.collection().document.assert_any_call("42")
-    db.collection().document().set.assert_called_once_with({"gcal_id": CAL}, merge=True)
+    monkeypatch.setattr(gcal, "get_worker_settings", lambda: s)
+    monkeypatch.setattr(gcal.crypto, "encrypt", lambda k, p, c: f"enc({p},{c})")
+    monkeypatch.setattr(gcal.crypto, "decrypt", lambda k, e, c: e[4:-4])
+    gcal._tokens.clear()
+    return s
 
 
-@pytest.mark.parametrize("code", [403, 404])
-def test_vincular_without_access(
-    db: MagicMock, caplog: pytest.LogCaptureFixture, code: int
-) -> None:
-    caplog.set_level(logging.DEBUG)
-    with respx.mock:
-        respx.post(EVENTS).respond(code)
-        assert gcal.vincular(ctx(), CAL) == t("es", "gcal_sin_acceso", sa=gcal.SA_EMAIL)
-    assert "assistant-worker@jd-botjonh" in t("es", "gcal_sin_acceso", sa=gcal.SA_EMAIL)
-    db.collection().document().set.assert_not_called()
-    assert "secreto" not in caplog.text
+def test_auth_url_asks_offline_calendar_events_only(oauth: WorkerSettings) -> None:
+    url = httpx.URL(gcal.auth_url(oauth, "st"))
+    assert str(url).startswith(gcal.AUTH_URL)
+    assert dict(url.params) == {
+        "client_id": "cid",
+        "redirect_uri": "https://api.example/oauth/google/callback",
+        "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/calendar.events",
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "state": "st",
+    }
 
 
 @respx.mock
-def test_vincular_network_error(db: MagicMock) -> None:
-    respx.post(EVENTS).mock(side_effect=httpx.ConnectTimeout("t"))
-    assert gcal.vincular(ctx(), CAL).startswith("No pude verificar")
-    db.collection().document().set.assert_not_called()
+def test_conectar_stores_the_encrypted_refresh_token(
+    oauth: WorkerSettings, db: MagicMock
+) -> None:
+    body = {"access_token": "at", "refresh_token": "rt", "expires_in": 3599}
+    token = respx.post(gcal.TOKEN_URL).respond(200, json=body)
+    gcal.conectar("42", "c0de", oauth)
+    sent = dict(httpx.QueryParams(token.calls[0].request.read().decode()))
+    assert sent["code"] == "c0de" and sent["grant_type"] == "authorization_code"
+    assert sent["redirect_uri"] == "https://api.example/oauth/google/callback"
+    db.collection().document().set.assert_called_once_with(
+        {
+            "gcal_token_enc": "enc(rt,42)",
+            "gcal_id": firestore.DELETE_FIELD,
+            "ics_url_enc": firestore.DELETE_FIELD,
+            "ics_url": firestore.DELETE_FIELD,
+        },
+        merge=True,
+    )
+    assert gcal._tokens["42"][2] == "at"  # the first access token is reused
 
 
 @pytest.mark.parametrize(
-    "bad", ["no-arroba", "a@b", "x" * 191 + "@gmail.com", "a b@gmail.com", "../x@y.co"]
+    "response", [httpx.Response(200, json={"access_token": "at"}), httpx.Response(400)]
 )
-def test_vincular_rejects_bad_ids_without_calls(db: MagicMock, bad: str) -> None:
-    with respx.mock:  # any request would fail as unmatched
-        assert gcal.vincular(ctx(), bad) == "Id de calendario no válido."
+def test_conectar_without_refresh_token_stores_nothing(
+    oauth: WorkerSettings, db: MagicMock, response: httpx.Response
+) -> None:
+    with respx.mock:
+        respx.post(gcal.TOKEN_URL).mock(return_value=response)
+        with pytest.raises((ValueError, httpx.HTTPStatusError)):
+            gcal.conectar("42", "c0de", oauth)
     db.collection().document().set.assert_not_called()
 
 
-def test_vincular_accepts_group_calendars(db: MagicMock) -> None:
-    group = "abc123@group.calendar.google.com"
-    with respx.mock:
-        respx.post(f"{gcal.API}/calendars/{group.replace('@', '%40')}/events").respond(
-            200, json={"id": "p"}
-        )
-        respx.delete(url__regex=r".*/events/p").respond(204)
-        assert (
-            gcal.vincular(ctx(), group)
-            == "✓ Google Calendar vinculado (0 eventos copiados)."
-        )
-
-
-def test_vincular_off_unlinks(db: MagicMock) -> None:
-    assert gcal.vincular(ctx(), "OFF") == "Google Calendar desvinculado."
-    db.collection().document().set.assert_called_once_with(
-        {"gcal_id": firestore.DELETE_FIELD}, merge=True
+@respx.mock
+def test_user_token_calls_primary_and_is_cached(
+    oauth: WorkerSettings, prefs: dict
+) -> None:
+    prefs.clear()
+    prefs["gcal_token_enc"] = "enc(rt,42)"
+    token = respx.post(gcal.TOKEN_URL).respond(
+        200, json={"access_token": "user-at", "expires_in": 3599}
     )
+    primary = f"{gcal.API}/calendars/primary/events"
+    events = respx.get(primary).respond(200, json={"items": []})
+    insert = respx.post(primary).respond(200, json={})
+    assert gcal.ocupados("42", DESDE, HASTA) == []
+    gcal.espejo_crear(ctx(), "100", EVENTO)
+    assert token.call_count == 1  # refreshed once, then cached
+    assert dict(httpx.QueryParams(token.calls[0].request.read().decode())) == {
+        "client_id": "cid",
+        "client_secret": "csecret",  # pragma: allowlist secret
+        "refresh_token": "rt",
+        "grant_type": "refresh_token",
+    }
+    for route in (events, insert):
+        assert route.calls[0].request.headers["Authorization"] == "Bearer user-at"
+
+
+def test_revoked_grant_unlinks(
+    oauth: WorkerSettings,
+    prefs: dict,
+    db: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    prefs.clear()
+    prefs["gcal_token_enc"] = "enc(rt,42)"
+    with respx.mock:  # no Calendar call either
+        respx.post(gcal.TOKEN_URL).respond(400, json={"error": "invalid_grant"})
+        assert gcal.ocupados("42", DESDE, HASTA) == []
+    db.collection().document().set.assert_called_once_with(
+        {"gcal_token_enc": firestore.DELETE_FIELD}, merge=True
+    )
+    assert "gcal_token_revoked" in caplog.text and "rt" not in caplog.text
+
+
+@respx.mock
+def test_desconectar_revokes_and_clears_every_calendar(
+    oauth: WorkerSettings, prefs: dict, db: MagicMock
+) -> None:
+    prefs["gcal_token_enc"] = "enc(rt,42)"
+    revoke = respx.post(gcal.REVOKE_URL).respond(200)
+    gcal.desconectar("42")
+    assert revoke.calls[0].request.read() == b"token=rt"
+    fields = ("gcal_token_enc", "gcal_id", "ics_url_enc", "ics_url")
+    db.collection().document().set.assert_called_once_with(
+        {f: firestore.DELETE_FIELD for f in fields}, merge=True
+    )
+
+
+def test_desconectar_legacy_needs_no_revoke(prefs: dict, db: MagicMock) -> None:
+    with respx.mock:  # any request would fail as unmatched
+        gcal.desconectar("42")
+    db.collection().document().set.assert_called_once()
 
 
 # --- mirror ----------------------------------------------------------------------
@@ -265,6 +330,14 @@ def test_ocupados_failure_is_empty(
             respx.get(EVENTS).mock(return_value=response)
         assert gcal.ocupados("42", DESDE, HASTA) == []
     assert "gcal_busy_failed" in caplog.text and "secreto" not in caplog.text
+
+
+def test_legacy_shared_calendar_uses_the_service_account(prefs: dict) -> None:
+    assert "gcal_token_enc" not in prefs  # only the old gcal_id
+    with respx.mock:
+        route = respx.get(EVENTS).respond(200, json={"items": []})
+        assert gcal.ocupados("42", DESDE, HASTA) == []
+    assert route.calls[0].request.headers["Authorization"] == "Bearer tok"
 
 
 def test_ocupados_unlinked_is_empty(prefs: dict) -> None:

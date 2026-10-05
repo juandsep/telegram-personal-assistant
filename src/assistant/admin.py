@@ -30,8 +30,6 @@ COMANDOS = (
     "calendario",
     "fun",
     "moneda",
-    "vincular",
-    "conectar",
     "ayuda",
 )
 

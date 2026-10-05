@@ -182,6 +182,18 @@ def test_pending_expired(db) -> None:
     assert ("pending", token) not in db.store
 
 
+def test_oauth_state_single_use_and_expiry(db) -> None:
+    token = state.crear_oauth_state("1")
+    assert db.store[("oauth_states", token)]["expire_at"] > datetime.now(UTC)
+    assert state.consume_oauth_state(token) == "1"
+    assert state.consume_oauth_state(token) is None  # single use
+    old = state.crear_oauth_state("1")
+    db.store[("oauth_states", old)]["expire_at"] = datetime.now(UTC)
+    assert state.consume_oauth_state(old) is None
+    assert ("oauth_states", old) not in db.store
+    assert state.consume_oauth_state("../users/1") is None
+
+
 def test_history_keeps_last_turns(db) -> None:
     assert state.get_history("1") == []
     for i in range(8):

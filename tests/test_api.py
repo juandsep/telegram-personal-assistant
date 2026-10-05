@@ -7,14 +7,18 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 from urllib.parse import urlencode
 
+import httpx
 import pytest
+import respx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from firestore_fake import FakeDB
 
 from assistant import api
 from assistant.app import app
-from assistant.services import agenda, fx, ledger, pubsub, state
+from assistant.config import get_worker_settings
+from assistant.i18n import t
+from assistant.services import agenda, fx, gcal, ledger, pubsub, state
 
 URL = "/tg/test-path"
 HEADERS = {"X-Telegram-Bot-Api-Secret-Token": "test-secret"}  # pragma: allowlist secret
@@ -182,6 +186,101 @@ def test_ics_feed(ics_db, caplog) -> None:
     assert agenda._items.call_args.args[0] == "42"
     ours = [r.getMessage() for r in caplog.records if r.name.startswith("assistant")]
     assert ours == ["ics status=200"]  # the token never reaches our logs
+
+
+def test_ics_subscribe_redirects_to_webcal(ics_db) -> None:
+    resp = client.get(f"/ics/{'t' * 32}/suscribir", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == f"webcal://testserver/ics/{'t' * 32}.ics"
+    assert client.get(f"/ics/{'u' * 32}/suscribir").status_code == 404
+    ics_db.collection.reset_mock()
+    assert client.get("/ics/short/suscribir").status_code == 404
+    ics_db.collection.assert_not_called()
+
+
+# --- Google sign-in --------------------------------------------------------------
+
+STATE = "s" * 22
+
+
+@pytest.fixture
+def oauth(monkeypatch):
+    s = dataclasses.replace(
+        get_worker_settings(),
+        api_url="https://api.example",
+        kms_key="k",
+        google_client_id="cid",
+        google_client_secret="csecret",  # pragma: allowlist secret
+    )
+    monkeypatch.setattr(api, "get_worker_settings", lambda: s)
+    states = {STATE: "42"}
+    monkeypatch.setattr(state, "consume_oauth_state", lambda tok: states.pop(tok, None))
+    monkeypatch.setattr(state, "get_user", {"42": {"idioma": "en", "rol": "beta"}}.get)
+    db = MagicMock()
+    monkeypatch.setattr(gcal, "_db", lambda: db)
+    monkeypatch.setattr(gcal.crypto, "encrypt", lambda k, p, c: f"enc({p})")
+    monkeypatch.setattr(gcal, "_backfill", MagicMock(return_value=2))
+    return db
+
+
+def test_oauth_start_redirects_to_google(oauth) -> None:
+    resp = client.get(f"/oauth/google?s={STATE}", follow_redirects=False)
+    assert resp.status_code == 302
+    url = httpx.URL(resp.headers["location"])
+    assert str(url).startswith(gcal.AUTH_URL)
+    assert url.params["state"] == STATE and url.params["access_type"] == "offline"
+    assert url.params["redirect_uri"] == "https://api.example/oauth/google/callback"
+    assert client.get("/oauth/google?s=bad/state").status_code == 404
+
+
+def test_oauth_start_refused_without_client(monkeypatch) -> None:
+    unset = dataclasses.replace(get_worker_settings(), google_client_id="")
+    monkeypatch.setattr(api, "get_worker_settings", lambda: unset)
+    assert client.get(f"/oauth/google?s={STATE}").status_code == 404
+
+
+def test_oauth_callback_links_and_notifies(oauth, caplog) -> None:
+    caplog.set_level("INFO")
+    with respx.mock:
+        respx.post(gcal.TOKEN_URL).respond(
+            200, json={"access_token": "at", "refresh_token": "rt", "expires_in": 3599}
+        )
+        sent = respx.post(url__regex=r".*/sendMessage").respond(200, json={"ok": True})
+        resp = client.get(f"/oauth/google/callback?code=c0de&state={STATE}")
+    assert resp.status_code == 200 and "Done, go back to Telegram" in resp.text
+    assert resp.headers["cache-control"] == "no-store"
+    assert json.loads(sent.calls[0].request.read()) == {
+        "chat_id": "42",
+        "text": t("en", "gcal_vinculado", n=2),
+    }
+    stored = oauth.collection().document().set.call_args.args[0]
+    assert stored["gcal_token_enc"] == "enc(rt)"
+    assert gcal._backfill.call_args.args[0].chat_id == "42"
+    for secret in ("c0de", STATE, "rt", "42"):
+        assert secret not in caplog.text
+    # single use: the same link again fails without calling Google
+    with respx.mock:
+        again = client.get(f"/oauth/google/callback?code=c0de&state={STATE}")
+    assert again.status_code == 400 and "No se pudo conectar" in again.text
+
+
+@pytest.mark.parametrize(
+    "query", [f"error=access_denied&state={STATE}", "code=c&state=x", "code=c"]
+)
+def test_oauth_callback_denied_or_bad_state(oauth, query) -> None:
+    with respx.mock:  # any request would fail as unmatched
+        resp = client.get(f"/oauth/google/callback?{query}")
+    assert resp.status_code == 400
+    oauth.collection().document().set.assert_not_called()
+
+
+def test_oauth_callback_token_failure(oauth, caplog) -> None:
+    with respx.mock:
+        respx.post(gcal.TOKEN_URL).respond(400, json={"error": "invalid_grant"})
+        resp = client.get(f"/oauth/google/callback?code=c0de&state={STATE}")
+    assert resp.status_code == 502 and "Couldn't connect" in resp.text
+    assert "oauth_callback status=failed error=HTTPStatusError" in caplog.text
+    oauth.collection().document().set.assert_not_called()
 
 
 def test_caption_only_gif_from_known_chat_published(fake) -> None:

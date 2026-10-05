@@ -156,11 +156,13 @@ resource "google_artifact_registry_repository" "images" {
 #   printf '%s' "$VALUE" | gcloud secrets versions add NAME --data-file=-
 locals {
   secrets = [
-    "assistant-bot-token",         # Telegram bot token (@BotFather)
-    "assistant-bot-token-staging", # test bot for the staging services
-    "assistant-webhook-secret",    # X-Telegram-Bot-Api-Secret-Token
-    "assistant-webhook-path",      # webhook route secret (32 random chars)
-    "assistant-deepseek-key",      # DeepSeek API key
+    "assistant-bot-token",                  # Telegram bot token (@BotFather)
+    "assistant-bot-token-staging",          # test bot for the staging services
+    "assistant-webhook-secret",             # X-Telegram-Bot-Api-Secret-Token
+    "assistant-webhook-path",               # webhook route secret (32 random chars)
+    "assistant-deepseek-key",               # DeepSeek API key
+    "assistant-google-oauth-client-id",     # OAuth web client: Conectar → Google
+    "assistant-google-oauth-client-secret", # its secret
   ]
 }
 
@@ -231,6 +233,7 @@ resource "google_secret_manager_secret_iam_member" "worker_reads_secrets" {
   for_each = toset([
     "assistant-bot-token", "assistant-bot-token-staging", "assistant-deepseek-key",
     "assistant-webhook-secret", "assistant-webhook-path",
+    "assistant-google-oauth-client-id", "assistant-google-oauth-client-secret",
   ])
   secret_id = google_secret_manager_secret.secret[each.value].id
   role      = "roles/secretmanager.secretAccessor"
@@ -526,8 +529,8 @@ module "budget_guard" {
   source_bucket   = google_storage_bucket.functions.name
 }
 
-# Encrypts each user's secret iCal URL before it reaches Firestore (and so the
-# backups). Key rings and keys cannot be deleted in GCP, hence prevent_destroy.
+# Encrypts each user's secret iCal URL and Google refresh token before they
+# reach Firestore (and so the backups). Key rings and keys cannot be deleted in GCP, hence prevent_destroy.
 resource "google_kms_key_ring" "botjonh" {
   name       = "botjonh"
   location   = var.region

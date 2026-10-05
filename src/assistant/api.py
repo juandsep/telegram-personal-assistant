@@ -7,7 +7,10 @@ the dedup marker and, for ``/start <code>`` from an unknown chat, the invite
 redemption.
 
 Also serves each chat's agenda as a private ICS feed at ``/ics/{token}.ics``
-(read-only; the token is the only secret, so it is never logged), and a
+(read-only; the token is the only secret, so it is never logged; its
+``/suscribir`` twin redirects to ``webcal://`` for a one-tap subscription), the
+Google sign-in that connects a chat's Google Calendar (``/oauth/google``, with a
+single-use state from the chat; codes and tokens are never logged), and a
 month's ledger as a Telegram Mini App at ``/visor``: the page posts Telegram's
 signed initData to ``/visor/datos``, checked with Telegram's Ed25519 public key
 (no bot token here, no secret in the URL).
@@ -31,11 +34,13 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import APIRouter, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from assistant.channels.telegram import parse_update
-from assistant.config import get_api_settings
-from assistant.services import agenda, pubsub, state, tablero
+from assistant.channels.telegram import Telegram, parse_update
+from assistant.config import get_api_settings, get_worker_settings
+from assistant.context import ToolContext
+from assistant.i18n import t
+from assistant.services import agenda, gcal, pubsub, state, tablero
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -117,6 +122,81 @@ def ics_feed(token: str) -> Response:
         media_type="text/calendar; charset=utf-8",
         headers={"Cache-Control": "private, max-age=300"},
     )
+
+
+@router.get("/ics/{token}/suscribir")
+def ics_suscribir(token: str, request: Request) -> Response:
+    """Telegram link buttons take http(s) only; calendar apps open webcal://."""
+    if state.chat_for_ics_token(token) is None:
+        logger.info("ics_subscribe status=404")
+        return Response(status_code=404)
+    logger.info("ics_subscribe status=302")
+    feed = f"webcal://{request.url.netloc}/ics/{token}.ics"
+    return RedirectResponse(feed, status_code=302, headers=DASH_HEADERS)
+
+
+def _pagina(lang: str, clave: str, status: int = 200) -> Response:
+    body = (
+        f'<!doctype html><html lang="{lang}"><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>Juani</title><p>{t(lang, clave)}</p></html>"
+    )
+    return HTMLResponse(body, status_code=status, headers=DASH_HEADERS)
+
+
+@router.get("/oauth/google")
+def oauth_google(s: str = "") -> Response:
+    """The Telegram button lands here: on to Google's consent page."""
+    settings = get_worker_settings()
+    if not settings.google_client_id or not state._TOKEN.fullmatch(s):
+        logger.info("oauth_start status=404")
+        return _pagina("es", "oauth_error", 404)
+    logger.info("oauth_start status=302")
+    return RedirectResponse(gcal.auth_url(settings, s), 302, headers=DASH_HEADERS)
+
+
+@router.get(gcal.CALLBACK)
+def oauth_google_callback(request: Request) -> Response:
+    """Google comes back with ?code&state (or ?error): store the grant, tell
+    the chat in Telegram and copy its upcoming events."""
+    q = request.query_params
+    chat_id = state.consume_oauth_state(q.get("state", ""))
+    user = state.get_user(chat_id) if chat_id else None
+    if user is None:  # bogus, used, expired, or not (any longer) a user
+        logger.info("oauth_callback status=bad_state")
+        return _pagina("es", "oauth_error", 400)
+    lang = user.get("idioma", "es")
+    settings = get_worker_settings()
+    if q.get("error") or not q.get("code"):  # the user said no
+        logger.info("oauth_callback status=denied")
+        return _pagina(lang, "oauth_error", 400)
+    if not settings.kms_key:  # fail closed: never store the token in clear
+        logger.warning("oauth_callback status=no_kms_key")
+        return _pagina(lang, "oauth_error", 503)
+    try:
+        gcal.conectar(str(chat_id), q["code"], settings)
+    except Exception as exc:  # the body may echo tokens: class only
+        logger.error("oauth_callback status=failed error=%s", type(exc).__name__)
+        return _pagina(lang, "oauth_error", 502)
+    zona = user.get("zona_horaria") or settings.default_timezone
+    ctx = ToolContext(
+        chat_id=str(chat_id),
+        rol=user.get("rol", "beta"),
+        moneda=user.get("moneda", "USD"),
+        zona_horaria=zona,
+        update_id=0,
+        ahora=datetime.now(ZoneInfo(zona)),
+        idioma=lang,
+    )
+    try:
+        n = gcal._backfill(ctx)
+        Telegram(settings.telegram_bot_token).send_message(
+            ctx.chat_id, t(lang, "gcal_vinculado", n=n)
+        )
+    except Exception as exc:  # linked anyway; the page still says done
+        logger.warning("oauth_notify_failed error=%s", type(exc).__name__)
+    logger.info("oauth_callback status=200")
+    return _pagina(lang, "oauth_ok")
 
 
 @router.get("/visor")

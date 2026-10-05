@@ -155,40 +155,39 @@ Natural language works in any of the three languages: "reunión con Ana mañana
 3pm", "remind me to pay the power bill Friday 9am", "我周四有空吗？".
 
 - **Conflicts:** before scheduling, the code checks the agenda and the busy
-  blocks of a connected calendar (`/conectar <url>`); on a clash it asks with
+  blocks of the connected calendar (see below); on a clash it asks with
   buttons whether to schedule anyway. "¿Qué tengo libre el jueves?" lists free
   slots between 08:00 and 20:00.
 - **`/calendario`** lists the next 7 days, one line per day, without the LLM:
-  `Jue 2 · 09:00 Dentista · 16:00 Llamada banco`.
+  `Jue 2 · 09:00 Dentista · 16:00 Llamada banco`, with a **🔗 Conectar
+  calendario** button (or **🔌 Desconectar …** when one is connected).
 - **Reminders** arrive on Telegram at the exact minute (Cloud Tasks, at
   `start - reminder_min`). Tasks are scheduled at most 30 days ahead; later
   ones are queued by the morning digest once within 30 days. Cancelling deletes
   the task.
 
-### Google Calendar (instant)
+### Connecting your calendar
 
-Share your Google Calendar with
-`assistant-worker@jd-botjonh.iam.gserviceaccount.com` (Settings → your calendar
-→ Share with specific people → **Make changes to events**), then send
-`/vincular <calendar_id>` (for a personal account the primary calendar id is
-your Gmail address; `/vincular off` unlinks). From then on every create and
-cancel is mirrored there within seconds, and conflicts read that calendar
-directly. Firestore stays the source of truth; the mirror is best effort.
+`calendario` → **🔗 Conectar calendario** → pick one calendar (connecting one
+replaces the other; **🔌 Desconectar** or `/calendario off` removes it):
 
-### Subscribe from your calendar app
+- **Google:** a button opens Google's sign-in (valid 10 minutes); allow access
+  to your calendar's events. The bot says when it is done and copies your
+  upcoming items. From then on every create and cancel is mirrored to your main
+  Google Calendar within seconds, and conflicts read it directly. Firestore
+  stays the source of truth; the mirror is best effort. Google shows an
+  "unverified app" notice: Advanced → Go to Juani.
+- **iPhone / Outlook:** **📅 Suscribirme** opens your calendar app on your
+  private feed (`$API_URL/ics/<token>.ics`, as `webcal://`). Anyone with that
+  link can read your agenda, so `/calendario nuevo` replaces it and revokes the
+  old one. Optionally, paste your calendar's secret iCal link in the chat to
+  get clash warnings too (the bot deletes the message): iPhone Calendar →
+  calendar info → Public Calendar; Outlook → Settings → Shared calendars →
+  Publish; Google → Settings → Integrate calendar → Secret address in iCal
+  format.
 
-`/calendario enlace` replies with your private URL (`$API_URL/ics/<token>.ics`);
-anyone with it can read your agenda, so `/calendario nuevo` replaces it and
-revokes the old one.
-
-- **Google Calendar (web):** Other calendars → **+** → **From URL** → paste the
-  link → **Add calendar**.
-- **Apple Calendar:** iPhone: Settings → Calendar → Accounts → Add Account →
-  Other → Add Subscribed Calendar. Mac: File → New Calendar Subscription.
-- **Outlook:** Add calendar → Subscribe from web → paste the link → Import.
-
-Subscriptions are read-only and refreshed by the app, not pushed: Google
-refreshes every ~8–24 h, so a new appointment may take hours to show there. The
+Subscriptions are read-only and refreshed by the app, not pushed (Outlook and
+Google take hours), so a new appointment may take a while to show there. The
 Telegram reminder does not depend on that refresh.
 
 ## Command list
@@ -200,11 +199,9 @@ Telegram reminder does not depend on that refresh.
 | `/ultimos` | Last 5 movements |
 | `/editar <n> <amount>` | Fixes movement `n` |
 | `/anular <n>` | Voids movement `n` (with confirmation) |
-| `/calendario [enlace\|nuevo]` | Next 7 days; private ICS link |
+| `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/fun` | GIF replies on or off |
 | `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
-| `/vincular <id\|off>` | Mirror to Google Calendar |
-| `/conectar <url\|off>` | Warn about clashes with an iCal calendar |
 | `/ayuda` | The welcome |
 | `/invitar <name>`, `/usuarios`, `/gif` | Owner only, not in the menu |

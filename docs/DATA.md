@@ -83,8 +83,11 @@ with the user's offset, plus `inicio_utc` / `fin_utc` for range queries),
 (`activo` | `cancelado`) and `creado`. The id is the Telegram `update_id`, so a
 retry never duplicates; cancelling only flips `estado`.
 
-A connected iCal URL (`/conectar`) is stored encrypted with Cloud KMS
-(`preferences.ics_url_enc`), never in clear. The ICS feed token lives in
+A chat has at most one connected calendar in `preferences/{chat_id}`, encrypted
+with Cloud KMS (the chat id as associated data), never in clear:
+`gcal_token_enc` (the Google OAuth refresh token, `calendario` → Google) or
+`ics_url_enc` (a secret iCal link pasted in the chat). Connecting one removes
+the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS feed token lives in
 `ics_tokens/{token}` with a pointer in `users.ics_token`.
 
 ## Other collections
@@ -96,6 +99,7 @@ A connected iCal URL (`/conectar`) is stored encrypted with Cloud KMS
 | `invites/{code}` | Single-use invite | TTL 24 h |
 | `rate`, `spend` | Per-chat message and LLM spend counters | TTL |
 | `pending/{token}` | Confirmation waiting for a button | TTL 10 min |
+| `oauth_states/{token}` | `chat_id` of a Google sign-in in progress (single use) | TTL 10 min |
 | `history/{chat_id}` | Last 6 LLM turns | — |
 | `gif_catalog/{tipo}` | Shared reaction GIFs | — |
 | `cron/{key}` | Export and backup success markers | TTL 30 days |

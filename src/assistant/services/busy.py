@@ -179,16 +179,11 @@ def ocupados(
 
 
 def conectar(ctx: ToolContext, url: str) -> str:
-    """Validate by fetching and parsing once, then store; "off" disconnects."""
+    """Validate by fetching and parsing once, then store. The chat's only
+    calendar: a linked Google Calendar is dropped (``gcal.desconectar`` clears
+    everything)."""
     ref = _db().collection("preferences").document(ctx.chat_id)
     _cache.pop(ctx.chat_id, None)
-    if url.strip().lower() == "off":
-        ref.set(
-            {"ics_url": firestore.DELETE_FIELD, "ics_url_enc": firestore.DELETE_FIELD},
-            merge=True,
-        )
-        log.info("ics_disconnect")
-        return t(ctx.idioma, "cal_desconectado")
     key = get_worker_settings().kms_key
     if not key:  # fail closed: never store the URL in clear
         log.warning("ics_connect_rejected code=no_kms_key")
@@ -202,6 +197,7 @@ def conectar(ctx: ToolContext, url: str) -> str:
             "enlace_invalido" if str(exc) == "invalid_url" else "cal_ilegible",
         )
     enc = crypto.encrypt(key, url.strip(), ctx.chat_id)
-    ref.set({"ics_url_enc": enc, "ics_url": firestore.DELETE_FIELD}, merge=True)
+    drop = {f: firestore.DELETE_FIELD for f in ("ics_url", "gcal_token_enc", "gcal_id")}
+    ref.set({"ics_url_enc": enc, **drop}, merge=True)
     log.info("ics_connect")
     return t(ctx.idioma, "cal_conectado")

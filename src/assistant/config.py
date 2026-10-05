@@ -80,9 +80,12 @@ class WorkerSettings:
     tasks_location: str = "us-central1"
     # Public URL of the assistant service: the ICS link and the Visor.
     api_url: str = ""
-    # Cloud KMS key that encrypts each user's secret iCal URL. Empty: /conectar
-    # is refused, so the URL is never stored in clear.
+    # Cloud KMS key that encrypts each user's secret iCal URL and Google refresh
+    # token. Empty: both are refused, so neither is ever stored in clear.
     kms_key: str = ""
+    # Google OAuth web client for "Conectar calendario → Google". Empty: refused.
+    google_client_id: str = ""
+    google_client_secret: str = ""
     backup_bucket: str = ""
     llm_model: str = "deepseek-flash"
     llm_base_url: str = "https://api.deepseek.com"
@@ -113,6 +116,8 @@ class WorkerSettings:
             tasks_location=get("TASKS_LOCATION", "us-central1"),
             api_url=get("API_URL", "").rstrip("/"),
             kms_key=get("KMS_KEY", ""),
+            google_client_id=get("GOOGLE_OAUTH_CLIENT_ID", ""),
+            google_client_secret=get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
             backup_bucket=get("BACKUP_BUCKET", ""),
             llm_model=get("LLM_MODEL", "deepseek-flash"),
             llm_base_url=get("LLM_BASE_URL", "https://api.deepseek.com"),

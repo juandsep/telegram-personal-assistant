@@ -104,15 +104,20 @@ def ics(chat_id: str, ahora: datetime) -> str        # VCALENDAR, -30 d to +365 
 # busy (separate branch): external ICS busy blocks. Loaded with importlib; when
 # missing or raising, the agenda ignores it (logs the error class only).
 def ocupados(chat_id: str, desde: datetime, hasta: datetime) -> list[tuple[datetime, datetime, str]]
-def conectar(ctx, url: str) -> str                   # /conectar <url>
-# gcal: mirror into the user's own Google Calendar, shared with the worker SA
-# ("Make changes to events"); preferences/{chat_id}.gcal_id in clear. Calendar
-# REST v3 over httpx, ADC scope calendar.events, 5 s. Google event id =
+def conectar(ctx, url: str) -> str                   # a lone secret iCal link
+# gcal: mirror into the user's own Google Calendar. OAuth (scope
+# calendar.events): the refresh token KMS-encrypted in
+# preferences/{chat_id}.gcal_token_enc, calls on "primary" with a cached access
+# token; 400 invalid_grant drops it. Legacy: preferences/{chat_id}.gcal_id, a
+# calendar shared with the service account, called with ADC. Calendar REST v3
+# over httpx, 5 s. Google event id =
 # "bj" + sha256(chat_id:evento_id)[:40] (base32hex-safe): insert 409 and delete
 # 404/410 count as done. Mirror calls never raise (log codes only); agenda calls
 # them after the Firestore write via importlib. ocupados reads events.list and
 # skips our own "bj…" ids, so an event never conflicts with its mirror.
-def vincular(ctx, calendar_id: str) -> str           # /vincular <id|off>; write probe
+def auth_url(s: WorkerSettings, state_token: str) -> str  # Google consent page
+def conectar(chat_id: str, code: str, s: WorkerSettings) -> None  # code -> refresh token
+def desconectar(chat_id: str) -> None                # cal:off; revokes, clears all
 def espejo_crear(ctx, evento_id: str, evento: dict) -> None
 def espejo_cancelar(ctx, evento_id: str) -> None
 def ocupados(chat_id: str, desde: datetime, hasta: datetime) -> list[tuple[datetime, datetime, str]]
@@ -171,12 +176,19 @@ fields, so keep the `"field": value` format (asserted in
 
 ## Worker routes without the LLM
 
-- `/calendario` (next 7 days), `/calendario enlace` (ICS URL, token created if
-  missing), `/calendario nuevo` (rotate), `/conectar <url>` (`busy.conectar`),
-  `/vincular <id|off>` (`gcal.vincular`; alone: how-to).
+- `/calendario` (next 7 days plus a button: `cal:menu`, or `cal:off` when a
+  calendar is connected), `/calendario off`, `/calendario nuevo` (rotate the
+  ICS token). Buttons: `cal:menu` → `cal:g` (a link to `/oauth/google?s=<state>`,
+  `state.crear_oauth_state`) | `cal:i` (a link to `/ics/{token}/suscribir`),
+  `cal:off` (`gcal.desconectar`). A lone secret iCal link runs `busy.conectar`
+  and deletes the message.
 - `POST /tasks/reminder` `{"chat_id", "evento_id"}` from Cloud Tasks: sends
   `agenda.aviso`; always 2xx except a Firestore failure.
 - api `GET /ics/{token}.ics`: public, 404 for a bad or unknown token.
+  `GET /ics/{token}/suscribir`: 302 to `webcal://<host>/ics/{token}.ics`.
+- api `GET /oauth/google?s=<state>`: 302 to Google's consent page.
+  `GET /oauth/google/callback?code&state`: consumes the single-use state,
+  `gcal.conectar`, backfills, tells the chat in Telegram; a small HTML page.
 
 ## Worker order per update
 

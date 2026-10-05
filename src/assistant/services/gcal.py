@@ -1,16 +1,19 @@
 """Mirror the Firestore agenda into the user's own Google Calendar, instantly.
 
-The owner shares a calendar with the worker service account ("Make changes to
-events") and links it with ``/vincular <calendar_id>``, stored in clear in
-``preferences/{chat_id}.gcal_id``: the id grants nothing without the share.
+The user signs in with Google from Telegram (``calendario`` → Conectar → Google;
+the OAuth routes live in ``api.py``) and grants ``calendar.events`` only. The
+refresh token is stored encrypted with Cloud KMS in
+``preferences/{chat_id}.gcal_token_enc`` and every call goes to the user's
+``primary`` calendar with a short-lived access token. Users linked before
+OAuth keep ``preferences/{chat_id}.gcal_id``, a calendar shared with the
+service account, which is still served with the service's own ADC token.
 Firestore stays the source of truth; every mirror call is best effort and never
 raises into the turn. Google event ids derive from ``chat_id:evento_id`` so a
 retry is idempotent (409 on insert and 404/410 on delete count as done).
 
-Calendar REST v3 over httpx with the worker's ADC token, scope
-``calendar.events`` only: busy times come from ``events.list`` (freeBusy needs
-a broader scope), skipping our own mirrored events. Calendar ids, titles and
-chat_ids are PII: log status codes and error classes only.
+Busy times come from ``events.list`` (freeBusy needs a broader scope), skipping
+our own mirrored events. Tokens, calendar ids, titles and chat_ids are secrets
+or PII: log status codes and error classes only.
 """
 
 from __future__ import annotations
@@ -20,18 +23,20 @@ import importlib
 import logging
 import os
 import re
-from datetime import UTC, date, datetime, time, timedelta
+import time as clock
+from datetime import UTC, date, datetime, time
 from functools import cache
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo
 
 import httpx
 from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
 
+from assistant.config import WorkerSettings, get_worker_settings
 from assistant.context import ToolContext
-from assistant.i18n import t
+from assistant.services import crypto
 
 log = logging.getLogger(__name__)
 # httpx logs every request URL at INFO; the URL holds the calendar id.
@@ -39,11 +44,13 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 API = "https://www.googleapis.com/calendar/v3"
 SCOPE = "https://www.googleapis.com/auth/calendar.events"
-SA_EMAIL = "assistant-worker@jd-botjonh.iam.gserviceaccount.com"
+AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105 # pragma: allowlist secret
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+CALLBACK = "/oauth/google/callback"
 TIMEOUT_S = 5.0
 LABEL = "Ocupado"
 DEFAULT_ZONE = "America/Panama"
-_CAL_ID = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _MIO = re.compile(r"bj[0-9a-f]{40}")  # ids of our mirrored events
 
 
@@ -63,13 +70,24 @@ def _creds() -> Any:
     return creds
 
 
-def _call(method: str, path: str, **kwargs: Any) -> httpx.Response:
-    creds = _creds()
-    if not creds.valid:
-        import google.auth.transport.requests
+# ponytail: per-instance cache of access tokens (1 h each); a cold instance
+# refreshes once per chat.
+_tokens: dict[str, tuple[str, float, str]] = {}  # chat_id: (enc, expiry, token)
 
-        creds.refresh(google.auth.transport.requests.Request())
-    headers = {"Authorization": f"Bearer {creds.token}"}
+
+def _call(
+    method: str, path: str, token: str | None = None, **kwargs: Any
+) -> httpx.Response:
+    """A Calendar API call with the user's access token, or the service's own
+    credentials (legacy shared calendars) when ``token`` is None."""
+    if token is None:
+        creds = _creds()
+        if not creds.valid:
+            import google.auth.transport.requests
+
+            creds.refresh(google.auth.transport.requests.Request())
+        token = creds.token
+    headers = {"Authorization": f"Bearer {token}"}
     return httpx.request(
         method, f"{API}{path}", headers=headers, timeout=TIMEOUT_S, **kwargs
     )
@@ -79,9 +97,51 @@ def _events(cal: str) -> str:
     return f"/calendars/{quote(cal, safe='')}/events"
 
 
-def _linked(chat_id: str) -> str | None:
+def _prefs(chat_id: str) -> Any:
+    return _db().collection("preferences").document(chat_id)
+
+
+def _client(s: WorkerSettings) -> dict[str, str]:
+    return {"client_id": s.google_client_id, "client_secret": s.google_client_secret}
+
+
+def _cache_token(chat_id: str, enc: str, body: dict) -> str:
+    expiry = clock.monotonic() + int(body.get("expires_in", 3600)) - 60
+    _tokens[chat_id] = (enc, expiry, str(body["access_token"]))
+    return str(body["access_token"])
+
+
+def _access_token(chat_id: str, enc: str) -> str:
+    """A fresh access token from the stored refresh token. A revoked grant
+    (400 invalid_grant) unlinks the calendar, then raises like any failure."""
+    hit = _tokens.get(chat_id)
+    if hit and hit[0] == enc and hit[1] > clock.monotonic():
+        return hit[2]
+    s = get_worker_settings()
+    data = {
+        **_client(s),
+        "refresh_token": crypto.decrypt(s.kms_key, enc, chat_id),
+        "grant_type": "refresh_token",
+    }
+    resp = httpx.post(TOKEN_URL, data=data, timeout=TIMEOUT_S)
+    if resp.status_code == 400 and "invalid_grant" in resp.text:
+        _prefs(chat_id).set({"gcal_token_enc": firestore.DELETE_FIELD}, merge=True)
+        _tokens.pop(chat_id, None)
+        log.warning("gcal_token_revoked")
+    resp.raise_for_status()
+    return _cache_token(chat_id, enc, resp.json())
+
+
+def _linked(chat_id: str) -> tuple[str, str | None] | None:
+    """(calendar id, access token) of the chat's calendar: ``primary`` with the
+    user's token, or a legacy shared ``gcal_id`` with None; None if unlinked."""
     state = importlib.import_module("assistant.services.state")
-    return state.get_preferences(chat_id).get("gcal_id") or None
+    prefs = state.get_preferences(chat_id)
+    if enc := prefs.get("gcal_token_enc"):
+        return "primary", _access_token(chat_id, enc)
+    if cal := prefs.get("gcal_id"):
+        return cal, None
+    return None
 
 
 def evento_gid(chat_id: str, evento_id: str) -> str:
@@ -89,43 +149,68 @@ def evento_gid(chat_id: str, evento_id: str) -> str:
     return "bj" + hashlib.sha256(f"{chat_id}:{evento_id}".encode()).hexdigest()[:40]
 
 
-def vincular(ctx: ToolContext, calendar_id: str) -> str:
-    """Prove write access with a throwaway event, then store; "off" unlinks."""
-    cal = calendar_id.strip()
-    ref = _db().collection("preferences").document(ctx.chat_id)
-    if cal.lower() == "off":
-        ref.set({"gcal_id": firestore.DELETE_FIELD}, merge=True)
-        log.info("gcal_unlink")
-        return t(ctx.idioma, "gcal_desvinculado")
-    if len(cal) > 200 or not _CAL_ID.fullmatch(cal):
-        return t(ctx.idioma, "gcal_id_invalido")
-    inicio = datetime.now(UTC).replace(microsecond=0) + timedelta(days=1)
-    probe = {
-        "summary": "botjonh",
-        "start": {"dateTime": inicio.isoformat()},
-        "end": {"dateTime": (inicio + timedelta(minutes=1)).isoformat()},
-        "transparency": "transparent",
-        "visibility": "private",
+def auth_url(s: WorkerSettings, state_token: str) -> str:
+    """Google's consent page; it comes back to ``CALLBACK`` with a code."""
+    query = {
+        "client_id": s.google_client_id,
+        "redirect_uri": f"{s.api_url}{CALLBACK}",
+        "response_type": "code",
+        "scope": SCOPE,
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "state": state_token,
     }
-    try:
-        resp = _call("POST", _events(cal), json=probe)
-        if resp.status_code in (403, 404):
-            log.info("gcal_link_rejected code=%s", resp.status_code)
-            return t(ctx.idioma, "gcal_sin_acceso", sa=SA_EMAIL)
-        resp.raise_for_status()
-        _call("DELETE", f"{_events(cal)}/{resp.json()['id']}")
-    except Exception as exc:
-        log.error("gcal_link_failed code=%s", type(exc).__name__)
-        return t(ctx.idioma, "gcal_no_verifica")
-    ref.set({"gcal_id": cal}, merge=True)
+    return f"{AUTH_URL}?{urlencode(query)}"
+
+
+def conectar(chat_id: str, code: str, s: WorkerSettings) -> None:
+    """Swap the sign-in code for tokens and keep the refresh token, encrypted.
+    The chat's only calendar: an iCal link or a legacy shared id is dropped."""
+    data = {
+        **_client(s),
+        "code": code,
+        "redirect_uri": f"{s.api_url}{CALLBACK}",
+        "grant_type": "authorization_code",
+    }
+    resp = httpx.post(TOKEN_URL, data=data, timeout=TIMEOUT_S)
+    resp.raise_for_status()
+    body = resp.json()
+    if not body.get("refresh_token"):
+        raise ValueError("no_refresh_token")
+    enc = crypto.encrypt(s.kms_key, body["refresh_token"], chat_id)
+    _prefs(chat_id).set(
+        {
+            "gcal_token_enc": enc,
+            "gcal_id": firestore.DELETE_FIELD,
+            "ics_url_enc": firestore.DELETE_FIELD,
+            "ics_url": firestore.DELETE_FIELD,
+        },
+        merge=True,
+    )
+    _cache_token(chat_id, enc, body)
     log.info("gcal_link")
-    n = _backfill(ctx)
-    return t(ctx.idioma, "gcal_vinculado", n=n)
+
+
+def desconectar(chat_id: str) -> None:
+    """Forget the chat's calendar; revoke the Google grant best effort."""
+    state = importlib.import_module("assistant.services.state")
+    enc = state.get_preferences(chat_id).get("gcal_token_enc")
+    _tokens.pop(chat_id, None)
+    if enc:
+        try:
+            token = crypto.decrypt(get_worker_settings().kms_key, enc, chat_id)
+            httpx.post(REVOKE_URL, data={"token": token}, timeout=TIMEOUT_S)
+        except Exception as exc:
+            log.warning("gcal_revoke_failed code=%s", type(exc).__name__)
+    fields = ("gcal_token_enc", "gcal_id", "ics_url_enc", "ics_url")
+    _prefs(chat_id).set({f: firestore.DELETE_FIELD for f in fields}, merge=True)
+    log.info("gcal_unlink")
 
 
 def _backfill(ctx: ToolContext) -> int:
     """Mirror the upcoming active items created before linking; the ids are
-    deterministic, so a repeated /vincular only gets 409s."""
+    deterministic, so linking again only gets 409s."""
     futuros = (
         _db()
         .collection("agenda")
@@ -147,10 +232,11 @@ def _best_effort(
 ) -> None:
     """Call the linked calendar; 2xx and the ``ok`` idempotent codes are done."""
     try:
-        cal = _linked(chat_id)
-        if not cal:
+        linked = _linked(chat_id)
+        if not linked:
             return
-        code = _call(method, f"{_events(cal)}{sub}", **kw).status_code
+        cal, token = linked
+        code = _call(method, f"{_events(cal)}{sub}", token, **kw).status_code
         if code < 300 or code in ok:
             log.info("gcal_%s", op)
         else:
@@ -191,9 +277,10 @@ def ocupados(
 ) -> list[tuple[datetime, datetime, str]]:
     """Busy blocks of the linked calendar minus our mirrors, UTC; [] on failure."""
     try:
-        cal = _linked(chat_id)
-        if not cal:
+        linked = _linked(chat_id)
+        if not linked:
             return []
+        cal, token = linked
         params = {
             "timeMin": desde.astimezone(UTC).isoformat(),
             "timeMax": hasta.astimezone(UTC).isoformat(),
@@ -201,7 +288,7 @@ def ocupados(
             "maxResults": 250,
             "fields": "items(id,status,transparency,start,end)",
         }
-        resp = _call("GET", _events(cal), params=params)
+        resp = _call("GET", _events(cal), token, params=params)
         if resp.status_code != 200:
             log.error("gcal_busy_failed code=%s", resp.status_code)
             return []

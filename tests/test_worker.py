@@ -74,6 +74,7 @@ def st(monkeypatch):
     )
     m.remove_gif.return_value = 1
     m.create_pending.return_value = "t" * 22
+    m.get_preferences.return_value = {}
     for name in (
         "get_user",
         "check_rate",
@@ -87,6 +88,7 @@ def st(monkeypatch):
         "remove_gif",
         "gif_catalog",
         "create_pending",
+        "get_preferences",
     ):
         monkeypatch.setattr(state, name, getattr(m, name))
     return m
@@ -346,6 +348,22 @@ def settings(monkeypatch):
     return s
 
 
+def keyboards(tg) -> list[list[tuple[str, str]]]:
+    """Each sent message's buttons, flattened: (label, callback data or url)."""
+    out = []
+    for c in tg.calls:
+        if c.request.url.path.endswith("sendMessage"):
+            rows = json.loads(c.request.read()).get("reply_markup", {})
+            out.append(
+                [
+                    (b["text"], b.get("url") or b["callback_data"])
+                    for row in rows.get("inline_keyboard", [])
+                    for b in row
+                ]
+            )
+    return out
+
+
 def test_calendario_lists_week_without_llm(monkeypatch, st, llm, tg) -> None:
     semana = MagicMock(return_value="Jue 1 · 09:00 Dentista")
     monkeypatch.setattr(agenda, "semana", semana)
@@ -353,14 +371,35 @@ def test_calendario_lists_week_without_llm(monkeypatch, st, llm, tg) -> None:
         client.post("/push", json=envelope(message("/calendario"))).status_code == 204
     )
     semana.return_value = "Sin nada en 7 días."
+    st.get_preferences.return_value = {"gcal_token_enc": "x"}
     client.post("/push", json=envelope(message("/calendario@botjonh_bot")))
-    assert sent_texts(tg) == ["Jue 1 · 09:00 Dentista", "Sin nada en 7 días."]
+    st.get_preferences.return_value = {"ics_url_enc": "x"}
+    client.post("/push", json=envelope(message("calendar")))
+    assert sent_texts(tg) == ["Jue 1 · 09:00 Dentista", *["Sin nada en 7 días."] * 2]
+    assert keyboards(tg) == [
+        [("🔗 Conectar calendario", "cal:menu")],
+        [("🔌 Desconectar Google", "cal:off")],
+        [("🔌 Desconectar iPhone / Outlook", "cal:off")],
+    ]
     assert semana.call_args.args[0].chat_id == "42"
     llm.run_turn.assert_not_called()
     st.check_rate.assert_not_called()
 
 
-def test_calendario_enlace_and_rotation(monkeypatch, st, llm, tg, settings) -> None:
+@pytest.fixture
+def cal_settings(monkeypatch, settings):
+    s = dataclasses.replace(
+        settings,
+        kms_key="k",
+        google_client_id="cid",
+        google_client_secret="cs",  # pragma: allowlist secret
+    )
+    monkeypatch.setattr(worker, "get_worker_settings", lambda: s)
+    return s
+
+
+def test_calendar_buttons(monkeypatch, st, llm, tg, cal_settings) -> None:
+    monkeypatch.setattr(state, "crear_oauth_state", lambda chat_id: "s" * 22)
     tokens = iter(["a" * 32, "b" * 32])
     current: list[str] = []
 
@@ -370,81 +409,40 @@ def test_calendario_enlace_and_rotation(monkeypatch, st, llm, tg, settings) -> N
         return current[0]
 
     monkeypatch.setattr(state, "ics_token", ics_token)
-    for text in ("/calendario enlace", "/calendario enlace", "/calendario nuevo"):
-        client.post("/push", json=envelope(message(text)))
-    links = [t.splitlines()[0] for t in sent_texts(tg)]
-    assert links == [
-        f"https://api.example/ics/{'a' * 32}.ics",
-        f"https://api.example/ics/{'a' * 32}.ics",
-        f"https://api.example/ics/{'b' * 32}.ics",
+    desconectar = MagicMock()
+    fake_module(monkeypatch, "assistant.services.gcal", desconectar=desconectar)
+    for data in ("cal:menu", "cal:g", "cal:i", "cal:off"):
+        client.post("/push", json=envelope(callback(data)))
+    client.post("/push", json=envelope(message("/calendario nuevo")))
+    assert sent_texts(tg) == [
+        "¿Qué calendario usas?",
+        t("es", "cal_google"),
+        t("es", "cal_ical"),
+        "Calendario desconectado.",
+        t("es", "cal_ical"),
     ]
-    assert sent_texts(tg)[0].splitlines()[1] == t("es", "google_hint")
+    assert keyboards(tg) == [
+        [("Google", "cal:g"), ("iPhone / Outlook", "cal:i")],
+        [("Conectar con Google", f"https://api.example/oauth/google?s={'s' * 22}")],
+        [("📅 Suscribirme", f"https://api.example/ics/{'a' * 32}/suscribir")],
+        [],
+        [("📅 Suscribirme", f"https://api.example/ics/{'b' * 32}/suscribir")],
+    ]
+    desconectar.assert_called_once_with("42")
     llm.run_turn.assert_not_called()
 
 
-def test_calendario_enlace_unconfigured_and_errors(monkeypatch, st, llm, tg) -> None:
+def test_calendar_unconfigured_and_errors(monkeypatch, st, llm, tg, settings) -> None:
+    client.post("/push", json=envelope(callback("cal:g")))  # no OAuth client
     unset = dataclasses.replace(get_worker_settings(), api_url="")
     monkeypatch.setattr(worker, "get_worker_settings", lambda: unset)
-    client.post("/push", json=envelope(message("/calendario enlace")))
+    client.post("/push", json=envelope(callback("cal:i")))
     monkeypatch.setattr(agenda, "semana", MagicMock(side_effect=RuntimeError("x")))
     client.post("/push", json=envelope(message("/calendario")))
-    assert sent_texts(tg) == ["Enlace no configurado.", t("es", "failed")]
-
-
-def test_conectar(monkeypatch, st, llm, tg) -> None:
-    monkeypatch.setitem(sys.modules, "assistant.services.busy", None)  # not shipped
-    client.post("/push", json=envelope(message("/conectar https://x/a.ics")))
-    client.post("/push", json=envelope(message("/conectar")))
-    conectar = MagicMock(return_value="✓ calendario conectado")
-    monkeypatch.setitem(
-        sys.modules,
-        "assistant.services.busy",
-        types.SimpleNamespace(conectar=conectar),
-    )
-    client.post("/push", json=envelope(message("/conectar https://x/a.ics")))
     assert sent_texts(tg) == [
         "Aún no disponible.",
-        t("es", "conectar_hint"),
-        "✓ calendario conectado",
-    ]
-    assert conectar.call_args.args[1] == "https://x/a.ics"
-    llm.run_turn.assert_not_called()
-
-
-def test_vincular(monkeypatch, st, llm, tg) -> None:
-    vincular = MagicMock(return_value="✓ Google Calendar vinculado.")
-    monkeypatch.setitem(
-        sys.modules,
-        "assistant.services.gcal",
-        types.SimpleNamespace(vincular=vincular, SA_EMAIL="sa@x"),
-    )
-    client.post("/push", json=envelope(message("/vincular")))
-    client.post("/push", json=envelope(message("/vincular yo@gmail.com")))
-    client.post("/push", json=envelope(message("/vincular off")))
-    assert sent_texts(tg) == [
-        t("es", "vincular_hint", sa="sa@x"),
-        "✓ Google Calendar vinculado.",
-        "✓ Google Calendar vinculado.",
-    ]
-    assert [c.args[1] for c in vincular.call_args_list] == ["yo@gmail.com", "off"]
-    llm.run_turn.assert_not_called()
-
-
-def test_conectar_deletes_the_message_with_the_url(monkeypatch, st, llm, tg) -> None:
-    monkeypatch.setitem(
-        sys.modules,
-        "assistant.services.busy",
-        types.SimpleNamespace(
-            conectar=MagicMock(return_value="✓ Calendario conectado.")
-        ),
-    )
-    update = message("/conectar https://x/a.ics")
-    update["message"]["message_id"] = 77
-    client.post("/push", json=envelope(update))
-    deleted = [c for c in tg.calls if c.request.url.path.endswith("deleteMessage")]
-    assert json.loads(deleted[0].request.read()) == {"chat_id": "42", "message_id": 77}
-    assert sent_texts(tg) == [
-        "✓ Calendario conectado.\nBorré tu mensaje con el enlace."
+        "Enlace no configurado.",
+        t("es", "failed"),
     ]
 
 
@@ -727,7 +725,9 @@ def test_bare_ical_url_connects_and_is_deleted(monkeypatch, st, llm, tg) -> None
     update["message"]["message_id"] = 5
     client.post("/push", json=envelope(update))
     assert conectar.call_args.args[1] == url
-    assert any(c.request.url.path.endswith("deleteMessage") for c in tg.calls)
+    deleted = [c for c in tg.calls if c.request.url.path.endswith("deleteMessage")]
+    assert json.loads(deleted[0].request.read()) == {"chat_id": "42", "message_id": 5}
+    assert sent_texts(tg) == ["✓ Conectado.\nBorré tu mensaje con el enlace."]
     llm.run_turn.assert_not_called()
 
 

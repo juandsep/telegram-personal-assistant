@@ -181,7 +181,13 @@ def test_conectar_stores_url(db: MagicMock) -> None:
     db.collection.assert_called_with("preferences")
     db.collection().document.assert_called_with("42")
     db.collection().document().set.assert_called_once_with(
-        {"ics_url_enc": ENC, "ics_url": firestore.DELETE_FIELD}, merge=True
+        {
+            "ics_url_enc": ENC,
+            "ics_url": firestore.DELETE_FIELD,
+            "gcal_token_enc": firestore.DELETE_FIELD,
+            "gcal_id": firestore.DELETE_FIELD,
+        },
+        merge=True,
     )
     stored = str(db.collection().document().set.call_args)
     assert MARKER not in stored  # never in clear
@@ -228,16 +234,6 @@ def test_oversize_body_is_rejected(db: MagicMock) -> None:
 def test_unparseable_body_is_rejected(db: MagicMock) -> None:
     respx.get(URL).return_value = ok("<html>login</html>")
     assert busy.conectar(ctx(), URL) == "No pude leer ese calendario."
-
-
-def test_off_disconnects(db: MagicMock) -> None:
-    busy._cache["42"] = (0.0, ENC, None)
-    assert busy.conectar(ctx(), "off") == "Calendario desconectado."
-    db.collection().document().set.assert_called_once_with(
-        {"ics_url": firestore.DELETE_FIELD, "ics_url_enc": firestore.DELETE_FIELD},
-        merge=True,
-    )
-    assert "42" not in busy._cache
 
 
 # --- ocupados ----------------------------------------------------------------

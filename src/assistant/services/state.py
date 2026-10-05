@@ -15,6 +15,8 @@ Collections (Firestore native):
 - ``pending/{token}``: chat_id, action, ``expire_at`` (10 min).
 - ``history/{chat_id}``: last turns, each ``{"messages": [...]}`` (Firestore has
   no nested arrays).
+- ``oauth_states/{token}``: chat_id, ``expire_at`` (10 min, single use): the
+  ``state`` of a Google sign-in started from Telegram.
 - ``ics_tokens/{token}``: chat_id of a private ICS feed; ``users.ics_token``
   points back so the link can be shown again or rotated. Never log tokens.
 - ``gif_catalog/{tipo}`` (gasto|ingreso): one shared, owner-curated map
@@ -24,7 +26,7 @@ Collections (Firestore native):
   production keep separate catalogs. Never log file_ids.
 
 Set a Firestore TTL policy on ``expire_at`` for processed, invites, rate, spend,
-and pending. Doc ids contain chat_ids: never log them.
+pending and oauth_states. Doc ids contain chat_ids: never log them.
 """
 
 from __future__ import annotations
@@ -255,6 +257,34 @@ def pop_pending(chat_id: str, token: str) -> dict | None:
     if not _TOKEN.fullmatch(token):
         return None
     return _pop(_db().transaction(), _doc("pending", token), chat_id)
+
+
+# --- Google sign-in state -------------------------------------------------------
+
+
+def crear_oauth_state(chat_id: str) -> str:
+    token = secrets.token_urlsafe(16)
+    _doc("oauth_states", token).set(
+        {"chat_id": chat_id, "expire_at": _now() + PENDING_TTL}
+    )
+    return token
+
+
+@firestore.transactional
+def _take(tx: Any, ref: Any) -> str | None:
+    data = _data(ref.get(transaction=tx))
+    if not data:
+        return None
+    tx.delete(ref)
+    return data["chat_id"] if data["expire_at"] > _now() else None
+
+
+def consume_oauth_state(token: str) -> str | None:
+    """Single-use: the chat that started the sign-in, once; None if bogus or
+    expired."""
+    if not _TOKEN.fullmatch(token):
+        return None
+    return _take(_db().transaction(), _doc("oauth_states", token))
 
 
 # --- history -------------------------------------------------------------------

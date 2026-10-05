@@ -73,8 +73,33 @@ metrics, the alert policies (mailed to `alert_email` in `terraform.tfvars`) and
 the read-only `assistant-grafana` account. To explore the metrics, run the local
 Grafana described in [monitoring/README.md](../monitoring/README.md).
 
-For `/vincular` (Google Calendar mirror), enable the Calendar API
-(`calendar-json.googleapis.com`) in the project.
+### Google Calendar sign-in
+
+`calendario` → Conectar → Google uses an OAuth web client, created by hand in
+the console (Terraform cannot create it). Terraform enables the Calendar API
+(`calendar-json.googleapis.com`) and creates the two empty secrets.
+
+1. **APIs & Services → OAuth consent screen**: User type **External**; app name
+   Juani, support and developer email; scope
+   `https://www.googleapis.com/auth/calendar.events` only. Under **Audience**,
+   **Publish app** (status **In production**). The app stays unverified: users
+   see Google's "Google hasn't verified this app" notice (Advanced → Go to
+   Juani) and at most 100 users can sign in, enough for an invite-only bot.
+   ("Testing" would expire every refresh token after 7 days.)
+2. **Credentials → Create credentials → OAuth client ID**: type **Web
+   application**; authorized redirect URI
+   `https://<service-url>/oauth/google/callback` (the `API_URL` of each
+   environment, staging too: one client can hold both).
+3. Store the client id and secret (the deploy mounts them, so it fails while
+   they have no version):
+
+   ```bash
+   read -rs ID     && printf '%s' "$ID"     | gcloud secrets versions add assistant-google-oauth-client-id --data-file=-
+   read -rs SECRET && printf '%s' "$SECRET" | gcloud secrets versions add assistant-google-oauth-client-secret --data-file=-
+   ```
+
+The refresh tokens are encrypted with the `KMS_KEY` key, so both must be set;
+without either, the Google button answers "Aún no disponible".
 
 Every merge into `dev` deploys the `assistant-staging` service (its own bot and
 Firestore database); merging `dev` into `main` deploys `assistant` to
@@ -89,8 +114,8 @@ where the LLM turn runs on its own request. `/push` and `/tasks/reminder` are
 public URLs too, so the app checks Google's OIDC token on them
 (`src/assistant/authz.py`): issued for `WORKER_URL`, on behalf of `WORKER_SA`;
 anything else gets a 403. It runs as one service account,
-`assistant-worker@<project>.iam.gserviceaccount.com` (the address users share
-their Google Calendars with).
+`assistant-worker@<project>.iam.gserviceaccount.com` (calendars shared with it
+before the Google sign-in keep working).
 
 ### Migrating from two services
 
@@ -149,7 +174,9 @@ Local runs read the same variables from a git-ignored `.env`.
 | `WORKER_SA` | The runtime service account: signs reminder tasks; the only caller `/push` accepts |
 | `TASKS_QUEUE` / `TASKS_LOCATION` | Cloud Tasks queue (`assistant-reminders`) and region (`us-central1`) |
 | `API_URL` | The service's public URL, for the ICS link and the Visor |
-| `KMS_KEY` | Cloud KMS key that encrypts iCal URLs (empty = `/conectar` refused) |
+| `KMS_KEY` | Cloud KMS key that encrypts iCal URLs and Google refresh tokens (empty = both refused) |
+| `GOOGLE_OAUTH_CLIENT_ID` | Secret `assistant-google-oauth-client-id` (empty = Google sign-in refused) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Secret `assistant-google-oauth-client-secret` |
 | `BACKUP_BUCKET` | Daily ledger CSV and weekly JSON backup |
 | `LLM_MODEL` / `LLM_BASE_URL` | Default `deepseek-flash` / `https://api.deepseek.com` |
 | `MAX_MSGS_PER_MINUTE` | Per-chat rate limit (default 10) |

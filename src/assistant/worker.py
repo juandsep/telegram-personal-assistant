@@ -192,18 +192,18 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if not msg.text.strip():
         _send(channel, msg, t(ctx.idioma, "text_only"))
         return ACK
-    if _is_ical_url(msg.text):  # the link sent on its own, after /conectar
-        msg = dataclasses.replace(msg, text=f"/conectar {msg.text.strip()}")
-    if msg.text.startswith(("/calendario", "/conectar", "/vincular")):
-        reply = _command(ctx, msg, settings)
-        if msg.text.startswith("/conectar ") and msg.message_id is not None:
-            # The message holds the secret iCal URL: drop it from the chat.
+    if _is_ical_url(msg.text):  # the secret iCal link, sent on its own
+        reply = _conectar_ical(ctx, msg)
+        if msg.message_id is not None:  # drop the secret from the chat
             try:
                 channel.delete_message(msg.chat_id, msg.message_id)
                 reply += "\nBorré tu mensaje con el enlace."
             except httpx.HTTPError:
                 logger.warning("delete_failed update_id=%s", msg.update_id)
         _send(channel, msg, reply)
+        return ACK
+    if msg.text.startswith("/calendario"):
+        _send(channel, msg, *_calendario(ctx, msg, msg.text.partition(" ")[2]))
         return ACK
     if msg.text.startswith(OWNER_COMMANDS):
         _send(channel, msg, *_owner_command(ctx, msg, settings))
@@ -285,36 +285,63 @@ def _is_ical_url(text: str) -> bool:
     return True
 
 
-def _command(ctx: ToolContext, msg: InboundMessage, settings: WorkerSettings) -> str:
-    """/calendario [enlace|nuevo], /conectar <url> and /vincular <id|off>."""
-    cmd, _, arg = msg.text.strip().partition(" ")
-    cmd, arg = cmd.split("@")[0], arg.strip()
+def _conectar_ical(ctx: ToolContext, msg: InboundMessage) -> str:
     try:
-        if cmd == "/conectar":
-            if not arg:
-                return t(ctx.idioma, "conectar_hint")
-            try:
-                busy = importlib.import_module("assistant.services.busy")
-            except ImportError:
-                return t(ctx.idioma, "no_disponible")
-            return str(busy.conectar(ctx, arg))
-        if cmd == "/vincular":
-            gcal = importlib.import_module("assistant.services.gcal")
-            if not arg:
-                return t(ctx.idioma, "vincular_hint", sa=gcal.SA_EMAIL)
-            return str(gcal.vincular(ctx, arg))
-        if arg in ("enlace", "nuevo"):
-            if not settings.api_url:
-                return t(ctx.idioma, "enlace_no_config")
-            token = state.ics_token(ctx.chat_id, rotate=arg == "nuevo")
-            hint = t(ctx.idioma, "google_hint")
-            return f"{settings.api_url}/ics/{token}.ics\n{hint}"
-        return agenda.semana(ctx)
+        busy = importlib.import_module("assistant.services.busy")
+        return str(busy.conectar(ctx, msg.text.strip()))
     except Exception as exc:
         logger.error(
             "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
         return t(ctx.idioma, "failed")
+
+
+def _calendario(
+    ctx: ToolContext, msg: InboundMessage, arg: str
+) -> tuple[str, list[list[tuple[str, str]]] | None]:
+    """/calendario [off|nuevo] and its buttons cal:menu|g|i|off: the next 7 days,
+    then one calendar, Google (OAuth) or iPhone/Outlook (ICS subscription)."""
+    settings = get_worker_settings()
+    arg = arg.strip().lower()
+    try:
+        if arg == "menu":
+            botones = [("Google", "cal:g"), ("iPhone / Outlook", "cal:i")]
+            return t(ctx.idioma, "cal_elige"), [botones]
+        if arg == "g":
+            if not (
+                settings.google_client_id
+                and settings.google_client_secret
+                and settings.api_url
+                and settings.kms_key
+            ):
+                return t(ctx.idioma, "no_disponible"), None
+            url = f"{settings.api_url}/oauth/google?s="
+            url += state.crear_oauth_state(ctx.chat_id)
+            boton = (t(ctx.idioma, "cal_google_boton"), url)
+            return t(ctx.idioma, "cal_google"), [[boton]]
+        if arg in ("i", "nuevo"):  # nuevo: a new feed link, the old one revoked
+            if not settings.api_url:
+                return t(ctx.idioma, "enlace_no_config"), None
+            token = state.ics_token(ctx.chat_id, rotate=arg == "nuevo")
+            url = f"{settings.api_url}/ics/{token}/suscribir"
+            return t(ctx.idioma, "cal_ical"), [[(t(ctx.idioma, "cal_suscribir"), url)]]
+        if arg == "off":
+            importlib.import_module("assistant.services.gcal").desconectar(ctx.chat_id)
+            return t(ctx.idioma, "cal_desconectado"), None
+        prefs = state.get_preferences(ctx.chat_id)
+        if prefs.get("gcal_token_enc") or prefs.get("gcal_id"):
+            boton = (t(ctx.idioma, "cal_desconectar", cual="Google"), "cal:off")
+        elif prefs.get("ics_url_enc"):
+            cual = "iPhone / Outlook"
+            boton = (t(ctx.idioma, "cal_desconectar", cual=cual), "cal:off")
+        else:
+            boton = (t(ctx.idioma, "cal_conectar"), "cal:menu")
+        return agenda.semana(ctx), [[boton]]
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.idioma, "failed"), None
 
 
 def _quick(
@@ -636,6 +663,8 @@ def _callback(
         _send(channel, msg, t(ctx.idioma, "cancelado"))
     elif action == "mo" and token in MONEDAS:  # /moneda and onboarding buttons
         _send(channel, msg, _set_moneda(ctx, msg, token))
+    elif action == "cal":  # /calendario buttons
+        _send(channel, msg, *_calendario(ctx, msg, token))
     elif action == "rv":  # /usuarios revoke button
         ok = ctx.rol == "owner" and state.revocar(token)
         logger.info("user_revoked update_id=%s ok=%s", msg.update_id, ok)

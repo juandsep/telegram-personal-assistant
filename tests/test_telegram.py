@@ -35,7 +35,17 @@ def test_send_animation() -> None:
 
 
 @respx.mock
-def test_pin_webapp() -> None:
+def test_url_button() -> None:
+    route = respx.post(f"{API_BASE}/bot1:x/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+    Telegram("1:x").send_message("42", "hola", [[("Guía", "https://g/")]])
+    keyboard = json.loads(route.calls.last.request.read())["reply_markup"]
+    assert keyboard == {"inline_keyboard": [[{"text": "Guía", "url": "https://g/"}]]}
+
+
+@respx.mock
+def test_webapp_send_pin_and_menu() -> None:
     sent = respx.post(f"{API_BASE}/bot1:x/sendMessage").mock(
         return_value=httpx.Response(200, json={"ok": True, "result": {"message_id": 7}})
     )
@@ -45,7 +55,9 @@ def test_pin_webapp() -> None:
     menu = respx.post(f"{API_BASE}/bot1:x/setChatMenuButton").mock(
         return_value=httpx.Response(200, json={"ok": True})
     )
-    Telegram("1:x").pin_webapp("42", "aquí", "Visor", "https://a/visor")
+    tg = Telegram("1:x")
+    tg.pin("42", tg.send_webapp("42", "aquí", "Visor", "https://a/visor"))
+    tg.set_menu_webapp("42", "Visor", "https://a/visor")
     app = {"text": "Visor", "web_app": {"url": "https://a/visor"}}
     assert json.loads(sent.calls.last.request.read())["reply_markup"] == {
         "inline_keyboard": [[app]]
@@ -59,6 +71,18 @@ def test_pin_webapp() -> None:
         "type": "web_app",
         **app,
     }
+
+
+def test_service_messages_ignored() -> None:
+    # The bot's own pinChatMessage comes back as an update without text.
+    pinned = {"message_id": 7, "chat": {"id": 42}, "text": "tablero"}
+    update = {
+        "update_id": 1,
+        "message": {"chat": {"id": 42}, "pinned_message": pinned},
+    }
+    assert parse_update(update) is None
+    update["message"] = {"chat": {"id": 42}, "new_chat_members": [{"id": 1}]}
+    assert parse_update(update) is None
 
 
 def test_parse_animation_caption_and_reply() -> None:

@@ -48,6 +48,24 @@ OWNER_COMMANDS = ("/invitar", "/usuarios")
 INVITAR_USAGE = "Uso: /invitar <nombre>. Crea un enlace de un uso, válido 24 h."
 LEDGER_COMMANDS = ("/ultimos", "/editar", "/anular", "/gif")
 REGISTROS = {"registrar_gasto": "gasto", "registrar_ingreso": "ingreso"}
+GUIDE_URL = "https://juandsep.github.io/telegram-personal-assistant/guia/"
+# A whole message of just these words (any case or accents) runs the command.
+WORDS = {
+    "tablero": "/tablero",
+    "dashboard": "/tablero",
+    "tablero fijar": "/tablero fijar",
+    "dashboard pin": "/tablero fijar",
+    "resumen": "/resumen",
+    "summary": "/resumen",
+    "ultimos": "/ultimos",
+    "last": "/ultimos",
+    "ayuda": "/ayuda",
+    "help": "/ayuda",
+    "calendario": "/calendario",
+    "calendar": "/calendario",
+    "agenda": "/calendario",
+    "fun": "/fun",
+}
 
 
 @router.post("/push")
@@ -143,13 +161,20 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     channel = Telegram(settings.telegram_bot_token)
     if msg.callback_query_id:
         return _callback(ctx, msg, msg.callback_query_id, channel)
+    if cmd := WORDS.get(" ".join(quick.norm(msg.text).rstrip(".!? ").split())):
+        msg = dataclasses.replace(msg, text=cmd)
     if msg.text.startswith("/zona"):
         _send(channel, msg, _zona(ctx, msg))
         return ACK
     if msg.text.startswith(("/start", "/ayuda", "/help")):
-        _send(channel, msg, t(ctx.idioma, "welcome"))
-        if msg.text.startswith("/start") and settings.api_url:  # pin the Visor
-            _tablero(ctx, channel, msg, settings)
+        guia = [[(t(ctx.idioma, "guia"), GUIDE_URL)]]
+        _send(channel, msg, t(ctx.idioma, "welcome"), guia)
+        if msg.text.startswith("/start") and settings.api_url:  # the menu button
+            try:
+                visor = f"{settings.api_url}/visor"
+                channel.set_menu_webapp(msg.chat_id, t(ctx.idioma, "visor"), visor)
+            except httpx.HTTPError:
+                logger.warning("menu_failed update_id=%s", msg.update_id)
         return ACK
     if msg.animation_file_id:
         _send(channel, msg, _gif_command(ctx, msg, msg.caption, msg.animation_file_id))
@@ -186,6 +211,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     if msg.text.startswith("/tablero"):
         _tablero(ctx, channel, msg, settings)
+        return ACK
+    if msg.text.startswith("/resumen"):
+        _send(channel, msg, _resumen(ctx, msg))
         return ACK
     if msg.text.startswith(LEDGER_COMMANDS):
         _send(channel, msg, *_ledger_command(ctx, msg))
@@ -224,10 +252,7 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     # 3-5. Reply, account, trace.
     registros = [REGISTROS[t] for t in result.tools if t in REGISTROS]
     registro = bool(registros) and not result.keyboard
-    reply = result.reply
-    if registro and not ctx.fun:
-        reply += "\n" + t(ctx.idioma, "corregir")
-    _send(channel, msg, reply, result.keyboard)
+    _send(channel, msg, result.reply, result.keyboard)
     if registro and ctx.fun:
         _gif(channel, msg, registros[-1])
     state.add_llm_spend(msg.chat_id, result.cost_usd)
@@ -334,13 +359,26 @@ def _quick(
 def _registro(
     ctx: ToolContext, channel: Telegram, msg: InboundMessage, reply: str
 ) -> None:
-    """A registration answers with the entry as stored and how to correct it;
-    with /fun on, with the reaction GIF only (the text is the fallback when no
-    GIF is stored). Anything else (errors such as a missing rate) as is."""
+    """A registration answers with the entry as stored; with /fun on, with the
+    reaction GIF only (the text is the fallback when no GIF is stored)."""
     tipo = {"−": "gasto", "+": "ingreso"}.get(reply[:1])
     if tipo and ctx.fun and _gif(channel, msg, tipo):
         return
-    _send(channel, msg, f"{reply}\n{t(ctx.idioma, 'corregir')}" if tipo else reply)
+    _send(channel, msg, reply)
+
+
+def _resumen(ctx: ToolContext, msg: InboundMessage) -> str:
+    """/resumen: today's spend, the week and the month vs income. No LLM."""
+    try:
+        from assistant import jobs
+
+        partes = [jobs._checkin(ctx), jobs._weekly(ctx)]
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.idioma, "failed")
+    return "\n\n".join(p for p in partes if p)
 
 
 def _fun(ctx: ToolContext, msg: InboundMessage) -> str:
@@ -447,17 +485,20 @@ def _tool(
 def _tablero(
     ctx: ToolContext, channel: Telegram, msg: InboundMessage, settings: WorkerSettings
 ) -> None:
-    """/tablero: pins the dashboard Mini App (the service's /visor) in the chat."""
+    """/tablero: the dashboard Mini App (the service's /visor); /tablero fijar
+    also pins it in the chat."""
     if not settings.api_url:
         _send(channel, msg, t(ctx.idioma, "tablero_no_config"))
         return
     try:
-        channel.pin_webapp(
+        message_id = channel.send_webapp(
             msg.chat_id,
             t(ctx.idioma, "tablero"),
             t(ctx.idioma, "visor"),
             f"{settings.api_url}/visor",
         )
+        if msg.text.split()[1:] in (["fijar"], ["pin"]):
+            channel.pin(msg.chat_id, message_id)
     except httpx.HTTPError:
         logger.warning("pin_failed update_id=%s", msg.update_id)
         _send(channel, msg, t(ctx.idioma, "failed"))

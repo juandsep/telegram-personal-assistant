@@ -19,15 +19,16 @@ from assistant.i18n import IDIOMAS, t
 from assistant.services import state
 
 AVATAR = Path(__file__).resolve().parents[2] / "docs" / "assets" / "juani-avatar.jpg"
-# The menu users see; owner commands (/invitar, /usuarios, /gif) stay unlisted.
+# The menu users see; owner commands (/invitar, /usuarios, /gif) and the manual
+# /zona override stay unlisted.
 COMANDOS = (
     "tablero",
+    "resumen",
     "ultimos",
     "editar",
     "anular",
     "calendario",
     "fun",
-    "zona",
     "vincular",
     "conectar",
     "ayuda",

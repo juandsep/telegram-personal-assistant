@@ -433,7 +433,7 @@ def test_quick_gasto_skips_llm_and_sends_gif(st, llm, tg, ledger) -> None:
     ctx = ledger.registrar_gasto.call_args.args[0]
     assert ledger.registrar_gasto.call_args.kwargs == {
         "items": [
-            {"monto": Decimal(2000), "categoria": "restaurantes", "nota": "cafe"}
+            {"monto": Decimal(2000), "categoria": "restaurantes", "nota": "café"}
         ],
         "moneda": "COP",
         "fecha": ctx.ahora.date(),

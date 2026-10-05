@@ -74,7 +74,9 @@ def st(monkeypatch):
     )
     m.remove_gif.return_value = 1
     m.create_pending.return_value = "t" * 22
+    m.take_hint.return_value = True
     for name in (
+        "take_hint",
         "get_user",
         "check_rate",
         "llm_spend_today",
@@ -229,20 +231,27 @@ def test_start_and_non_text_skip_llm(st, llm, tg) -> None:
     assert sent_texts(tg) == [t("es", "welcome"), t("es", "text_only")]
 
 
-def test_start_in_phone_language_pins_visor(monkeypatch, st, llm, tg, settings):
+def test_start_in_phone_language_sets_menu_button(monkeypatch, st, llm, tg, settings):
     set_idioma = MagicMock()
     monkeypatch.setattr(state, "set_idioma", set_idioma)
-    pin = MagicMock()
-    monkeypatch.setattr(Telegram, "pin_webapp", pin)
     update = message("/start abc")
     update["message"]["from"] = {"id": 42, "language_code": "en-US"}
     client.post("/push", json=envelope(update))
     assert sent_texts(tg) == [t("en", "welcome")]
     assert sent_texts(tg)[0].startswith("Hi 👋 I'm Juani")
+    welcome = json.loads(tg.calls[0].request.read())
+    assert welcome["reply_markup"] == {
+        "inline_keyboard": [[{"text": "📖 Full guide", "url": worker.GUIDE_URL}]]
+    }
     set_idioma.assert_called_once_with("42", "en")
-    pin.assert_called_once_with(
-        "42", t("en", "tablero"), "Expense viewer", "https://api.example/visor"
-    )
+    paths = [c.request.url.path.rsplit("/", 1)[1] for c in tg.calls]
+    assert paths == ["sendMessage", "setChatMenuButton"]  # no pinned message
+    menu = json.loads(tg.calls[1].request.read())["menu_button"]
+    assert menu == {
+        "type": "web_app",
+        "text": "Expense viewer",
+        "web_app": {"url": "https://api.example/visor"},
+    }
     st.get_user.return_value = {"idioma": "zh"}  # stored and unchanged: no write
     update["message"]["from"]["language_code"] = "zh-hans"
     client.post("/push", json=envelope(update))
@@ -768,14 +777,48 @@ def test_owner_commands_refused_to_betas(st, tg, monkeypatch) -> None:
     revocar.assert_not_called()
 
 
-def test_tablero_pins_visor(monkeypatch, st, llm, tg, settings) -> None:
+def test_tablero_sends_visor_and_pins_on_request(monkeypatch, st, llm, tg, settings):
+    send = MagicMock(return_value=7)
     pin = MagicMock()
-    monkeypatch.setattr(Telegram, "pin_webapp", pin)
+    monkeypatch.setattr(Telegram, "send_webapp", send)
+    monkeypatch.setattr(Telegram, "pin", pin)
     client.post("/push", json=envelope(message("/tablero")))
-    pin.assert_called_once_with(
+    send.assert_called_once_with(
         "42", t("es", "tablero"), "Visor de gastos", "https://api.example/visor"
     )
+    pin.assert_not_called()
+    for text in ("/tablero fijar", "Tablero fijar", "dashboard pin!"):
+        client.post("/push", json=envelope(message(text)))
+    assert [c.args for c in pin.call_args_list] == [("42", 7)] * 3
+    assert send.call_count == 4
     assert sent_texts(tg) == []
+    llm.run_turn.assert_not_called()
+
+
+def test_plain_words_run_commands(monkeypatch, st, llm, tg, ledger) -> None:
+    set_fun = MagicMock()
+    monkeypatch.setattr(state, "set_fun", set_fun)
+    for text in ("Ayuda", "  help. ", "Últimos", "FUN!"):
+        client.post("/push", json=envelope(message(text)))
+    texts = sent_texts(tg)
+    assert texts[:2] == [t("es", "welcome")] * 2
+    assert texts[3] == t("es", "fun_on")
+    assert texts[2] == "1. cafe 2.00 USD"
+    client.post("/push", json=envelope(message("ayuda con el arriendo")))
+    llm.run_turn.assert_called_once()  # not a lone word: prose to the LLM
+
+
+def test_resumen_without_llm(monkeypatch, st, llm, tg) -> None:
+    from assistant import jobs
+
+    monkeypatch.setattr(jobs, "_checkin", lambda ctx: "hoy")
+    monkeypatch.setattr(jobs, "_weekly", lambda ctx: "semana")
+    client.post("/push", json=envelope(message("resumen")))
+    monkeypatch.setattr(jobs, "_weekly", lambda ctx: None)
+    client.post("/push", json=envelope(message("/resumen")))
+    monkeypatch.setattr(jobs, "_checkin", MagicMock(side_effect=RuntimeError))
+    client.post("/push", json=envelope(message("summary")))
+    assert sent_texts(tg) == ["hoy\n\nsemana", "hoy", t("es", "failed")]
     llm.run_turn.assert_not_called()
 
 
@@ -785,8 +828,8 @@ def test_tablero_unconfigured_and_errors(monkeypatch, st, llm, tg) -> None:
     client.post("/push", json=envelope(message("/tablero")))
     s = dataclasses.replace(unset, api_url="https://api.example")
     monkeypatch.setattr(worker, "get_worker_settings", lambda: s)
-    pin = MagicMock(side_effect=httpx.ConnectError("down"))
-    monkeypatch.setattr(Telegram, "pin_webapp", pin)
+    send = MagicMock(side_effect=httpx.ConnectError("down"))
+    monkeypatch.setattr(Telegram, "send_webapp", send)
     client.post("/push", json=envelope(message("/tablero")))
     assert sent_texts(tg) == ["Tablero no configurado.", t("es", "failed")]
 
@@ -832,6 +875,13 @@ def test_llm_registration_without_fun_adds_the_correction_hint(
     assert sent_texts(tg)[-1].endswith("\n" + t("es", "corregir"))
     assert animations(tg) == []
     st.random_gif.assert_not_called()
+    st.take_hint.return_value = False  # after the first registrations
+    client.post("/push", json=envelope(message()))
+    client.post("/push", json=envelope(message("cafe 5")))
+    assert sent_texts(tg)[-2:] == [llm.result.reply, "−2.00 USD · cafe"]
+    st.take_hint.side_effect = RuntimeError("down")  # best effort
+    client.post("/push", json=envelope(message("cafe 5")))
+    assert sent_texts(tg)[-1] == "−2.00 USD · cafe"
 
 
 def test_editar_colon_fixes_the_last_movement(st, llm, tg, ledger) -> None:

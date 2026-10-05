@@ -3,7 +3,8 @@
 Collections (Firestore native):
 
 - ``users/{chat_id}``: nombre, rol (owner|beta), moneda, zona_horaria, idioma
-  (es|en|zh, from the Telegram app), fun (GIF replies, /fun), last_batch.
+  (es|en|zh, from the Telegram app), fun (GIF replies, /fun), last_batch, hints
+  (registrations shown how to correct, see take_hint).
 - ``processed/{update_id}``: dedup marker; ``expire_at`` drives a 7-day TTL.
 - ``invites/{code}``: nombre, used, ``expire_at`` (24 h, single use).
 - ``rate/{chat_id}_{minute}``: messages in that minute.
@@ -44,6 +45,7 @@ INVITE_TTL = timedelta(hours=24)
 PROCESSED_TTL = timedelta(days=7)
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{22}")  # secrets.token_urlsafe(16)
 GIF_MAX = 20
+HINTS = 3  # registrations that end with the "¿Algo mal?" line
 _ICS_TOKEN = re.compile(r"[A-Za-z0-9_-]{32}")  # secrets.token_urlsafe(24)
 
 
@@ -97,6 +99,15 @@ def mark_cron(key: str) -> None:
 
 def set_fun(chat_id: str, fun: bool) -> None:
     _doc("users", chat_id).set({"fun": fun}, merge=True)
+
+
+def take_hint(chat_id: str) -> bool:
+    """True for the first HINTS registrations: they show how to correct."""
+    n = (get_user(chat_id) or {}).get("hints", 0)
+    if n >= HINTS:
+        return False
+    _doc("users", chat_id).set({"hints": n + 1}, merge=True)
+    return True
 
 
 def set_idioma(chat_id: str, idioma: str) -> None:

@@ -23,62 +23,33 @@ TEXTOS: dict[str, dict[str, str]] = {
     "welcome": {
         "es": """Hola 👋 Soy Juani, tu asistente en tu teléfono. Llevo tus gastos, ingresos y agenda. Escríbeme normal:
 
-💸 Gastos e ingresos (todo queda en USD; otras monedas se convierten con la TRM)
-• -12 almuerzo · 25000 cop mercado · pan 2, leche 3
-• +1500 salario (el + es ingreso) · un monto solo te pregunto
-• ¿Algo mal? editar: 15 restaurantes corrige el último · /ultimos, /anular 1
-• /fun: te respondo con GIFs (otra vez /fun los apaga)
-• Visor de gastos: tu tablero del mes, fijado arriba del chat (/tablero lo fija de nuevo)
+💸 -12 almuerzo · 25000 cop mercado · +1500 salario (el + es ingreso)
+✏️ editar: 15 restaurantes corrige el último
+📊 tablero: tu mes · resumen: hoy, semana y mes
+📅 reunión con Ana mañana 3pm · calendario: tu agenda
+🎉 fun: te respondo con GIFs
 
-📅 Agenda
-• reunión con Ana mañana 3pm · recuérdame pagar la luz el viernes 9am
-• /calendario: próximos 7 días · ¿qué tengo libre el jueves?
-• /vincular tu-correo@gmail.com: copia tus eventos a Google Calendar
-• /conectar: avisa choques con tu calendario
-
-🕙 Cada día a las 22:00 te digo cuánto gastaste, y el domingo cómo va la semana.
-Tu zona horaria: /zona America/Bogota
-
-/ayuda muestra esto de nuevo.""",
+Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
         "en": """Hi 👋 I'm Juani, your assistant on your phone. I track your expenses, income and calendar. Just write to me:
 
-💸 Expenses and income (everything is kept in USD; other currencies are converted)
-• -12 lunch · 25000 cop groceries · bread 2, milk 3
-• +1500 salary (+ means income) · send just an amount and I'll ask
-• Something off? edit: 15 restaurants fixes the last one · /ultimos, /anular 1
-• /fun: I answer with GIFs (/fun again turns them off)
-• Expense viewer: your monthly dashboard, pinned at the top of the chat (/tablero pins it again)
+💸 -12 lunch · 25000 cop groceries · +1500 salary (+ means income)
+✏️ edit: 15 restaurants fixes the last one
+📊 dashboard: your month · summary: today, week and month
+📅 meeting with Ana tomorrow 3pm · calendar: your agenda
+🎉 fun: I answer with GIFs
 
-📅 Calendar
-• meeting with Ana tomorrow 3pm · remind me to pay the power bill Friday 9am
-• /calendario: next 7 days · am I free on Thursday?
-• /vincular your-email@gmail.com: copies your events to Google Calendar
-• /conectar: warns about clashes with your calendar
-
-🕙 Every day at 22:00 I tell you what you spent, and on Sunday how your week went.
-Your time zone: /zona America/New_York
-
-/ayuda shows this again.""",
+Just write the word, no "/". help shows this again.""",
         "zh": """你好 👋 我是 Juani，你手机里的助手。我帮你记录支出、收入和日程。直接给我发消息：
 
-💸 支出和收入（全部以 USD 记录，其他货币会自动换算）
-• -12 午饭 · 25000 cop 超市 · 面包 2, 牛奶 3
-• +1500 工资（+ 表示收入）· 只发金额我会问你
-• 有误？修改: 15 餐饮 可更正最后一笔 · /ultimos、/anular 1
-• /fun：用 GIF 回复你（再发 /fun 关闭）
-• 支出查看器：本月账单面板，已置顶在聊天上方（/tablero 可重新置顶）
+💸 -12 午饭 · 25000 cop 超市 · +1500 工资（+ 表示收入）
+✏️ 修改: 15 餐饮 可更正最后一笔
+📊 dashboard：本月账单 · summary：今天、本周和本月
+📅 明天下午3点和 Ana 开会 · calendar：你的日程
+🎉 fun：用 GIF 回复你
 
-📅 日程
-• 明天下午3点和 Ana 开会 · 周五上午9点提醒我交电费
-• /calendario：未来 7 天 · 我周四有空吗？
-• /vincular 你的邮箱@gmail.com：把事件同步到 Google 日历
-• /conectar：提醒你与日历冲突的安排
-
-🕙 每天 22:00 我会告诉你当天花了多少，周日告诉你本周情况。
-你的时区：/zona Asia/Shanghai
-
-/ayuda 再次显示此说明。""",
+直接发送单词，不用 "/"。help 再次显示此说明。""",
     },
+    "guia": {"es": "📖 Guía completa", "en": "📖 Full guide", "zh": "📖 完整指南"},
     "visor": {"es": "Visor de gastos", "en": "Expense viewer", "zh": "支出查看器"},
     "tablero": {
         "es": "Consulta tu tablero aquí 👇 (también en el botón de menú).",
@@ -372,9 +343,14 @@ Your time zone: /zona America/New_York
         "zh": "Juani：用聊天记录支出、收入和日程。发送 -12 午饭 即可 📊",
     },
     "cmd_tablero": {
-        "es": "Fija tu Visor de gastos del mes",
-        "en": "Pin your monthly Expense viewer",
-        "zh": "置顶本月支出查看器",
+        "es": "Tu Visor de gastos del mes (tablero fijar lo fija)",
+        "en": "Your monthly Expense viewer (dashboard pin pins it)",
+        "zh": "本月支出查看器（dashboard pin 可置顶）",
+    },
+    "cmd_resumen": {
+        "es": "Tus gastos de hoy, la semana y el mes",
+        "en": "Your spending today, this week and this month",
+        "zh": "今天、本周和本月的支出",
     },
     "cmd_ultimos": {
         "es": "Tus últimos 5 movimientos",
@@ -400,11 +376,6 @@ Your time zone: /zona America/New_York
         "es": "Activa o apaga las respuestas con GIFs",
         "en": "Turn GIF replies on or off",
         "zh": "开启或关闭 GIF 回复",
-    },
-    "cmd_zona": {
-        "es": "Tu zona horaria: /zona America/Bogota",
-        "en": "Your time zone: /zona America/New_York",
-        "zh": "你的时区：/zona Asia/Shanghai",
     },
     "cmd_vincular": {
         "es": "Copia tus eventos a Google Calendar",

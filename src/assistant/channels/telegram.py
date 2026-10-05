@@ -11,10 +11,13 @@ import httpx
 from assistant.channels.base import Channel, InboundMessage
 
 API_BASE = "https://api.telegram.org"
+# Service updates (e.g. the bot's own pin) arrive as messages without text.
+SERVICE = ("pinned_message", "new_chat_members", "left_chat_member", "new_chat_title")
 
 
 def parse_update(update: object) -> InboundMessage | None:
-    """A ``message`` (text or GIF) or ``callback_query``; None for anything else."""
+    """A ``message`` (text or GIF) or ``callback_query``; None for anything else,
+    service messages included."""
     if not isinstance(update, dict):
         return None
     try:
@@ -29,6 +32,8 @@ def parse_update(update: object) -> InboundMessage | None:
                 language_code=(cq.get("from") or {}).get("language_code"),
             )
         msg = update["message"]
+        if any(k in msg for k in SERVICE):
+            return None
         replied = (msg.get("reply_to_message") or {}).get("animation") or {}
         return InboundMessage(
             chat_id=str(msg["chat"]["id"]),
@@ -64,7 +69,12 @@ class Telegram(Channel):
         if inline_keyboard:
             payload["reply_markup"] = {
                 "inline_keyboard": [
-                    [{"text": label, "callback_data": data} for label, data in row]
+                    [
+                        {"text": label, "url": data}  # a link button
+                        if data.startswith("https://")
+                        else {"text": label, "callback_data": data}
+                        for label, data in row
+                    ]
                     for row in inline_keyboard
                 ]
             }
@@ -111,9 +121,9 @@ class Telegram(Channel):
         )
         resp.raise_for_status()
 
-    def pin_webapp(self, chat_id: str, text: str, label: str, url: str) -> None:
-        """A pinned message with a Mini App button, and the same app as the
-        chat's menu button. Telegram signs the user into it (no token in url)."""
+    def send_webapp(self, chat_id: str, text: str, label: str, url: str) -> int:
+        """A message with a Mini App button; its message_id. Telegram signs the
+        user into the app (no token in url)."""
         app = {"text": label, "web_app": {"url": url}}
         sent = self._post(
             "sendMessage",
@@ -121,14 +131,20 @@ class Telegram(Channel):
             text=text,
             reply_markup={"inline_keyboard": [[app]]},
         )
+        return int(sent["result"]["message_id"])
+
+    def pin(self, chat_id: str, message_id: int) -> None:
         self._post(
             "pinChatMessage",
             chat_id=chat_id,
-            message_id=sent["result"]["message_id"],
+            message_id=message_id,
             disable_notification=True,
         )
+
+    def set_menu_webapp(self, chat_id: str, label: str, url: str) -> None:
+        """The Mini App as the chat's menu button."""
         self._post(
             "setChatMenuButton",
             chat_id=chat_id,
-            menu_button={"type": "web_app", **app},
+            menu_button={"type": "web_app", "text": label, "web_app": {"url": url}},
         )

@@ -21,10 +21,17 @@ commands (`/invitar`, `/usuarios`, `/gif`) answer in Spanish.
 
 Only invited people can use the bot. The owner sends `/invitar <name>` and
 forwards the single-use `t.me` link (valid 24 h). Opening it sends `/start`,
-which creates the user, shows Juani's welcome and pins the Visor de gastos
-(see [Dashboard](#dashboard-visor-de-gastos)). `/ayuda` shows the welcome
+which creates the user, shows Juani's short welcome with a **📖 Guía completa**
+button (this guide's site) and sets the Visor de gastos as the chat's menu
+button (see [Dashboard](#dashboard-visor-de-gastos)). `/ayuda` shows the welcome
 again. `/zona America/Bogota` sets the time zone of the agenda and the reports
-(default `America/Panama`).
+(default `America/Panama`); it is not in the menu.
+
+Commands also work as a plain word, without `/`, in any case and with or
+without accents, when the word is the whole message: `tablero` / `dashboard`,
+`tablero fijar` / `dashboard pin`, `resumen` / `summary`, `ultimos` / `last`,
+`ayuda` / `help`, `calendario` / `calendar` / `agenda`, `fun`. Anything longer
+(`15 cafe`, `ayuda con el arriendo`) is handled as usual.
 
 ## Logging expenses and income (no LLM)
 
@@ -50,8 +57,8 @@ tokens): `gasto 2 usd cafe`, `2 usd cafe`, `cafe 2000cop gasto`,
   `明天`, `多少`). In free text the LLM registers, edits and voids the same way
   ("el último era 3 dólares, no 5").
 
-Every registration answers with the entry as stored, category included, and how
-to fix it:
+Every registration answers with the entry as stored, category included; the
+user's first 3 also say how to fix it (counted in `users.hints`):
 
 ```
 −12.00 USD · Almuerzo · Restaurantes
@@ -74,8 +81,9 @@ of the old row plus a new row (see [DATA.md](DATA.md)).
 
 ## Dashboard (Visor de gastos)
 
-`/tablero` (and `/start`) pins a **Visor de gastos** button in the chat and sets
-it as the chat's menu button. It opens a Telegram Mini App with the month:
+`/tablero` sends a message with a **Visor de gastos** button; `/tablero fijar`
+(`dashboard pin`) also pins it at the top of the chat. `/start` sets the same
+app as the chat's menu button. It opens a Telegram Mini App with the month:
 income, spend, savings rate against the 20% target, spend by category and per
 day, and the last 15 movements; ← → move between months. It is shown in the
 user's language.
@@ -99,6 +107,10 @@ picks who is due):
 - **Sunday 22:00:** the same, plus the week's spend, top categories and,
   against the month's income, the 20% to save and what is left per week, in
   one message.
+
+`/resumen` (or `resumen` / `summary`) gives the same on demand, without the LLM:
+today's spend and, when there is any spend or income, the week and the month
+against income.
 
 ## GIF reactions (`/fun`)
 
@@ -169,13 +181,14 @@ Telegram reminder does not depend on that refresh.
 
 | Command | What it does |
 |---|---|
-| `/tablero` | Pins the Visor de gastos |
+| `/tablero [fijar]` | The Visor de gastos; `fijar` pins it |
+| `/resumen` | Today, the week and the month vs income |
 | `/ultimos` | Last 5 movements |
 | `/editar <n> <amount>` | Fixes movement `n` |
 | `/anular <n>` | Voids movement `n` (with confirmation) |
 | `/calendario [enlace\|nuevo]` | Next 7 days; private ICS link |
 | `/fun` | GIF replies on or off |
-| `/zona <IANA zone>` | Time zone |
+| `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/vincular <id\|off>` | Mirror to Google Calendar |
 | `/conectar <url\|off>` | Warn about clashes with an iCal calendar |
 | `/ayuda` | The welcome |

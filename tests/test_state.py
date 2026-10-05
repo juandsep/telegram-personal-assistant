@@ -75,6 +75,12 @@ class FakeDB:
     def transaction(self):
         return Tx()
 
+    def recursive_delete(self, ref):  # the doc; subcollections live as name/id/...
+        name, doc_id = ref.key
+        for key in [k for k in self.store if k[0] == name]:
+            if key[1] == doc_id or key[1].startswith(f"{doc_id}/"):
+                del self.store[key]
+
 
 @pytest.fixture
 def db(monkeypatch):
@@ -275,3 +281,20 @@ def test_revoke_only_betas(db) -> None:
     assert state.revoke("3") is False
     assert state.revoke("2") is True
     assert state.get_user("2") is None and state.get_user("1") is not None
+
+
+def test_reset_user_keeps_access_only(db) -> None:
+    state.upsert_user("1", "Ana", role="beta", currency="COP")
+    state.ics_token("1")
+    token = state.get_user("1")["ics_token"]
+    db.store[("ledger", "1/movimientos/a")] = {"monto": "5"}
+    db.store[("agenda", "1/eventos/e")] = {"texto": "x"}
+    db.store[("ledger", "2/movimientos/b")] = {"monto": "7"}  # another chat
+    state.append_history("1", [{"role": "user", "content": "hola"}])
+    db.store[("preferences", "1")] = {"gcal_id": "c"}
+    state.reset_user("1")
+    assert state.get_user("1") == {"nombre": "Ana", "rol": "beta"}
+    assert state.chat_for_ics_token(token) is None
+    assert state.get_history("1") == []
+    assert state.get_preferences("1") == {}
+    assert set(db.store) == {("users", "1"), ("ledger", "2/movimientos/b")}

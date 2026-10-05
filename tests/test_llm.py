@@ -321,7 +321,7 @@ def test_rejected_calls_counted_and_fed_back(calls) -> None:
 @respx.mock
 def test_max_three_rounds(calls) -> None:
     route = respx.post(URL).mock(
-        return_value=completion(tool_calls=[("listar_agenda", '{"rango": "hoy"}')])
+        return_value=completion(tool_calls=[("resumen_finanzas", '{"periodo": "hoy"}')])
     )
     result = client.run_turn(ctx(), "x", [])
     assert route.call_count == 3
@@ -436,3 +436,24 @@ def test_context_message_names_the_language() -> None:
 
     zh = ToolContext("42", "beta", "USD", "America/Panama", 7, AHORA, idioma="zh")
     assert _context_message(zh)["content"].endswith("Responde siempre en 简体中文.")
+
+
+@respx.mock
+def test_agenda_tools_answer_the_user_without_the_llm(calls) -> None:
+    route = respx.post(URL).mock(
+        return_value=completion(tool_calls=[("ver_libres", '{"fecha": "2026-10-01"}')])
+    )
+    result = client.run_turn(ctx(), "¿qué tengo libre el jueves?", [])
+    assert route.call_count == 1  # the busy times never go back to the LLM
+    assert result.reply == "ok ver_libres" and result.private
+    assert result.messages[-1] == {"role": "assistant", "content": client.PRIVATE_REPLY}
+
+
+@respx.mock
+def test_clash_question_is_kept_out_of_history(calls) -> None:
+    sys.modules["assistant.services.agenda"].choques = ["Ocupado 09:00–10:00"]
+    raw = '{"texto": "Llamar", "cuando": "2026-09-30T09:30"}'
+    respx.post(URL).mock(return_value=completion(tool_calls=[("recordatorio", raw)]))
+    result = client.run_turn(ctx(), "recuérdame llamar a las 9:30", [])
+    assert result.reply.startswith("Choca con Ocupado") and result.keyboard
+    assert result.messages[-1]["content"] == client.PRIVATE_REPLY

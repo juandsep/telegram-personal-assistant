@@ -11,6 +11,10 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
    gcloud auth application-default login
    cd infra
    cp terraform.tfvars.example terraform.tfvars   # set project_id, billing_account, github_repo
+   # remote state bucket (set its name in the backend "gcs" block of main.tf)
+   gcloud storage buckets create gs://<project_id>-tfstate --location us-central1 \
+     --uniform-bucket-level-access --public-access-prevention
+   gcloud storage buckets update gs://<project_id>-tfstate --versioning
    terraform init
    terraform apply
    terraform output github_variables

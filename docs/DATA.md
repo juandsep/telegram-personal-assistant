@@ -26,6 +26,11 @@ Nothing is edited or deleted: undo, `/anular`, `/editar` and `editar:` write
 negative `reverso` copies (plus a new `registro` for an edit). Sum `monto` to
 net them out.
 
+Users see amounts in `users.moneda` (display only; the ledger stays USD): a row
+typed in that currency shows `monto_original` exactly, any other row its `monto`
+times that day's rate (`fx/{fecha}_{moneda}`, cached). Sums convert row by row,
+so a reverso still cancels its registro.
+
 Categories map to the 50/30/20 rule:
 
 - **necesidades:** vivienda, servicios, supermercado, transporte, salud, deudas
@@ -33,7 +38,9 @@ Categories map to the 50/30/20 rule:
 - **ahorro:** ahorro, inversion
 
 Budget advice compares the spend per category with `preferences/{chat_id}`, or
-with 50/30/20 of the month's income when there is no budget. It is plain code;
+with 50/30/20 of the month's income when there is no budget. Budget caps are
+USD; for another display currency they are converted at today's rate, and spend
+and income per row as above. It is plain code;
 the LLM only phrases the result.
 
 ## Export, backup and Looker Studio
@@ -84,7 +91,7 @@ A connected iCal URL (`/conectar`) is stored encrypted with Cloud KMS
 
 | Collection | Content | Expiry |
 |---|---|---|
-| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda`, `zona_horaria`, `idioma`, `fun`, `last_batch` | — |
+| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch` | — |
 | `processed/{update_id}` | Dedup marker | TTL 7 days |
 | `invites/{code}` | Single-use invite | TTL 24 h |
 | `rate`, `spend` | Per-chat message and LLM spend counters | TTL |

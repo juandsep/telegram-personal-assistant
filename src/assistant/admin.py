@@ -29,6 +29,7 @@ COMANDOS = (
     "anular",
     "calendario",
     "fun",
+    "moneda",
     "vincular",
     "conectar",
     "ayuda",

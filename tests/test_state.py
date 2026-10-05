@@ -98,6 +98,16 @@ def test_users(db) -> None:
     assert state.list_chat_ids() == ["1"]
 
 
+def test_set_moneda_guesses_the_zone_once(db) -> None:
+    state.set_moneda("1", "COP")  # no zone yet
+    assert state.get_user("1") == {"moneda": "COP", "zona_horaria": "America/Bogota"}
+    state.set_moneda("1", "EUR")  # a zone set by now is kept
+    assert state.get_user("1") == {"moneda": "EUR", "zona_horaria": "America/Bogota"}
+    state.set_zona("2", "America/Panama")  # the old default is replaced
+    state.set_moneda("2", "CNY")
+    assert state.get_user("2")["zona_horaria"] == "Asia/Shanghai"
+
+
 def test_mark_processed_once(db) -> None:
     assert state.mark_processed(7) is True
     assert state.mark_processed(7) is False
@@ -112,6 +122,7 @@ def test_invite_single_use(db) -> None:
     assert state.redeem_invite(code, "2") is True
     assert state.get_user("2")["rol"] == "beta"
     assert state.get_user("2")["nombre"] == "Beto"
+    assert "zona_horaria" not in state.get_user("2")  # readers fall back
     assert state.redeem_invite(code, "3") is False
     assert state.get_user("3") is None
 

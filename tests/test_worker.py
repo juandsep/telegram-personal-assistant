@@ -226,7 +226,11 @@ def test_start_and_non_text_skip_llm(st, llm, tg) -> None:
     client.post("/push", json=envelope(message("/start abc")))
     client.post("/push", json=envelope(message("")))
     llm.run_turn.assert_not_called()
-    assert sent_texts(tg) == [t("es", "welcome"), t("es", "text_only")]
+    assert sent_texts(tg) == [
+        t("es", "welcome"),
+        t("es", "moneda_pregunta"),
+        t("es", "text_only"),
+    ]
 
 
 def test_start_in_phone_language_sets_menu_button(monkeypatch, st, llm, tg, settings):
@@ -235,7 +239,7 @@ def test_start_in_phone_language_sets_menu_button(monkeypatch, st, llm, tg, sett
     update = message("/start abc")
     update["message"]["from"] = {"id": 42, "language_code": "en-US"}
     client.post("/push", json=envelope(update))
-    assert sent_texts(tg) == [t("en", "welcome")]
+    assert sent_texts(tg) == [t("en", "welcome"), t("en", "moneda_pregunta")]
     assert sent_texts(tg)[0].startswith("Hi 👋 I'm Juani")
     welcome = json.loads(tg.calls[0].request.read())
     assert welcome["reply_markup"] == {
@@ -243,7 +247,7 @@ def test_start_in_phone_language_sets_menu_button(monkeypatch, st, llm, tg, sett
     }
     set_idioma.assert_called_once_with("42", "en")
     paths = [c.request.url.path.rsplit("/", 1)[1] for c in tg.calls]
-    assert paths == ["sendMessage", "setChatMenuButton"]  # no pinned message
+    assert paths == ["sendMessage", "setChatMenuButton", "sendMessage"]  # no pin
     menu = json.loads(tg.calls[1].request.read())["menu_button"]
     assert menu == {
         "type": "web_app",
@@ -253,8 +257,47 @@ def test_start_in_phone_language_sets_menu_button(monkeypatch, st, llm, tg, sett
     st.get_user.return_value = {"idioma": "zh"}  # stored and unchanged: no write
     update["message"]["from"]["language_code"] = "zh-hans"
     client.post("/push", json=envelope(update))
-    assert sent_texts(tg)[-1] == t("zh", "welcome")
+    assert sent_texts(tg)[-2:] == [t("zh", "welcome"), t("zh", "moneda_pregunta")]
     set_idioma.assert_called_once()
+
+
+def test_start_asks_the_currency_with_buttons(st, llm, tg) -> None:
+    client.post("/push", json=envelope(message("/start")))
+    pregunta = json.loads(tg.calls.last.request.read())
+    assert pregunta["text"] == t("es", "moneda_pregunta")
+    assert pregunta["reply_markup"]["inline_keyboard"] == [
+        [
+            {"text": "🇺🇸 USD", "callback_data": "mo:USD"},
+            {"text": "🇪🇺 EUR", "callback_data": "mo:EUR"},
+            {"text": "🇨🇴 COP", "callback_data": "mo:COP"},
+            {"text": "🇨🇳 CNY", "callback_data": "mo:CNY"},
+        ]
+    ]
+
+
+def test_moneda_command_and_buttons(monkeypatch, st, llm, tg) -> None:
+    set_moneda = MagicMock()
+    monkeypatch.setattr(state, "set_moneda", set_moneda)
+    for text in ("/moneda", "Moneda", "currency", "/moneda xyz"):
+        client.post("/push", json=envelope(message(text)))
+    assert sent_texts(tg) == [t("es", "moneda_pregunta")] * 4
+    set_moneda.assert_not_called()
+    client.post("/push", json=envelope(message("/moneda cop")))
+    set_moneda.assert_called_once_with("42", "COP")
+    assert sent_texts(tg)[-1] == "✓ Moneda: COP. Tus montos se muestran en COP."
+    st.get_user.return_value = {"rol": "beta", "idioma": "en"}
+    client.post("/push", json=envelope(callback("mo:EUR")))
+    set_moneda.assert_called_with("42", "EUR")
+    assert sent_texts(tg)[-1] == t("en", "moneda_ok", moneda="EUR")
+    client.post("/push", json=envelope(callback("mo:XYZ")))  # not offered: ignored
+    assert set_moneda.call_count == 2
+    llm.run_turn.assert_not_called()
+
+
+def test_moneda_failure_is_reported(monkeypatch, st, tg) -> None:
+    monkeypatch.setattr(state, "set_moneda", MagicMock(side_effect=RuntimeError))
+    client.post("/push", json=envelope(callback("mo:CNY")))
+    assert sent_texts(tg) == [t("es", "failed")]
 
 
 def test_unknown_user_ignored(st, llm, tg) -> None:
@@ -466,6 +509,17 @@ def test_quick_ingreso_without_gif_stored(st, llm, tg, ledger) -> None:
     fixed = "+1000.00 USD · salario"
     assert sent_texts(tg) == [fixed] and animations(tg) == []
     st.random_gif.assert_not_called()  # /fun off: no GIF lookup
+    llm.run_turn.assert_not_called()
+
+
+def test_quick_without_currency_uses_the_user_one(st, llm, tg, ledger) -> None:
+    st.get_user.return_value = {"moneda": "COP"}
+    client.post("/push", json=envelope(message("-25000 mercado")))
+    assert ledger.registrar_gasto.call_args.kwargs["moneda"] == "COP"
+    client.post("/push", json=envelope(message("-3 usd cafe")))  # typed wins
+    assert ledger.registrar_gasto.call_args.kwargs["moneda"] == "USD"
+    client.post("/push", json=envelope(message("5")))  # bare amount: the question
+    assert sent_texts(tg)[-1] == "¿5.00 COP: gasto o ingreso?"
     llm.run_turn.assert_not_called()
 
 

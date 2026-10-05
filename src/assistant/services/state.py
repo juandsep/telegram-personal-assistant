@@ -2,8 +2,11 @@
 
 Collections (Firestore native):
 
-- ``users/{chat_id}``: nombre, rol (owner|beta), moneda, zona_horaria, idioma
-  (es|en|zh, from the Telegram app), fun (GIF replies, /fun), last_batch.
+- ``users/{chat_id}``: nombre, rol (owner|beta), moneda (display currency:
+  USD|EUR|COP|CNY, /moneda; the ledger stays in USD), zona_horaria (unset until
+  /moneda guesses it, the Mini App sends the phone's or /zona sets it; readers
+  fall back to the default zone), idioma (es|en|zh, from the Telegram app), fun
+  (GIF replies, /fun), last_batch.
 - ``processed/{update_id}``: dedup marker; ``expire_at`` drives a 7-day TTL.
 - ``invites/{code}``: nombre, used, ``expire_at`` (24 h, single use).
 - ``rate/{chat_id}_{minute}``: messages in that minute.
@@ -107,6 +110,24 @@ def set_zona(chat_id: str, zona: str) -> None:
     _doc("users", chat_id).set({"zona_horaria": zona}, merge=True)
 
 
+# A first guess of the time zone from the currency, until the phone's arrives.
+ZONA_POR_MONEDA = {
+    "COP": "America/Bogota",
+    "EUR": "Europe/Madrid",
+    "CNY": "Asia/Shanghai",
+    "USD": "America/New_York",
+}
+
+
+def set_moneda(chat_id: str, moneda: str) -> None:
+    """The display currency; a missing or old-default zone gets a first guess."""
+    ref = _doc("users", chat_id)
+    datos = {"moneda": moneda}
+    if (_data(ref.get()) or {}).get("zona_horaria") in (None, "", "America/Panama"):
+        datos["zona_horaria"] = ZONA_POR_MONEDA[moneda]
+    ref.set(datos, merge=True)
+
+
 def list_chat_ids() -> list[str]:
     return [snap.id for snap in _db().collection("users").stream()]
 
@@ -158,7 +179,6 @@ def _redeem(tx: Any, invite: Any, user: Any) -> bool:
             "nombre": data["nombre"],
             "rol": "beta",
             "moneda": "USD",
-            "zona_horaria": "America/Panama",
         },
     )
     return True

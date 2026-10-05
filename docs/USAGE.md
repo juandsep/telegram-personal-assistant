@@ -23,14 +23,26 @@ Only invited people can use the bot. The owner sends `/invitar <name>` and
 forwards the single-use `t.me` link (valid 24 h). Opening it sends `/start`,
 which creates the user, shows Juani's short welcome with a **📖 Guía completa**
 button (this guide's site) and sets the Visor de gastos as the chat's menu
-button (see [Dashboard](#dashboard-visor-de-gastos)). `/ayuda` shows the welcome
-again. `/zona America/Bogota` sets the time zone of the agenda and the reports
-(default `America/Panama`); it is not in the menu.
+button (see [Dashboard](#dashboard-visor-de-gastos)), then asks for the
+currency with buttons (🇺🇸 USD · 🇪🇺 EUR · 🇨🇴 COP · 🇨🇳 CNY). `/ayuda` shows
+the welcome again.
+
+**Currency:** `/moneda` (or `moneda` / `currency`) shows the same buttons;
+`/moneda COP` sets it directly. Every amount the bot shows (replies, scheduled
+messages, budgets, the dashboard, the LLM's answers) is in that currency, and an
+amount typed without a currency is taken in it. The ledger itself stays in USD.
+
+**Time zone:** picking a currency sets a first guess when none is set yet (COP →
+America/Bogota, EUR → Europe/Madrid, CNY → Asia/Shanghai, USD →
+America/New_York); opening the Visor de gastos then stores the phone's own zone.
+`/zona America/Bogota` is a manual override, not in the menu. Without any, the
+default is `America/Panama`.
 
 Commands also work as a plain word, without `/`, in any case and with or
 without accents, when the word is the whole message: `tablero` / `dashboard`,
 `tablero fijar` / `dashboard pin`, `resumen` / `summary`, `ultimos` / `last`,
-`ayuda` / `help`, `calendario` / `calendar` / `agenda`, `fun`. Anything longer
+`ayuda` / `help`, `calendario` / `calendar` / `agenda`, `fun`, `moneda` /
+`currency`. Anything longer
 (`15 cafe`, `ayuda con el arriendo`) is handled as usual.
 
 ## Logging expenses and income (no LLM)
@@ -46,8 +58,9 @@ tokens): `gasto 2 usd cafe`, `2 usd cafe`, `cafe 2000cop gasto`,
   expense. A bare amount (`5`, `5 usd`) is not guessed: the bot asks with
   Gasto / Ingreso buttons and registers on the tap.
 - **Currency:** an ISO code next to the amount (USD, COP, EUR, MXN, PEN, CLP,
-  ARS, BRL, GBP, CAD, PAB), `$`, `€`, `dollars` or `美元`; none means USD. The
-  ledger converts to USD. `2,000` / `2.000` are thousands, `2,5` is 2.5.
+  ARS, BRL, GBP, CAD, PAB, CNY), `$`, `€`, `dollars` or `美元`; none means the
+  user's currency (`/moneda`). The ledger converts to USD at the day's rate.
+  `2,000` / `2.000` are thousands, `2,5` is 2.5.
 - **Category:** the other words are the note; keywords in the three languages
   pick the category (`cafe` / `coffee` / `咖啡` → restaurantes, `uber` /
   `打车` → transporte, `groceries` / `超市` → supermercado…), else `otros`.
@@ -57,10 +70,12 @@ tokens): `gasto 2 usd cafe`, `2 usd cafe`, `cafe 2000cop gasto`,
   `明天`, `多少`). In free text the LLM registers, edits and voids the same way
   ("el último era 3 dólares, no 5").
 
-Every registration answers with the entry as stored, category included:
+Every registration answers with the entry in the user's currency, category
+included, and the amount as typed when it was another currency:
 
 ```
 −12.00 USD · Almuerzo · Restaurantes
+−48000.00 COP · Uber · Transporte (12 USD)
 ```
 
 ## Correcting
@@ -84,7 +99,8 @@ of the old row plus a new row (see [DATA.md](DATA.md)).
 app as the chat's menu button. It opens a Telegram Mini App with the month:
 income, spend, savings rate against the 20% target, spend by category and per
 day, and the last 15 movements; ← → move between months. It is shown in the
-user's language.
+user's language and currency, and sends the phone's time zone (`X-Tz`), stored
+when it changed.
 
 Nothing sensitive travels in the URL. The service serves the shell at `/visor`; the
 page posts Telegram's signed `initData` to `/visor/datos`, which checks the
@@ -186,6 +202,7 @@ Telegram reminder does not depend on that refresh.
 | `/anular <n>` | Voids movement `n` (with confirmation) |
 | `/calendario [enlace\|nuevo]` | Next 7 days; private ICS link |
 | `/fun` | GIF replies on or off |
+| `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/vincular <id\|off>` | Mirror to Google Calendar |
 | `/conectar <url\|off>` | Warn about clashes with an iCal calendar |

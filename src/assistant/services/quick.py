@@ -23,7 +23,7 @@ from assistant.context import CATEGORIES
 from assistant.i18n import CATEGORIAS
 
 CODES = frozenset(
-    {"USD", "COP", "EUR", "MXN", "PEN", "CLP", "ARS", "BRL", "GBP", "CAD", "PAB"}
+    {"USD", "COP", "EUR", "MXN", "PEN", "CLP", "ARS", "BRL", "GBP", "CAD", "PAB", "CNY"}
 )
 _CUR = {c.lower(): c for c in CODES} | {
     "$": "USD",
@@ -35,8 +35,17 @@ _CUR = {c.lower(): c for c in CODES} | {
     "美元": "USD",
     "euro": "EUR",
     "euros": "EUR",
+    "yuan": "CNY",
+    "rmb": "CNY",
+    "元": "CNY",
+    "人民币": "CNY",
+    "块": "CNY",
 }
-_TOKEN = re.compile(r"([$€])?([-+]?\d[\d.,]*)([$€]|[a-z]{3})?")
+# "5元": Chinese currency glued to the number like a symbol.
+_TOKEN = re.compile(r"([$€])?([-+]?\d[\d.,]*)([$€元块]|[a-z]{3})?")
+_DASH = str.maketrans("\u2212\u2013\u2014", "---")  # minus, en and em dash
+# "- 5": a lone sign before the amount joins it.
+_SIGN = re.compile(r"(?<!\S)([+-])\s+(?=\d)")
 _TIME = re.compile(r"\d{1,2}:\d{2}|\b\d{1,2}\s*(am|pm|a\.m|p\.m)\b|\ba las\b")
 # Words that mean a date, a question, an edit or a calendar action: LLM.
 _SKIP = frozenset(
@@ -102,7 +111,7 @@ class Entry:
 
 
 def norm(text: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", text.lower())
+    decomposed = unicodedata.normalize("NFKD", text.lower().translate(_DASH))
     return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
@@ -110,6 +119,12 @@ _CAT_NOMBRES = {
     norm(nombre): clave
     for clave in CATEGORIES
     for nombre in (clave, *CATEGORIAS[clave].values())
+}
+# Note words typed without their accent, stored with it ("cafe" -> "café").
+_ACENTOS = {
+    norm(w): w
+    for w in "café médico crédito débito teléfono película películas música "
+    "cafetería panadería autobús avión".split()
 }
 
 
@@ -194,8 +209,8 @@ def correccion(text: str) -> dict | None:
     return campos
 
 
-def parse(text: str) -> Entry | None:
-    raw = text.replace("\u2212", "-").split()  # "−5" (minus sign) as "-5"
+def parse(text: str, default: str = "USD") -> Entry | None:
+    raw = _SIGN.sub(r"\1", text.translate(_DASH)).split()  # "– 5" as "-5"
     toks = [norm(t).strip(".,;:!") for t in raw]
     joined = " ".join(toks)
     if (
@@ -240,7 +255,7 @@ def parse(text: str) -> Entry | None:
     decidido = signo or _STRIP.intersection(toks)
     if not words and not decidido:
         tipo = ""  # a bare amount: gasto or ingreso is the user's call
-    nota = " ".join(w for w, _ in words)
+    nota = " ".join(_ACENTOS.get(w.lower(), w) for w, _ in words)
     categoria = ""
     if tipo != "ingreso":
         found = (_categoria(n) for _, n in words)
@@ -248,7 +263,7 @@ def parse(text: str) -> Entry | None:
     return Entry(
         tipo=tipo,
         monto=value,
-        moneda=moneda or "USD",
+        moneda=moneda or default,
         nota=nota,
         categoria=categoria,
         error=None if value > 0 else NOT_POSITIVE,

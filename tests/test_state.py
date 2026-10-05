@@ -98,13 +98,6 @@ def test_users(db) -> None:
     assert state.list_chat_ids() == ["1"]
 
 
-def test_take_hint_first_three_registrations(db) -> None:
-    state.upsert_user("1", "Ana", rol="owner")
-    assert [state.take_hint("1") for _ in range(5)] == [True] * 3 + [False] * 2
-    assert state.get_user("1")["hints"] == 3
-    assert state.get_user("1")["nombre"] == "Ana"  # merged, not replaced
-
-
 def test_mark_processed_once(db) -> None:
     assert state.mark_processed(7) is True
     assert state.mark_processed(7) is False

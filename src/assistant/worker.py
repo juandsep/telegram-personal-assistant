@@ -252,10 +252,7 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     # 3-5. Reply, account, trace.
     registros = [REGISTROS[t] for t in result.tools if t in REGISTROS]
     registro = bool(registros) and not result.keyboard
-    reply = result.reply
-    if registro and not ctx.fun:
-        reply += _hint(ctx)
-    _send(channel, msg, reply, result.keyboard)
+    _send(channel, msg, result.reply, result.keyboard)
     if registro and ctx.fun:
         _gif(channel, msg, registros[-1])
     state.add_llm_spend(msg.chat_id, result.cost_usd)
@@ -362,23 +359,12 @@ def _quick(
 def _registro(
     ctx: ToolContext, channel: Telegram, msg: InboundMessage, reply: str
 ) -> None:
-    """A registration answers with the entry as stored and, the first times, how
-    to correct it; with /fun on, with the reaction GIF only (the text is the
-    fallback when no GIF is stored). Anything else (errors such as a missing
-    rate) as is."""
+    """A registration answers with the entry as stored; with /fun on, with the
+    reaction GIF only (the text is the fallback when no GIF is stored)."""
     tipo = {"−": "gasto", "+": "ingreso"}.get(reply[:1])
     if tipo and ctx.fun and _gif(channel, msg, tipo):
         return
-    _send(channel, msg, reply + _hint(ctx) if tipo else reply)
-
-
-def _hint(ctx: ToolContext) -> str:
-    """The correction line for the user's first registrations; best effort."""
-    try:
-        return "\n" + t(ctx.idioma, "corregir") if state.take_hint(ctx.chat_id) else ""
-    except Exception as exc:
-        logger.warning("hint_failed error=%s", type(exc).__name__)
-        return ""
+    _send(channel, msg, reply)
 
 
 def _resumen(ctx: ToolContext, msg: InboundMessage) -> str:

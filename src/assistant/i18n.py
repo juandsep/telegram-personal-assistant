@@ -181,11 +181,6 @@ Just write the word, no "/". help shows this again.""",
         "en": "Fun mode off: I'll answer with the entry.",
         "zh": "已关闭趣味模式：我会回复记录内容。",
     },
-    "corregir": {
-        "es": "¿Algo mal? Responde: editar: 15 almuerzo restaurantes",
-        "en": "Something off? Reply: edit: 15 lunch restaurants",
-        "zh": "有误？回复：修改: 15 午饭 餐饮",
-    },
     "corregir_usage": {
         "es": "Escribe editar: y lo correcto del último registro: monto, nota y/o categoría. Ej. editar: 15 · almuerzo · restaurantes",
         "en": "Write edit: and what's right for the last entry: amount, note and/or category. E.g. edit: 15 · lunch · restaurants",

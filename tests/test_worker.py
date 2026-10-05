@@ -74,9 +74,7 @@ def st(monkeypatch):
     )
     m.remove_gif.return_value = 1
     m.create_pending.return_value = "t" * 22
-    m.take_hint.return_value = True
     for name in (
-        "take_hint",
         "get_user",
         "check_rate",
         "llm_spend_today",
@@ -465,7 +463,7 @@ def test_quick_ingreso_without_gif_stored(st, llm, tg, ledger) -> None:
         "USD",
         "salario",
     )
-    fixed = "+1000.00 USD · salario\n" + t("es", "corregir")
+    fixed = "+1000.00 USD · salario"
     assert sent_texts(tg) == [fixed] and animations(tg) == []
     st.random_gif.assert_not_called()  # /fun off: no GIF lookup
     llm.run_turn.assert_not_called()
@@ -484,7 +482,7 @@ def test_quick_errors_never_5xx(st, llm, tg, ledger, caplog) -> None:
     assert sent_texts(tg) == [
         "El monto debe ser mayor que 0.",
         t("es", "failed"),
-        "−2.00 USD · cafe\n" + t("es", "corregir"),  # GIF failed: text fallback
+        "−2.00 USD · cafe",  # GIF failed: text fallback
     ]
     assert "gif_failed" in caplog.text and "gif1" not in caplog.text
     assert "cafe" not in caplog.text
@@ -718,7 +716,7 @@ def test_bare_amount_asks_and_registers_the_chosen_type(
         "USD",
         "",
     )
-    assert sent_texts(tg)[-1] == "+1000.00 USD · salario\n" + t("es", "corregir")
+    assert sent_texts(tg)[-1] == "+1000.00 USD · salario"
     client.post("/push", json=envelope(callback("g:tok0")))  # single use
     assert sent_texts(tg)[-1] == "La confirmación expiró."
     ledger.registrar_gasto.assert_not_called()
@@ -866,22 +864,13 @@ def test_fun_toggles_gif_replies(monkeypatch, st, llm, tg) -> None:
     llm.run_turn.assert_not_called()
 
 
-def test_llm_registration_without_fun_adds_the_correction_hint(
-    st, llm, tg, ledger
-) -> None:
+def test_registration_replies_without_a_correction_hint(st, llm, tg, ledger) -> None:
     llm.result.keyboard = None
     llm.result.tools = ["registrar_gasto"]
-    client.post("/push", json=envelope(message("almorcé 12")))
-    assert sent_texts(tg)[-1].endswith("\n" + t("es", "corregir"))
+    client.post("/push", json=envelope(message()))  # LLM path
+    client.post("/push", json=envelope(message("cafe 5")))  # quick path
+    assert sent_texts(tg) == [llm.result.reply, "−2.00 USD · cafe"]
     assert animations(tg) == []
-    st.random_gif.assert_not_called()
-    st.take_hint.return_value = False  # after the first registrations
-    client.post("/push", json=envelope(message()))
-    client.post("/push", json=envelope(message("cafe 5")))
-    assert sent_texts(tg)[-2:] == [llm.result.reply, "−2.00 USD · cafe"]
-    st.take_hint.side_effect = RuntimeError("down")  # best effort
-    client.post("/push", json=envelope(message("cafe 5")))
-    assert sent_texts(tg)[-1] == "−2.00 USD · cafe"
 
 
 def test_editar_colon_fixes_the_last_movement(st, llm, tg, ledger) -> None:

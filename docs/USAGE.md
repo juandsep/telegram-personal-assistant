@@ -57,12 +57,10 @@ tokens): `gasto 2 usd cafe`, `2 usd cafe`, `cafe 2000cop gasto`,
   `明天`, `多少`). In free text the LLM registers, edits and voids the same way
   ("el último era 3 dólares, no 5").
 
-Every registration answers with the entry as stored, category included; the
-user's first 3 also say how to fix it (counted in `users.hints`):
+Every registration answers with the entry as stored, category included:
 
 ```
 −12.00 USD · Almuerzo · Restaurantes
-¿Algo mal? Responde: editar: 15 almuerzo restaurantes
 ```
 
 ## Correcting

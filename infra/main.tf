@@ -4,10 +4,14 @@
 # guard. The one Cloud Run service (assistant / assistant-staging) is deployed
 # by GitHub Actions, not here; its push subscriptions are gated on service_url
 # (set it after the first deploy).
-# State is local (terraform.tfstate, git-ignored).
+# State lives in gs://jd-botjonh-tfstate (versioned, created by hand before the
+# first `terraform init`; see docs/DEPLOY.md).
 
 terraform {
   required_version = ">= 1.6"
+  backend "gcs" {
+    bucket = "jd-botjonh-tfstate"
+  }
   required_providers {
     google = {
       source  = "hashicorp/google"

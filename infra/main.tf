@@ -1,8 +1,9 @@
 # Base GCP resources for the Telegram assistant: APIs, Firestore, artifact
 # registry, secrets, service accounts, Workload Identity Federation, Pub/Sub
-# topics, Cloud Scheduler jobs, the Cloud Tasks reminder queue and a budget guard. The Cloud Run services
-# (assistant-api, assistant-worker) are deployed by GitHub Actions, not here;
-# their push subscription is gated on worker_url (set it after the first deploy).
+# topics, Cloud Scheduler jobs, the Cloud Tasks reminder queue and a budget
+# guard. The one Cloud Run service (assistant / assistant-staging) is deployed
+# by GitHub Actions, not here; its push subscriptions are gated on service_url
+# (set it after the first deploy).
 # State is local (terraform.tfstate, git-ignored).
 
 terraform {
@@ -52,18 +53,20 @@ variable "timezone" {
   default     = "America/Panama"
 }
 
-# Set after the first `assistant-worker` deploy, then apply again to create the
-# push subscription. Until then it is skipped.
-variable "worker_url" {
-  description = "URL of the production assistant-worker service."
+# Set after the first `assistant` deploy, then apply again to create the push
+# subscriptions. Until then they are skipped. It is also the OIDC audience the
+# service checks on /push (src/assistant/authz.py), so it must equal the
+# service's WORKER_URL.
+variable "service_url" {
+  description = "URL of the production assistant service."
   type        = string
   default     = ""
 }
 
-# The staging worker gets its own updates topic, fed by assistant-api-staging
-# (a separate test bot), so staging never answers from the production bot.
-variable "worker_url_staging" {
-  description = "URL of the assistant-worker-staging service."
+# Staging gets its own updates topic, fed by its own webhook (a separate test
+# bot), so staging never answers from the production bot.
+variable "service_url_staging" {
+  description = "URL of the assistant-staging service."
   type        = string
   default     = ""
 }
@@ -153,11 +156,13 @@ resource "google_artifact_registry_repository" "images" {
 #   printf '%s' "$VALUE" | gcloud secrets versions add NAME --data-file=-
 locals {
   secrets = [
-    "assistant-bot-token",         # Telegram bot token (@BotFather)
-    "assistant-bot-token-staging", # test bot for the staging services
-    "assistant-webhook-secret",    # X-Telegram-Bot-Api-Secret-Token
-    "assistant-webhook-path",      # webhook route secret (32 random chars)
-    "assistant-deepseek-key",      # DeepSeek API key
+    "assistant-bot-token",                  # Telegram bot token (@BotFather)
+    "assistant-bot-token-staging",          # test bot for the staging services
+    "assistant-webhook-secret",             # X-Telegram-Bot-Api-Secret-Token
+    "assistant-webhook-path",               # webhook route secret (32 random chars)
+    "assistant-deepseek-key",               # DeepSeek API key
+    "assistant-google-oauth-client-id",     # OAuth web client: Conectar → Google
+    "assistant-google-oauth-client-secret", # its secret
   ]
 }
 
@@ -171,11 +176,12 @@ resource "google_secret_manager_secret" "secret" {
 }
 
 # Service accounts.
+# One runtime account for the one service. It keeps the id assistant-worker:
+# users share their Google Calendars with that address (services/gcal.py).
 locals {
   service_accounts = {
-    webhook = "Verifies and publishes Telegram updates"
-    worker  = "Consumes updates, calls the LLM, writes state"
-    deploy  = "GitHub Actions deploys"
+    worker = "Runs the assistant service: webhook, LLM turns, state"
+    deploy = "GitHub Actions deploys"
   }
 }
 
@@ -202,23 +208,18 @@ resource "google_pubsub_topic" "cron" {
   depends_on = [google_project_service.apis]
 }
 
-# The webhook service only publishes updates.
-moved {
-  from = google_pubsub_topic_iam_member.webhook_publishes_updates
-  to   = google_pubsub_topic_iam_member.webhook_publishes_updates["production"]
-}
-
-resource "google_pubsub_topic_iam_member" "webhook_publishes_updates" {
+# The webhook route publishes each update to its environment's topic.
+resource "google_pubsub_topic_iam_member" "service_publishes_updates" {
   for_each = {
     production = google_pubsub_topic.updates.name
     staging    = google_pubsub_topic.updates_staging.name
   }
   topic  = each.value
   role   = "roles/pubsub.publisher"
-  member = google_service_account.sa["webhook"].member
+  member = google_service_account.sa["worker"].member
 }
 
-# The worker service runs as its own account and is triggered by push.
+# The service reads and writes Firestore (dedup, invites, state).
 resource "google_project_iam_member" "worker" {
   for_each = toset([
     "roles/datastore.user", # Firestore native mode
@@ -231,25 +232,12 @@ resource "google_project_iam_member" "worker" {
 resource "google_secret_manager_secret_iam_member" "worker_reads_secrets" {
   for_each = toset([
     "assistant-bot-token", "assistant-bot-token-staging", "assistant-deepseek-key",
+    "assistant-webhook-secret", "assistant-webhook-path",
+    "assistant-google-oauth-client-id", "assistant-google-oauth-client-secret",
   ])
   secret_id = google_secret_manager_secret.secret[each.value].id
   role      = "roles/secretmanager.secretAccessor"
   member    = google_service_account.sa["worker"].member
-}
-
-# The webhook deduplicates by update_id and consumes invite codes in Firestore,
-# and reads only the two secrets that authenticate Telegram.
-resource "google_project_iam_member" "webhook_firestore" {
-  project = var.project_id
-  role    = "roles/datastore.user"
-  member  = google_service_account.sa["webhook"].member
-}
-
-resource "google_secret_manager_secret_iam_member" "webhook_reads_secrets" {
-  for_each  = toset(["assistant-webhook-secret", "assistant-webhook-path"])
-  secret_id = google_secret_manager_secret.secret[each.value].id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = google_service_account.sa["webhook"].member
 }
 
 # Weekly JSON backup of Firestore under backup/ (90-day lifecycle) and the daily
@@ -344,15 +332,16 @@ resource "google_bigquery_table" "ledger" {
   }
 }
 
-# Pub/Sub signs push requests with the worker account's OIDC token, so that
-# account must be allowed to invoke the worker service.
+# Pub/Sub and Cloud Tasks sign their requests with the runtime account's OIDC
+# token. The service is public and checks that token itself; run.invoker stays
+# so the service could go private again without IAM changes.
 resource "google_project_iam_member" "worker_invokes_run" {
   project = var.project_id
   role    = "roles/run.invoker"
   member  = google_service_account.sa["worker"].member
 }
 
-# Deploy may build images and deploy both services as the runtime accounts.
+# Deploy may build images and deploy the service as the runtime account.
 resource "google_project_iam_member" "deploy" {
   for_each = toset(["roles/run.admin", "roles/artifactregistry.writer"])
   project  = var.project_id
@@ -361,16 +350,17 @@ resource "google_project_iam_member" "deploy" {
 }
 
 resource "google_service_account_iam_member" "deploy_acts_as" {
-  for_each           = { for k in ["webhook", "worker"] : k => google_service_account.sa[k] }
+  for_each           = { for k in ["worker"] : k => google_service_account.sa[k] }
   service_account_id = each.value.name
   role               = "roles/iam.serviceAccountUser"
   member             = google_service_account.sa["deploy"].member
 }
 
-# Push subscription from both topics to the worker, authenticated with OIDC.
-# Gated on worker_url: create it after the first deploy.
+# Push subscriptions from the topics to the service's /push, authenticated with
+# an OIDC token whose audience is the service URL (checked in the app).
+# Gated on service_url: create them after the first deploy.
 resource "google_pubsub_subscription" "updates_push" {
-  count = var.worker_url == "" ? 0 : 1
+  count = var.service_url == "" ? 0 : 1
   name  = "assistant-updates-push"
   topic = google_pubsub_topic.updates.name
 
@@ -382,15 +372,16 @@ resource "google_pubsub_subscription" "updates_push" {
     maximum_backoff = "600s"
   }
   push_config {
-    push_endpoint = "${var.worker_url}/push"
+    push_endpoint = "${var.service_url}/push"
     oidc_token {
       service_account_email = google_service_account.sa["worker"].email
+      audience              = var.service_url
     }
   }
 }
 
 resource "google_pubsub_subscription" "updates_staging_push" {
-  count = var.worker_url_staging == "" ? 0 : 1
+  count = var.service_url_staging == "" ? 0 : 1
   name  = "assistant-updates-staging-push"
   topic = google_pubsub_topic.updates_staging.name
 
@@ -401,16 +392,17 @@ resource "google_pubsub_subscription" "updates_staging_push" {
     maximum_backoff = "600s"
   }
   push_config {
-    push_endpoint = "${var.worker_url_staging}/push"
+    push_endpoint = "${var.service_url_staging}/push"
     oidc_token {
       service_account_email = google_service_account.sa["worker"].email
+      audience              = var.service_url_staging
     }
   }
 }
 
 # Scheduled jobs run in production only.
 resource "google_pubsub_subscription" "cron_push" {
-  count = var.worker_url == "" ? 0 : 1
+  count = var.service_url == "" ? 0 : 1
   name  = "assistant-cron-push"
   topic = google_pubsub_topic.cron.name
 
@@ -422,17 +414,18 @@ resource "google_pubsub_subscription" "cron_push" {
     maximum_backoff = "600s"
   }
   push_config {
-    push_endpoint = "${var.worker_url}/push"
+    push_endpoint = "${var.service_url}/push"
     oidc_token {
       service_account_email = google_service_account.sa["worker"].email
+      audience              = var.service_url
     }
   }
 }
 
-# Reminders: the worker enqueues one task per reminder (deterministic name) that
-# POSTs to {worker_url}/tasks/reminder at the exact time, with an OIDC token for
-# the worker account (already run.invoker). One queue serves staging and prod:
-# each task carries its full target URL.
+# Reminders: the service enqueues one task per reminder (deterministic name)
+# that POSTs to {WORKER_URL}/tasks/reminder at the exact time, with an OIDC
+# token for the runtime account (audience WORKER_URL, checked in the app). One
+# queue serves staging and prod: each task carries its full target URL.
 resource "google_cloud_tasks_queue" "reminders" {
   name       = "assistant-reminders"
   location   = var.region
@@ -536,8 +529,8 @@ module "budget_guard" {
   source_bucket   = google_storage_bucket.functions.name
 }
 
-# Encrypts each user's secret iCal URL before it reaches Firestore (and so the
-# backups). Key rings and keys cannot be deleted in GCP, hence prevent_destroy.
+# Encrypts each user's secret iCal URL and Google refresh token before they
+# reach Firestore (and so the backups). Key rings and keys cannot be deleted in GCP, hence prevent_destroy.
 resource "google_kms_key_ring" "botjonh" {
   name       = "botjonh"
   location   = var.region
@@ -568,7 +561,6 @@ output "github_variables" {
     GCP_ARTIFACT_REPO = google_artifact_registry_repository.images.repository_id
     GCP_WIF_PROVIDER  = google_iam_workload_identity_pool_provider.github.name
     GCP_DEPLOY_SA     = google_service_account.sa["deploy"].email
-    GCP_WEBHOOK_SA    = google_service_account.sa["webhook"].email
     GCP_WORKER_SA     = google_service_account.sa["worker"].email
     BACKUP_BUCKET     = google_storage_bucket.backup.name
   }
@@ -577,11 +569,4 @@ output "github_variables" {
 # Looker Studio data source: BigQuery -> this table.
 output "bigquery_ledger_table" {
   value = "${var.project_id}.${google_bigquery_dataset.botjonh.dataset_id}.${google_bigquery_table.ledger.table_id}"
-}
-
-# Hand these to portfolio-infra so it can grant MLflow access.
-output "mlflow_clients" {
-  value = {
-    worker = google_service_account.sa["worker"].email
-  }
 }

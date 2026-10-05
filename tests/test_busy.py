@@ -15,8 +15,8 @@ from assistant.services import busy
 MARKER = "zzmarkerzz"
 URL = f"https://calendar.google.com/calendar/ical/x/{MARKER}/basic.ics"
 PANAMA = ZoneInfo("America/Panama")
-DESDE = datetime(2026, 9, 28, tzinfo=UTC)
-HASTA = datetime(2026, 10, 5, tzinfo=UTC)
+SINCE = datetime(2026, 9, 28, tzinfo=UTC)
+UNTIL = datetime(2026, 10, 5, tzinfo=UTC)
 
 ICS = """BEGIN:VCALENDAR
 VERSION:2.0
@@ -65,8 +65,8 @@ END:VCALENDAR
 
 
 def ctx(chat_id: str = "42") -> ToolContext:
-    ahora = datetime(2026, 9, 29, 12, tzinfo=PANAMA)
-    return ToolContext(chat_id, "beta", "USD", "America/Panama", 1, ahora)
+    now = datetime(2026, 9, 29, 12, tzinfo=PANAMA)
+    return ToolContext(chat_id, "beta", "USD", "America/Panama", 1, now)
 
 
 @pytest.fixture(autouse=True)
@@ -134,7 +134,7 @@ def ok(text: str = ICS) -> httpx.Response:
     ],
 )
 def test_valid_urls(raw: str) -> None:
-    url = busy.validar(raw)
+    url = busy.validate_url(raw)
     assert url.scheme == "https"
 
 
@@ -159,14 +159,14 @@ def test_valid_urls(raw: str) -> None:
 )
 def test_invalid_urls(raw: str) -> None:
     with pytest.raises(busy.BusyError, match="invalid_url"):
-        busy.validar(raw)
+        busy.validate_url(raw)
 
 
 def test_webcal_is_fetched_over_https(db: MagicMock) -> None:
     with respx.mock:
         route = respx.get("https://p42-caldav.icloud.com/published/2/abc")
         route.return_value = ok()
-        out = busy.conectar(ctx(), "webcal://p42-caldav.icloud.com/published/2/abc")
+        out = busy.connect(ctx(), "webcal://p42-caldav.icloud.com/published/2/abc")
     assert out == "✓ Calendario conectado."
     assert route.calls[0].request.headers["Accept"] == "text/calendar"
 
@@ -175,36 +175,42 @@ def test_webcal_is_fetched_over_https(db: MagicMock) -> None:
 
 
 @respx.mock
-def test_conectar_stores_url(db: MagicMock) -> None:
+def test_connect_stores_url(db: MagicMock) -> None:
     respx.get(URL).return_value = ok()
-    assert busy.conectar(ctx(), URL) == "✓ Calendario conectado."
+    assert busy.connect(ctx(), URL) == "✓ Calendario conectado."
     db.collection.assert_called_with("preferences")
     db.collection().document.assert_called_with("42")
     db.collection().document().set.assert_called_once_with(
-        {"ics_url_enc": ENC, "ics_url": firestore.DELETE_FIELD}, merge=True
+        {
+            "ics_url_enc": ENC,
+            "ics_url": firestore.DELETE_FIELD,
+            "gcal_token_enc": firestore.DELETE_FIELD,
+            "gcal_id": firestore.DELETE_FIELD,
+        },
+        merge=True,
     )
     stored = str(db.collection().document().set.call_args)
     assert MARKER not in stored  # never in clear
 
 
-def test_conectar_refuses_without_kms_key(
+def test_connect_refuses_without_kms_key(
     db: MagicMock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(busy, "get_worker_settings", lambda: MagicMock(kms_key=""))
     with respx.mock:  # no fetch either
-        assert busy.conectar(ctx(), URL) == "Aún no disponible."
+        assert busy.connect(ctx(), URL) == "Aún no disponible."
     db.collection().document().set.assert_not_called()
 
 
 def test_ciphertext_of_another_chat_does_not_decrypt(state: MagicMock) -> None:
     state.get_preferences.return_value = {"ics_url_enc": ENC}
     with respx.mock:  # decrypt fails before any fetch
-        assert busy.ocupados("99", DESDE, HASTA) == []
+        assert busy.busy_blocks("99", SINCE, UNTIL) == []
 
 
-def test_conectar_rejects_invalid_without_fetch(db: MagicMock) -> None:
+def test_connect_rejects_invalid_without_fetch(db: MagicMock) -> None:
     with respx.mock:  # any request would fail as unmatched
-        assert busy.conectar(ctx(), "http://10.0.0.1/x") == "Enlace no válido."
+        assert busy.connect(ctx(), "http://10.0.0.1/x") == "Enlace no válido."
     db.collection().document().set.assert_not_called()
 
 
@@ -213,31 +219,21 @@ def test_redirect_is_rejected(db: MagicMock) -> None:
     respx.get(URL).return_value = httpx.Response(
         302, headers={"Location": "https://169.254.169.254/"}
     )
-    assert busy.conectar(ctx(), URL) == "No pude leer ese calendario."
+    assert busy.connect(ctx(), URL) == "No pude leer ese calendario."
     db.collection().document().set.assert_not_called()
 
 
 @respx.mock
 def test_oversize_body_is_rejected(db: MagicMock) -> None:
     respx.get(URL).return_value = ok("X" * (busy.MAX_BYTES + 1))
-    assert busy.conectar(ctx(), URL) == "No pude leer ese calendario."
+    assert busy.connect(ctx(), URL) == "No pude leer ese calendario."
     db.collection().document().set.assert_not_called()
 
 
 @respx.mock
 def test_unparseable_body_is_rejected(db: MagicMock) -> None:
     respx.get(URL).return_value = ok("<html>login</html>")
-    assert busy.conectar(ctx(), URL) == "No pude leer ese calendario."
-
-
-def test_off_disconnects(db: MagicMock) -> None:
-    busy._cache["42"] = (0.0, ENC, None)
-    assert busy.conectar(ctx(), "off") == "Calendario desconectado."
-    db.collection().document().set.assert_called_once_with(
-        {"ics_url": firestore.DELETE_FIELD, "ics_url_enc": firestore.DELETE_FIELD},
-        merge=True,
-    )
-    assert "42" not in busy._cache
+    assert busy.connect(ctx(), URL) == "No pude leer ese calendario."
 
 
 # --- ocupados ----------------------------------------------------------------
@@ -249,9 +245,9 @@ def utc(d: int, h: int, m: int = 0) -> datetime:
 
 
 @respx.mock
-def test_ocupados_expands_and_filters(state: MagicMock) -> None:
+def test_busy_blocks_expand_and_filter(state: MagicMock) -> None:
     respx.get(URL).return_value = ok()
-    blocks = busy.ocupados("42", DESDE, HASTA)
+    blocks = busy.busy_blocks("42", SINCE, UNTIL)
     assert blocks == [
         (utc(29, 13), utc(29, 13, 30), "Ocupado"),  # weekly Tue
         (utc(29, 15), utc(29, 16), "Ocupado"),  # single
@@ -266,18 +262,18 @@ def test_ocupados_expands_and_filters(state: MagicMock) -> None:
 
 
 @respx.mock
-def test_ocupados_caches_per_chat(state: MagicMock) -> None:
+def test_busy_blocks_cached_per_chat(state: MagicMock) -> None:
     route = respx.get(URL)
     route.return_value = ok()
-    busy.ocupados("42", DESDE, HASTA)
-    busy.ocupados("42", DESDE, utc(30, 0))
+    busy.busy_blocks("42", SINCE, UNTIL)
+    busy.busy_blocks("42", SINCE, utc(30, 0))
     assert route.call_count == 1
 
 
-def test_ocupados_without_url(state: MagicMock) -> None:
+def test_busy_blocks_without_url(state: MagicMock) -> None:
     state.get_preferences.return_value = {}
     with respx.mock:
-        assert busy.ocupados("42", DESDE, HASTA) == []
+        assert busy.busy_blocks("42", SINCE, UNTIL) == []
 
 
 @pytest.mark.parametrize(
@@ -289,7 +285,7 @@ def test_ocupados_without_url(state: MagicMock) -> None:
         ok("garbage"),
     ],
 )
-def test_ocupados_failure_logs_code_only(
+def test_busy_blocks_failure_logs_code_only(
     state: MagicMock, caplog: pytest.LogCaptureFixture, response: object
 ) -> None:
     caplog.set_level(logging.DEBUG)
@@ -298,6 +294,6 @@ def test_ocupados_failure_logs_code_only(
             side_effect=response if isinstance(response, Exception) else None,
             return_value=None if isinstance(response, Exception) else response,
         )
-        assert busy.ocupados("42", DESDE, HASTA) == []
+        assert busy.busy_blocks("42", SINCE, UNTIL) == []
     assert "ics_busy_failed" in caplog.text
     assert MARKER not in caplog.text and "calendar.google.com" not in caplog.text

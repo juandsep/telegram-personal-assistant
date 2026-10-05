@@ -76,13 +76,14 @@ never in the repository. Settings are read from environment variables; `.env`
 is git-ignored for local development. CI and deploy use repository variables
 and secrets, and `GITHUB_TOKEN` stays scoped to the minimum each workflow
 declares. Never log PII: no `chat_id`, amounts or event titles in Cloud
-Logging; message text is stored hashed in MLflow.
+Logging; the per-turn trace keeps the message text only as a sha256.
 
 ## Prompts and tools
 
 The system prompt and tool schemas are versioned artifacts under
 `src/assistant/llm/`. The prompt version is the sha256 (12 hex chars) of
-`system.md` plus the tools JSON, so any change bumps it automatically; it is
-recorded in MLflow so latency and cost are comparable across versions. Tool
+`system.md` plus the tools JSON, so any change bumps it automatically; it is a
+label on the LLM metrics in Cloud Monitoring, so latency and cost are
+comparable across versions (see `monitoring/`). Tool
 names are allowlisted in `tools.py`; the LLM emits JSON validated against a
 schema and the code performs the write — the model never executes anything.

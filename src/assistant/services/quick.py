@@ -5,7 +5,7 @@ no spaces, so its keywords match inside a word (``买咖啡`` has ``咖啡``).
 
 Type: the word ``ingreso`` or a leading ``+`` means income; ``gasto`` or a
 leading ``-`` means expense; any other words default to expense. A bare amount
-(``5``, ``5 usd``) has ``tipo == ""``: the worker asks gasto or ingreso.
+(``5``, ``5 usd``) has ``kind == ""``: the worker asks gasto or ingreso.
 
 ``parse`` accepts a short message with exactly one amount in any word order and
 returns an ``Entry``; anything it is not sure about (two amounts, questions,
@@ -20,10 +20,10 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from assistant.context import CATEGORIES
-from assistant.i18n import CATEGORIAS
+from assistant.i18n import CATEGORY_NAMES
 
 CODES = frozenset(
-    {"USD", "COP", "EUR", "MXN", "PEN", "CLP", "ARS", "BRL", "GBP", "CAD", "PAB"}
+    {"USD", "COP", "EUR", "MXN", "PEN", "CLP", "ARS", "BRL", "GBP", "CAD", "PAB", "CNY"}
 )
 _CUR = {c.lower(): c for c in CODES} | {
     "$": "USD",
@@ -35,8 +35,17 @@ _CUR = {c.lower(): c for c in CODES} | {
     "美元": "USD",
     "euro": "EUR",
     "euros": "EUR",
+    "yuan": "CNY",
+    "rmb": "CNY",
+    "元": "CNY",
+    "人民币": "CNY",
+    "块": "CNY",
 }
-_TOKEN = re.compile(r"([$€])?([-+]?\d[\d.,]*)([$€]|[a-z]{3})?")
+# "5元": Chinese currency glued to the number like a symbol.
+_TOKEN = re.compile(r"([$€])?([-+]?\d[\d.,]*)([$€元块]|[a-z]{3})?")
+_DASH = str.maketrans("\u2212\u2013\u2014", "---")  # minus, en and em dash
+# "- 5": a lone sign before the amount joins it.
+_SIGN = re.compile(r"(?<!\S)([+-])\s+(?=\d)")
 _TIME = re.compile(r"\d{1,2}:\d{2}|\b\d{1,2}\s*(am|pm|a\.m|p\.m)\b|\ba las\b")
 # Words that mean a date, a question, an edit or a calendar action: LLM.
 _SKIP = frozenset(
@@ -55,9 +64,9 @@ _SKIP_ZH = (
     "今天 明天 昨天 后天 前天 星期 礼拜 周 月 多少 什么 哪 怎么 吗 提醒 会议 "
     "开会 日程 预约 取消 修改 删除 撤销 预算 总结 上一"
 ).split()
-_INGRESO = frozenset({"ingreso", "income", "收入"})
-_GASTO = frozenset({"gasto", "gaste", "expense", "spent", "支出", "花了"})
-_STRIP = _INGRESO | _GASTO
+_INCOME = frozenset({"ingreso", "income", "收入"})
+_EXPENSE = frozenset({"gasto", "gaste", "expense", "spent", "支出", "花了"})
+_STRIP = _INCOME | _EXPENSE
 _LEAD = frozenset({"en", "de", "por", "para", "on", "for", "at"})
 _KEYWORDS = {
     "restaurantes": "cafe almuerzo desayuno cena restaurante coffee lunch "
@@ -73,43 +82,49 @@ _KEYWORDS = {
     "entretenimiento": "cine movie movies cinema 电影",
     "compras": "ropa clothes shopping 衣服 购物",
 }
-_CATEGORIA = {w: cat for cat, words in _KEYWORDS.items() for w in words.split()}
-_CATEGORIA_ZH = [(w, cat) for w, cat in _CATEGORIA.items() if not w.isascii()]
+_CATEGORY_OF = {w: cat for cat, words in _KEYWORDS.items() for w in words.split()}
+_CATEGORY_ZH = [(w, cat) for w, cat in _CATEGORY_OF.items() if not w.isascii()]
 
 
-def _categoria(palabra: str) -> str | None:
+def _category(word: str) -> str | None:
     """Exact match, else a Chinese keyword inside the word."""
-    exacta = _CATEGORIA.get(palabra)
-    if exacta or palabra.isascii():
-        return exacta
-    return next((cat for w, cat in _CATEGORIA_ZH if w in palabra), None)
+    exact = _CATEGORY_OF.get(word)
+    if exact or word.isascii():
+        return exact
+    return next((cat for w, cat in _CATEGORY_ZH if w in word), None)
 
 
 # "editar: ..." in each language; a category by its key or any shown name.
-EDITAR = frozenset({"editar", "edit", "修改"})
+EDIT_WORDS = frozenset({"editar", "edit", "修改"})
 MAX_WORDS = 8  # ponytail: longer messages are prose; let the LLM read them
 NOT_POSITIVE = "El monto debe ser mayor que 0."
 
 
 @dataclass(frozen=True)
 class Entry:
-    tipo: str  # gasto | ingreso | "" (bare amount: ask)
-    monto: Decimal
-    moneda: str
-    nota: str
-    categoria: str  # gastos only; "" for ingresos
+    kind: str  # gasto | ingreso | "" (bare amount: ask)
+    amount: Decimal
+    currency: str
+    note: str
+    category: str  # gastos only; "" for ingresos
     error: str | None = None
 
 
 def norm(text: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", text.lower())
+    decomposed = unicodedata.normalize("NFKD", text.lower().translate(_DASH))
     return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
-_CAT_NOMBRES = {
-    norm(nombre): clave
-    for clave in CATEGORIES
-    for nombre in (clave, *CATEGORIAS[clave].values())
+_CATEGORY_NAMES = {
+    norm(name): key
+    for key in CATEGORIES
+    for name in (key, *CATEGORY_NAMES[key].values())
+}
+# Note words typed without their accent, stored with it ("cafe" -> "café").
+_ACCENTS = {
+    norm(w): w
+    for w in "café médico crédito débito teléfono película películas música "
+    "cafetería panadería autobús avión".split()
 }
 
 
@@ -162,7 +177,7 @@ def amount(text: str) -> tuple[Decimal, str | None] | None:
     return found[0], found[1] or (_CUR[code] if code else None)
 
 
-def correccion(text: str) -> dict | None:
+def correction(text: str) -> dict | None:
     """``editar: 15 cop · almuerzo · restaurantes`` -> the fields to change in
     the last movement ({} when nothing is recognized); None if not a correction.
 
@@ -170,32 +185,32 @@ def correccion(text: str) -> dict | None:
     words as the note, in any order.
     """
     head, sep, rest = text.replace("：", ":").partition(":")
-    if not sep or norm(head.strip()) not in EDITAR:
+    if not sep or norm(head.strip()) not in EDIT_WORDS:
         return None
-    campos: dict = {}
-    nota = []
+    fields: dict = {}
+    note = []
     for raw in re.split(r"[\s/·;]+", rest.strip()):
         tok = norm(raw)
         found = _amount(tok) if tok else None
         if not tok:
             continue
-        if found and "monto" not in campos:
-            campos["monto"] = abs(found[0])
+        if found and "amount" not in fields:
+            fields["amount"] = abs(found[0])
             if found[1]:
-                campos["moneda"] = found[1]
+                fields["currency"] = found[1]
         elif tok in _CUR:
-            campos["moneda"] = _CUR[tok]
-        elif tok in _CAT_NOMBRES:
-            campos["categoria"] = _CAT_NOMBRES[tok]
+            fields["currency"] = _CUR[tok]
+        elif tok in _CATEGORY_NAMES:
+            fields["category"] = _CATEGORY_NAMES[tok]
         else:
-            nota.append(raw)
-    if nota:
-        campos["nota"] = " ".join(nota)
-    return campos
+            note.append(raw)
+    if note:
+        fields["note"] = " ".join(note)
+    return fields
 
 
-def parse(text: str) -> Entry | None:
-    raw = text.replace("\u2212", "-").split()  # "−5" (minus sign) as "-5"
+def parse(text: str, default: str = "USD") -> Entry | None:
+    raw = _SIGN.sub(r"\1", text.translate(_DASH)).split()  # "– 5" as "-5"
     toks = [norm(t).strip(".,;:!") for t in raw]
     joined = " ".join(toks)
     if (
@@ -215,21 +230,21 @@ def parse(text: str) -> Entry | None:
     if len(amounts) != 1 or digits != amounts:
         return None
     i = amounts[0]
-    value, moneda = _amount(toks[i]) or (Decimal(0), None)
-    signo = toks[i][:1] if toks[i][:1] in "+-" else ""
+    value, currency = _amount(toks[i]) or (Decimal(0), None)
+    sign = toks[i][:1] if toks[i][:1] in "+-" else ""
     value = abs(value)
     used = {i}
-    if moneda is None:
+    if currency is None:
         for j in (i + 1, i - 1):
             if 0 <= j < len(toks) and toks[j] in _CUR:
-                moneda, used = _CUR[toks[j]], {i, j}
+                currency, used = _CUR[toks[j]], {i, j}
                 break
-    if _INGRESO.intersection(toks) or signo == "+":
-        tipo = "ingreso"
-    elif _GASTO.intersection(toks) or signo == "-":
-        tipo = "gasto"
+    if _INCOME.intersection(toks) or sign == "+":
+        kind = "ingreso"
+    elif _EXPENSE.intersection(toks) or sign == "-":
+        kind = "gasto"
     else:
-        tipo = "gasto"  # words without a type: an expense
+        kind = "gasto"  # words without a type: an expense
     words = [
         (raw[k].strip(".,;:!"), toks[k])
         for k in range(len(raw))
@@ -237,19 +252,19 @@ def parse(text: str) -> Entry | None:
     ]
     if words and words[0][1] in _LEAD:
         words = words[1:]
-    decidido = signo or _STRIP.intersection(toks)
-    if not words and not decidido:
-        tipo = ""  # a bare amount: gasto or ingreso is the user's call
-    nota = " ".join(w for w, _ in words)
-    categoria = ""
-    if tipo != "ingreso":
-        found = (_categoria(n) for _, n in words)
-        categoria = next((c for c in found if c), "otros")
+    decided = sign or _STRIP.intersection(toks)
+    if not words and not decided:
+        kind = ""  # a bare amount: gasto or ingreso is the user's call
+    note = " ".join(_ACCENTS.get(w.lower(), w) for w, _ in words)
+    category = ""
+    if kind != "ingreso":
+        found = (_category(n) for _, n in words)
+        category = next((c for c in found if c), "otros")
     return Entry(
-        tipo=tipo,
-        monto=value,
-        moneda=moneda or "USD",
-        nota=nota,
-        categoria=categoria,
+        kind=kind,
+        amount=value,
+        currency=currency or default,
+        note=note,
+        category=category,
         error=None if value > 0 else NOT_POSITIVE,
     )

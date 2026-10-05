@@ -1,9 +1,9 @@
-"""Worker entrypoint (assistant-worker).
+"""Google-only routes of the assistant service (see ``app.py``).
 
 Push subscriber for assistant-updates (user messages) and assistant-cron
 (scheduled jobs), and target of the Cloud Tasks reminders. The service is
-private: Cloud Run validates the OIDC token (Pub/Sub, Cloud Tasks) before a
-request reaches these routes, so no unauthenticated caller gets here.
+public (Telegram reaches the webhook), so every route here requires the
+Google-signed OIDC token checked by ``assistant.authz``.
 
 Any 2xx acks the message; a 5xx makes Pub/Sub retry with backoff.
 """
@@ -23,18 +23,19 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
+from assistant.authz import require_google_oidc
 from assistant.channels.base import InboundMessage
 from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import WorkerSettings, get_worker_settings
 from assistant.context import ToolContext
-from assistant.i18n import idioma, t
+from assistant.i18n import lang_of, t
 from assistant.services import agenda, quick, state
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="assistant-worker")
+router = APIRouter(dependencies=[Depends(require_google_oidc)])
 
 ACK = 204
 GIF_USAGE = (
@@ -44,17 +45,35 @@ GIF_USAGE = (
 )
 GIF_OWNER_ONLY = "Solo el owner cura los GIFs."
 OWNER_COMMANDS = ("/invitar", "/usuarios")
-INVITAR_USAGE = "Uso: /invitar <nombre>. Crea un enlace de un uso, válido 24 h."
+INVITE_USAGE = "Uso: /invitar <nombre>. Crea un enlace de un uso, válido 24 h."
 LEDGER_COMMANDS = ("/ultimos", "/editar", "/anular", "/gif")
-REGISTROS = {"registrar_gasto": "gasto", "registrar_ingreso": "ingreso"}
+RECORD_TOOLS = {"record_expense": "gasto", "record_income": "ingreso"}
+GUIDE_URL = "https://juandsep.github.io/telegram-personal-assistant/guia/"
+# A whole message of just these words (any case or accents) runs the command.
+WORDS = {
+    "tablero": "/tablero",
+    "dashboard": "/tablero",
+    "tablero fijar": "/tablero fijar",
+    "dashboard pin": "/tablero fijar",
+    "resumen": "/resumen",
+    "summary": "/resumen",
+    "ultimos": "/ultimos",
+    "last": "/ultimos",
+    "ayuda": "/ayuda",
+    "help": "/ayuda",
+    "calendario": "/calendario",
+    "calendar": "/calendario",
+    "agenda": "/calendario",
+    "fun": "/fun",
+    "moneda": "/moneda",
+    "currency": "/moneda",
+}
+# Display currencies: /moneda and the onboarding buttons.
+CURRENCIES = {"USD": "🇺🇸 USD", "EUR": "🇪🇺 EUR", "COP": "🇨🇴 COP", "CNY": "🇨🇳 CNY"}
+CURRENCY_BUTTONS = [[(label, f"mo:{cur}") for cur, label in CURRENCIES.items()]]
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.post("/push")
+@router.post("/push")
 async def push(request: Request) -> Response:
     try:
         envelope = json.loads(await request.body())
@@ -66,25 +85,25 @@ async def push(request: Request) -> Response:
     return Response(status_code=await run_in_threadpool(_route, payload))
 
 
-@app.post("/tasks/reminder")
+@router.post("/tasks/reminder")
 async def reminder(request: Request) -> Response:
     """Cloud Tasks at the reminder time. Always 2xx unless Firestore fails."""
     try:
         body = json.loads(await request.body())
-        chat_id, evento_id = str(body["chat_id"]), str(body["evento_id"])
+        chat_id, event_id = str(body["chat_id"]), str(body["evento_id"])
     except (ValueError, KeyError, TypeError):
         logger.warning("malformed_task")
         return Response(status_code=ACK)
-    await run_in_threadpool(_remind, chat_id, evento_id)
+    await run_in_threadpool(_remind, chat_id, event_id)
     return Response(status_code=ACK)
 
 
-def _remind(chat_id: str, evento_id: str) -> None:
-    texto = agenda.aviso(chat_id, evento_id)
-    if texto is None:  # cancelled or missing
+def _remind(chat_id: str, event_id: str) -> None:
+    text = agenda.reminder_text(chat_id, event_id)
+    if text is None:  # cancelled or missing
         return
     try:
-        Telegram(get_worker_settings().telegram_bot_token).send_message(chat_id, texto)
+        Telegram(get_worker_settings().telegram_bot_token).send_message(chat_id, text)
     except httpx.HTTPError:
         logger.warning("reminder_send_failed")
         return
@@ -119,22 +138,22 @@ def _route(payload: Any) -> int:
 
 
 def _context(user: dict, msg: InboundMessage, settings: WorkerSettings) -> ToolContext:
-    zona = user.get("zona_horaria") or settings.default_timezone
+    tz = user.get("zona_horaria") or settings.default_timezone
     lang = user.get("idioma", "es")
-    if msg.language_code and (nuevo := idioma(msg.language_code)) != lang:
-        lang = nuevo
+    if msg.language_code and (new := lang_of(msg.language_code)) != lang:
+        lang = new
         try:  # best effort: the phone's language, kept for the scheduled jobs
-            state.set_idioma(msg.chat_id, lang)
+            state.set_lang(msg.chat_id, lang)
         except Exception as exc:
             logger.warning("idioma_failed error=%s", type(exc).__name__)
     return ToolContext(
         chat_id=msg.chat_id,
-        rol=user.get("rol", "beta"),
-        moneda=user.get("moneda", "USD"),
-        zona_horaria=zona,
+        role=user.get("rol", "beta"),
+        currency=user.get("moneda", "USD"),
+        timezone=tz,
         update_id=msg.update_id,
-        ahora=datetime.now(ZoneInfo(zona)),
-        idioma=lang,
+        now=datetime.now(ZoneInfo(tz)),
+        lang=lang,
         fun=bool(user.get("fun")),
     )
 
@@ -147,26 +166,35 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     channel = Telegram(settings.telegram_bot_token)
     if msg.callback_query_id:
         return _callback(ctx, msg, msg.callback_query_id, channel)
+    if cmd := WORDS.get(" ".join(quick.norm(msg.text).rstrip(".!? ").split())):
+        msg = dataclasses.replace(msg, text=cmd)
     if msg.text.startswith("/zona"):
-        _send(channel, msg, _zona(ctx, msg))
+        _send(channel, msg, _timezone_command(ctx, msg))
+        return ACK
+    if msg.text.startswith("/moneda"):
+        _send(channel, msg, *_currency_command(ctx, msg))
         return ACK
     if msg.text.startswith(("/start", "/ayuda", "/help")):
-        _send(channel, msg, t(ctx.idioma, "welcome"))
-        if msg.text.startswith("/start") and settings.api_url:  # pin the Visor
-            _tablero(ctx, channel, msg, settings)
+        guide = [[(t(ctx.lang, "guide"), GUIDE_URL)]]
+        _send(channel, msg, t(ctx.lang, "welcome"), guide)
+        if msg.text.startswith("/start") and settings.api_url:  # the menu button
+            try:
+                viewer_url = f"{settings.api_url}/visor"
+                channel.set_menu_webapp(msg.chat_id, t(ctx.lang, "viewer"), viewer_url)
+            except httpx.HTTPError:
+                logger.warning("menu_failed update_id=%s", msg.update_id)
+        if msg.text.startswith("/start"):
+            _send(channel, msg, t(ctx.lang, "currency_question"), CURRENCY_BUTTONS)
         return ACK
     if msg.animation_file_id:
         _send(channel, msg, _gif_command(ctx, msg, msg.caption, msg.animation_file_id))
         return ACK
     if not msg.text.strip():
-        _send(channel, msg, t(ctx.idioma, "text_only"))
+        _send(channel, msg, t(ctx.lang, "text_only"))
         return ACK
-    if _is_ical_url(msg.text):  # the link sent on its own, after /conectar
-        msg = dataclasses.replace(msg, text=f"/conectar {msg.text.strip()}")
-    if msg.text.startswith(("/calendario", "/conectar", "/vincular")):
-        reply = _command(ctx, msg, settings)
-        if msg.text.startswith("/conectar ") and msg.message_id is not None:
-            # The message holds the secret iCal URL: drop it from the chat.
+    if _is_ical_url(msg.text):  # the secret iCal link, sent on its own
+        reply = _connect_ical(ctx, msg)
+        if msg.message_id is not None:  # drop the secret from the chat
             try:
                 channel.delete_message(msg.chat_id, msg.message_id)
                 reply += "\nBorré tu mensaje con el enlace."
@@ -174,27 +202,33 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
                 logger.warning("delete_failed update_id=%s", msg.update_id)
         _send(channel, msg, reply)
         return ACK
+    if msg.text.startswith("/calendario"):
+        _send(channel, msg, *_calendar(ctx, msg, msg.text.partition(" ")[2]))
+        return ACK
     if msg.text.startswith(OWNER_COMMANDS):
         _send(channel, msg, *_owner_command(ctx, msg, settings))
         return ACK
     if msg.text.startswith("/fun"):
         _send(channel, msg, _fun(ctx, msg))
         return ACK
-    if (campos := quick.correccion(msg.text)) is not None:
-        if not campos:
-            _send(channel, msg, t(ctx.idioma, "corregir_usage"))
+    if (fields := quick.correction(msg.text)) is not None:
+        if not fields:
+            _send(channel, msg, t(ctx.lang, "correct_usage"))
             return ACK
-        args = {"indice": 1, **campos}  # the last movement
-        usage = t(ctx.idioma, "corregir_usage")
-        _send(channel, msg, *_tool(ctx, msg, "editar_movimiento", args, usage))
+        args = {"index": 1, **fields}  # the last movement
+        usage = t(ctx.lang, "correct_usage")
+        _send(channel, msg, *_tool(ctx, msg, "edit_entry", args, usage))
         return ACK
     if msg.text.startswith("/tablero"):
-        _tablero(ctx, channel, msg, settings)
+        _dashboard(ctx, channel, msg, settings)
+        return ACK
+    if msg.text.startswith("/resumen"):
+        _send(channel, msg, _summary(ctx, msg))
         return ACK
     if msg.text.startswith(LEDGER_COMMANDS):
         _send(channel, msg, *_ledger_command(ctx, msg))
         return ACK
-    entry = quick.parse(msg.text)
+    entry = quick.parse(msg.text, default=ctx.currency)
     if entry is not None:  # deterministic: no LLM, no spend, no history
         _quick(ctx, msg, entry, channel)
         return ACK
@@ -204,7 +238,7 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         state.llm_spend_today(msg.chat_id) >= settings.max_llm_usd_per_day
     ):
         logger.info("limit_reached update_id=%s", msg.update_id)
-        _send(channel, msg, t(ctx.idioma, "limit"))
+        _send(channel, msg, t(ctx.lang, "limit"))
         return ACK
 
     # 2. The turn. LLMUnavailable -> 503 so Pub/Sub retries with backoff.
@@ -222,18 +256,15 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         logger.error(
             "turn_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
-        _send(channel, msg, t(ctx.idioma, "failed"))
+        _send(channel, msg, t(ctx.lang, "failed"))
         return ACK
 
     # 3-5. Reply, account, trace.
-    registros = [REGISTROS[t] for t in result.tools if t in REGISTROS]
-    registro = bool(registros) and not result.keyboard
-    reply = result.reply
-    if registro and not ctx.fun:
-        reply += "\n" + t(ctx.idioma, "corregir")
-    _send(channel, msg, reply, result.keyboard)
-    if registro and ctx.fun:
-        _gif(channel, msg, registros[-1])
+    records = [RECORD_TOOLS[t] for t in result.tools if t in RECORD_TOOLS]
+    recorded = bool(records) and not result.keyboard
+    _send(channel, msg, result.reply, result.keyboard)
+    if recorded and ctx.fun:
+        _gif(channel, msg, records[-1])
     state.add_llm_spend(msg.chat_id, result.cost_usd)
     state.append_history(msg.chat_id, result.messages)
     from assistant.observability import trace
@@ -248,103 +279,143 @@ def _is_ical_url(text: str) -> bool:
     if " " in text or not text.lower().startswith(("https://", "webcal://")):
         return False
     try:
-        importlib.import_module("assistant.services.busy").validar(text)
+        importlib.import_module("assistant.services.busy").validate_url(text)
     except Exception:
         return False
     return True
 
 
-def _command(ctx: ToolContext, msg: InboundMessage, settings: WorkerSettings) -> str:
-    """/calendario [enlace|nuevo], /conectar <url> and /vincular <id|off>."""
-    cmd, _, arg = msg.text.strip().partition(" ")
-    cmd, arg = cmd.split("@")[0], arg.strip()
+def _connect_ical(ctx: ToolContext, msg: InboundMessage) -> str:
     try:
-        if cmd == "/conectar":
-            if not arg:
-                return t(ctx.idioma, "conectar_hint")
-            try:
-                busy = importlib.import_module("assistant.services.busy")
-            except ImportError:
-                return t(ctx.idioma, "no_disponible")
-            return str(busy.conectar(ctx, arg))
-        if cmd == "/vincular":
-            gcal = importlib.import_module("assistant.services.gcal")
-            if not arg:
-                return t(ctx.idioma, "vincular_hint", sa=gcal.SA_EMAIL)
-            return str(gcal.vincular(ctx, arg))
-        if arg in ("enlace", "nuevo"):
-            if not settings.api_url:
-                return t(ctx.idioma, "enlace_no_config")
-            token = state.ics_token(ctx.chat_id, rotate=arg == "nuevo")
-            hint = t(ctx.idioma, "google_hint")
-            return f"{settings.api_url}/ics/{token}.ics\n{hint}"
-        return agenda.semana(ctx)
+        busy = importlib.import_module("assistant.services.busy")
+        return str(busy.connect(ctx, msg.text.strip()))
     except Exception as exc:
         logger.error(
             "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
-        return t(ctx.idioma, "failed")
+        return t(ctx.lang, "failed")
+
+
+def _calendar(
+    ctx: ToolContext, msg: InboundMessage, arg: str
+) -> tuple[str, list[list[tuple[str, str]]] | None]:
+    """/calendario [off|nuevo] and its buttons cal:menu|g|i|off: the next 7 days,
+    then one calendar, Google (OAuth) or iPhone/Outlook (ICS subscription)."""
+    settings = get_worker_settings()
+    arg = arg.strip().lower()
+    try:
+        if arg == "menu":
+            buttons = [("Google", "cal:g"), ("iPhone / Outlook", "cal:i")]
+            return t(ctx.lang, "cal_choose"), [buttons]
+        if arg == "g":
+            if not (
+                settings.google_client_id
+                and settings.google_client_secret
+                and settings.api_url
+                and settings.kms_key
+            ):
+                return t(ctx.lang, "unavailable"), None
+            url = f"{settings.api_url}/oauth/google?s="
+            url += state.create_oauth_state(ctx.chat_id)
+            button = (t(ctx.lang, "cal_google_button"), url)
+            return t(ctx.lang, "cal_google"), [[button]]
+        if arg in ("i", "nuevo"):  # nuevo: a new feed link, the old one revoked
+            if not settings.api_url:
+                return t(ctx.lang, "link_not_configured"), None
+            token = state.ics_token(ctx.chat_id, rotate=arg == "nuevo")
+            url = f"{settings.api_url}/ics/{token}/suscribir"
+            return t(ctx.lang, "cal_ical"), [[(t(ctx.lang, "cal_subscribe"), url)]]
+        if arg == "off":
+            importlib.import_module("assistant.services.gcal").disconnect(ctx.chat_id)
+            return t(ctx.lang, "cal_disconnected"), None
+        prefs = state.get_preferences(ctx.chat_id)
+        if prefs.get("gcal_token_enc") or prefs.get("gcal_id"):
+            button = (t(ctx.lang, "cal_disconnect", which="Google"), "cal:off")
+        elif prefs.get("ics_url_enc"):
+            which = "iPhone / Outlook"
+            button = (t(ctx.lang, "cal_disconnect", which=which), "cal:off")
+        else:
+            button = (t(ctx.lang, "cal_connect"), "cal:menu")
+        return agenda.week_text(ctx), [[button]]
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "failed"), None
 
 
 def _quick(
     ctx: ToolContext, msg: InboundMessage, entry: quick.Entry, channel: Telegram
 ) -> None:
     if entry.error:
-        _send(channel, msg, t(ctx.idioma, "positivo"))
+        _send(channel, msg, t(ctx.lang, "positive"))
         return
-    if not entry.tipo:  # a bare amount: ask, register on the button
+    if not entry.kind:  # a bare amount: ask, register on the button
         from assistant.llm import tools
 
         try:
-            pregunta, teclado = tools.ask_tipo(ctx, entry.monto, entry.moneda)
+            question, keyboard = tools.ask_kind(ctx, entry.amount, entry.currency)
         except Exception as exc:
             logger.error(
                 "quick_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
             )
-            _send(channel, msg, t(ctx.idioma, "failed"))
+            _send(channel, msg, t(ctx.lang, "failed"))
             return
-        _send(channel, msg, pregunta, teclado)
+        _send(channel, msg, question, keyboard)
         return
-    fecha = ctx.ahora.date()
+    day = ctx.now.date()
     try:
         ledger = importlib.import_module("assistant.services.ledger")
-        if entry.tipo == "ingreso":
-            reply = ledger.registrar_ingreso(
+        if entry.kind == "ingreso":
+            reply = ledger.record_income(
                 ctx,
-                monto=entry.monto,
-                moneda=entry.moneda,
-                fuente=entry.nota,
-                fecha=fecha,
+                amount=entry.amount,
+                currency=entry.currency,
+                source=entry.note,
+                day=day,
             )
         else:
             item = {
-                "monto": entry.monto,
-                "categoria": entry.categoria,
-                "nota": entry.nota or None,
+                "amount": entry.amount,
+                "category": entry.category,
+                "note": entry.note or None,
             }
-            reply = ledger.registrar_gasto(
-                ctx, items=[item], moneda=entry.moneda, fecha=fecha
+            reply = ledger.record_expense(
+                ctx, items=[item], currency=entry.currency, day=day
             )
     except Exception as exc:
         logger.error(
             "quick_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
-        _send(channel, msg, t(ctx.idioma, "failed"))
+        _send(channel, msg, t(ctx.lang, "failed"))
         return
     logger.info("quick_entry update_id=%s", msg.update_id)
-    _registro(ctx, channel, msg, str(reply))
+    _send_record(ctx, channel, msg, str(reply))
 
 
-def _registro(
+def _send_record(
     ctx: ToolContext, channel: Telegram, msg: InboundMessage, reply: str
 ) -> None:
-    """A registration answers with the entry as stored and how to correct it;
-    with /fun on, with the reaction GIF only (the text is the fallback when no
-    GIF is stored). Anything else (errors such as a missing rate) as is."""
-    tipo = {"−": "gasto", "+": "ingreso"}.get(reply[:1])
-    if tipo and ctx.fun and _gif(channel, msg, tipo):
+    """A registration answers with the entry as stored; with /fun on, with the
+    reaction GIF only (the text is the fallback when no GIF is stored)."""
+    kind = {"−": "gasto", "+": "ingreso"}.get(reply[:1])
+    if kind and ctx.fun and _gif(channel, msg, kind):
         return
-    _send(channel, msg, f"{reply}\n{t(ctx.idioma, 'corregir')}" if tipo else reply)
+    _send(channel, msg, reply)
+
+
+def _summary(ctx: ToolContext, msg: InboundMessage) -> str:
+    """/resumen: today's spend, the week and the month vs income. No LLM."""
+    try:
+        from assistant import jobs
+
+        parts = [jobs._checkin(ctx), jobs._weekly(ctx)]
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "failed")
+    return "\n\n".join(p for p in parts if p)
 
 
 def _fun(ctx: ToolContext, msg: InboundMessage) -> str:
@@ -355,22 +426,44 @@ def _fun(ctx: ToolContext, msg: InboundMessage) -> str:
         logger.error(
             "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
-        return t(ctx.idioma, "failed")
-    return t(ctx.idioma, "fun_off" if ctx.fun else "fun_on")
+        return t(ctx.lang, "failed")
+    return t(ctx.lang, "fun_off" if ctx.fun else "fun_on")
 
 
-def _zona(ctx: ToolContext, msg: InboundMessage) -> str:
+def _timezone_command(ctx: ToolContext, msg: InboundMessage) -> str:
     """/zona America/Bogota: the time zone of the agenda and the reports."""
-    zona = msg.text.strip().partition(" ")[2].strip()
+    tz = msg.text.strip().partition(" ")[2].strip()
     try:
-        if not zona or "/" not in zona:
+        if not tz or "/" not in tz:
             raise ValueError
-        ZoneInfo(zona)
+        ZoneInfo(tz)
     except (ValueError, KeyError):  # ZoneInfoNotFoundError is a KeyError
-        return t(ctx.idioma, "zona_usage", zona=ctx.zona_horaria)
-    state.set_zona(ctx.chat_id, zona)
+        return t(ctx.lang, "tz_usage", tz=ctx.timezone)
+    state.set_timezone(ctx.chat_id, tz)
     logger.info("zona_set update_id=%s", msg.update_id)
-    return t(ctx.idioma, "zona_ok", zona=zona)
+    return t(ctx.lang, "tz_ok", tz=tz)
+
+
+def _currency_command(
+    ctx: ToolContext, msg: InboundMessage
+) -> tuple[str, list[list[tuple[str, str]]] | None]:
+    """/moneda COP sets it; without a valid code, the question with buttons."""
+    cur = msg.text.strip().partition(" ")[2].strip().upper()
+    if cur not in CURRENCIES:
+        return t(ctx.lang, "currency_question"), CURRENCY_BUTTONS
+    return _set_currency(ctx, msg, cur), None
+
+
+def _set_currency(ctx: ToolContext, msg: InboundMessage, cur: str) -> str:
+    try:
+        state.set_currency(ctx.chat_id, cur)
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "failed")
+    logger.info("moneda_set update_id=%s moneda=%s", msg.update_id, cur)
+    return t(ctx.lang, "currency_ok", currency=cur)
 
 
 @cache
@@ -382,25 +475,25 @@ def _owner_command(
     ctx: ToolContext, msg: InboundMessage, settings: WorkerSettings
 ) -> tuple[str, list[list[tuple[str, str]]] | None]:
     """/invitar <nombre> (t.me deep link) and /usuarios (revoke buttons)."""
-    if ctx.rol != "owner":
+    if ctx.role != "owner":
         return state.OWNER_ONLY, None
-    cmd, _, nombre = msg.text.strip().partition(" ")
-    nombre = nombre.strip()
+    cmd, _, name = msg.text.strip().partition(" ")
+    name = name.strip()
     if cmd.split("@")[0] == "/invitar":
-        if not nombre or len(nombre) > 40:
-            return INVITAR_USAGE, None
-        code = state.crear_invitacion(nombre)
+        if not name or len(name) > 40:
+            return INVITE_USAGE, None
+        code = state.create_invite(name)
         logger.info("invite_created update_id=%s", msg.update_id)
         link = f"https://t.me/{_bot_username(settings.telegram_bot_token)}?start={code}"
-        return f"Invitación para {nombre} (un uso, 24 h). Reenvíale:\n{link}", None
-    filas = state.usuarios()
-    texto = "\n".join(f"{u.get('nombre', '?')} ({u.get('rol', '?')})" for _, u in filas)
-    botones = [
+        return f"Invitación para {name} (un uso, 24 h). Reenvíale:\n{link}", None
+    rows = state.all_users()
+    text = "\n".join(f"{u.get('nombre', '?')} ({u.get('rol', '?')})" for _, u in rows)
+    buttons = [
         [(f"Revocar a {u.get('nombre', '?')}", f"rv:{chat_id}")]
-        for chat_id, u in filas
+        for chat_id, u in rows
         if u.get("rol") == "beta"
     ]
-    return texto or "Sin usuarios.", botones or None
+    return text or "Sin usuarios.", buttons or None
 
 
 def _ledger_command(
@@ -413,18 +506,18 @@ def _ledger_command(
     if cmd == "/gif":
         return _gif_command(ctx, msg, arg, msg.reply_animation_file_id), None
     n, _, rest = arg.partition(" ")
-    usage = t(ctx.idioma, "anular_usage" if cmd == "/anular" else "edit_usage")
-    args: dict[str, Any] = {"indice": int(n)} if n.isdecimal() else {}
+    usage = t(ctx.lang, "void_usage" if cmd == "/anular" else "edit_usage")
+    args: dict[str, Any] = {"index": int(n)} if n.isdecimal() else {}
     found = quick.amount(rest) if rest else None
     if cmd == "/ultimos":
-        name, args = "ultimos_movimientos", {"n": 5}
+        name, args = "latest_entries", {"n": 5}
     elif cmd == "/editar" and args and found:
         name, args = (
-            "editar_movimiento",
-            {**args, "monto": found[0], "moneda": found[1]},
+            "edit_entry",
+            {**args, "amount": found[0], "currency": found[1]},
         )
     elif cmd == "/anular" and args and not rest:
-        name = "anular_movimiento"
+        name = "void_entry"
     else:
         return usage, None
     return _tool(ctx, msg, name, args, usage)
@@ -438,49 +531,52 @@ def _tool(
 
     try:  # same validation as the LLM path; Decimal goes as an exact string
         reply, token = tools.handle_call(ctx, name, json.dumps(args, default=str))
-    except tools.ToolRejected:  # monto <= 0, índice fuera de rango
+    except tools.ToolRejected:  # amount <= 0, index out of range
         return usage, None
     except Exception as exc:
         logger.error(
             "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
-        return t(ctx.idioma, "failed"), None
+        return t(ctx.lang, "failed"), None
     return reply, tools.buttons(token) if token else None
 
 
-def _tablero(
+def _dashboard(
     ctx: ToolContext, channel: Telegram, msg: InboundMessage, settings: WorkerSettings
 ) -> None:
-    """/tablero: pins the dashboard Mini App (assistant-api /visor) in the chat."""
+    """/tablero: the dashboard Mini App (the service's /visor); /tablero fijar
+    also pins it in the chat."""
     if not settings.api_url:
-        _send(channel, msg, t(ctx.idioma, "tablero_no_config"))
+        _send(channel, msg, t(ctx.lang, "dashboard_not_configured"))
         return
     try:
-        channel.pin_webapp(
+        message_id = channel.send_webapp(
             msg.chat_id,
-            t(ctx.idioma, "tablero"),
-            t(ctx.idioma, "visor"),
+            t(ctx.lang, "dashboard"),
+            t(ctx.lang, "viewer"),
             f"{settings.api_url}/visor",
         )
+        if msg.text.split()[1:] in (["fijar"], ["pin"]):
+            channel.pin(msg.chat_id, message_id)
     except httpx.HTTPError:
         logger.warning("pin_failed update_id=%s", msg.update_id)
-        _send(channel, msg, t(ctx.idioma, "failed"))
+        _send(channel, msg, t(ctx.lang, "failed"))
 
 
 def gif_target(text: str) -> tuple[str, str] | None:
     """``gasto`` -> (gasto, general); ``ingreso salario`` -> (ingreso, salario)."""
     words = text.strip().lower().split()
-    if not 1 <= len(words) <= 2 or quick.norm(words[0]) not in state.GIF_TIPOS:
+    if not 1 <= len(words) <= 2 or quick.norm(words[0]) not in state.GIF_KINDS:
         return None
-    clave = words[1] if len(words) == 2 else state.GIF_GENERAL
-    return (quick.norm(words[0]), clave) if state.valid_clave(clave) else None
+    key = words[1] if len(words) == 2 else state.GIF_GENERAL
+    return (quick.norm(words[0]), key) if state.valid_key(key) else None
 
 
 def _gif_command(
     ctx: ToolContext, msg: InboundMessage, arg: str, file_id: str | None
 ) -> str:
     """Owner-only curation of the shared catalog: add, borrar, list counts."""
-    if ctx.rol != "owner":
+    if ctx.role != "owner":
         return GIF_OWNER_ONLY
     if file_id and arg.strip().lower() == "borrar":
         removed = state.remove_gif(file_id)
@@ -492,21 +588,21 @@ def _gif_command(
         logger.info("gif_saved update_id=%s", msg.update_id)
         return f"✓ GIF guardado para {target[0]} {target[1]}."
     lines = [GIF_USAGE]
-    for tipo in state.GIF_TIPOS:
+    for kind in state.GIF_KINDS:
         counts = ", ".join(
-            f"{k} {len(v)}" for k, v in sorted(state.gif_catalog(tipo).items())
+            f"{k} {len(v)}" for k, v in sorted(state.gif_catalog(kind).items())
         )
-        lines.append(f"{tipo}: {counts or 'vacío'}")
+        lines.append(f"{kind}: {counts or 'vacío'}")
     return "\n".join(lines)
 
 
-def _gif(channel: Telegram, msg: InboundMessage, tipo: str) -> bool:
+def _gif(channel: Telegram, msg: InboundMessage, kind: str) -> bool:
     """Best effort reaction GIF after a registration; False when none was sent.
     The movement's categoria/fuente picks the GIFs, else ``general``."""
     try:
         ledger = importlib.import_module("assistant.services.ledger")
-        clave = ledger.clave(msg.chat_id, msg.update_id, tipo)
-        file_id = state.random_gif(tipo, clave)
+        key = ledger.reaction_key(msg.chat_id, msg.update_id, kind)
+        file_id = state.random_gif(kind, key)
         if file_id:
             channel.send_animation(msg.chat_id, file_id)
             return True
@@ -536,18 +632,18 @@ def _callback(
         logger.warning("answer_callback_failed update_id=%s", msg.update_id)
     action, _, token = (msg.callback_data or "").partition(":")
     if action in ("g", "i"):  # a bare amount: gasto or ingreso
-        from assistant.llm.tools import execute_tipo
+        from assistant.llm.tools import execute_kind
 
         try:
-            tipo = "gasto" if action == "g" else "ingreso"
-            _registro(ctx, channel, msg, execute_tipo(ctx, token, tipo))
+            kind = "gasto" if action == "g" else "ingreso"
+            _send_record(ctx, channel, msg, execute_kind(ctx, token, kind))
         except Exception as exc:
             logger.error(
                 "pending_failed update_id=%s error=%s",
                 msg.update_id,
                 type(exc).__name__,
             )
-            _send(channel, msg, t(ctx.idioma, "failed"))
+            _send(channel, msg, t(ctx.lang, "failed"))
         return ACK
     if action == "ok":
         from assistant.llm.tools import execute_pending
@@ -560,13 +656,17 @@ def _callback(
                 msg.update_id,
                 type(exc).__name__,
             )
-            reply = t(ctx.idioma, "failed")
-        _registro(ctx, channel, msg, reply)
+            reply = t(ctx.lang, "failed")
+        _send_record(ctx, channel, msg, reply)
     elif action == "no":
         state.pop_pending(msg.chat_id, token)
-        _send(channel, msg, t(ctx.idioma, "cancelado"))
+        _send(channel, msg, t(ctx.lang, "cancelled"))
+    elif action == "mo" and token in CURRENCIES:  # /moneda and onboarding buttons
+        _send(channel, msg, _set_currency(ctx, msg, token))
+    elif action == "cal":  # /calendario buttons
+        _send(channel, msg, *_calendar(ctx, msg, token))
     elif action == "rv":  # /usuarios revoke button
-        ok = ctx.rol == "owner" and state.revocar(token)
+        ok = ctx.role == "owner" and state.revoke(token)
         logger.info("user_revoked update_id=%s ok=%s", msg.update_id, ok)
         _send(channel, msg, "✓ Acceso revocado." if ok else "No se pudo revocar.")
     return ACK

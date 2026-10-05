@@ -9,78 +9,49 @@ Spanish names (/tablero, /ultimos...) in every language.
 
 from __future__ import annotations
 
-IDIOMAS = ("es", "en", "zh")
-NOMBRE = {"es": "español", "en": "English", "zh": "简体中文"}
+LANGS = ("es", "en", "zh")
+LANG_NAMES = {"es": "español", "en": "English", "zh": "简体中文"}
 
 
-def idioma(language_code: str | None) -> str:
+def lang_of(language_code: str | None) -> str:
     """``en-US`` -> en, ``zh-hans`` -> zh, anything else -> es."""
     code = (language_code or "").lower()
     return next((i for i in ("en", "zh") if code.startswith(i)), "es")
 
 
-TEXTOS: dict[str, dict[str, str]] = {
+TEXTS: dict[str, dict[str, str]] = {
     "welcome": {
         "es": """Hola 👋 Soy Juani, tu asistente en tu teléfono. Llevo tus gastos, ingresos y agenda. Escríbeme normal:
 
-💸 Gastos e ingresos (todo queda en USD; otras monedas se convierten con la TRM)
-• -12 almuerzo · 25000 cop mercado · pan 2, leche 3
-• +1500 salario (el + es ingreso) · un monto solo te pregunto
-• ¿Algo mal? editar: 15 restaurantes corrige el último · /ultimos, /anular 1
-• /fun: te respondo con GIFs (otra vez /fun los apaga)
-• Visor de gastos: tu tablero del mes, fijado arriba del chat (/tablero lo fija de nuevo)
+💸 -12 almuerzo · 25000 cop mercado · +1500 salario (el + es ingreso)
+✏️ editar: 15 restaurantes corrige el último
+📊 tablero: tu mes · resumen: hoy, semana y mes
+📅 reunión con Ana mañana 3pm · calendario: tu agenda
+🎉 fun: te respondo con GIFs
 
-📅 Agenda
-• reunión con Ana mañana 3pm · recuérdame pagar la luz el viernes 9am
-• /calendario: próximos 7 días · ¿qué tengo libre el jueves?
-• /vincular tu-correo@gmail.com: copia tus eventos a Google Calendar
-• /conectar: avisa choques con tu calendario
-
-🕙 Cada día a las 22:00 te digo cuánto gastaste, y el domingo cómo va la semana.
-Tu zona horaria: /zona America/Bogota
-
-/ayuda muestra esto de nuevo.""",
+Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
         "en": """Hi 👋 I'm Juani, your assistant on your phone. I track your expenses, income and calendar. Just write to me:
 
-💸 Expenses and income (everything is kept in USD; other currencies are converted)
-• -12 lunch · 25000 cop groceries · bread 2, milk 3
-• +1500 salary (+ means income) · send just an amount and I'll ask
-• Something off? edit: 15 restaurants fixes the last one · /ultimos, /anular 1
-• /fun: I answer with GIFs (/fun again turns them off)
-• Expense viewer: your monthly dashboard, pinned at the top of the chat (/tablero pins it again)
+💸 -12 lunch · 25000 cop groceries · +1500 salary (+ means income)
+✏️ edit: 15 restaurants fixes the last one
+📊 dashboard: your month · summary: today, week and month
+📅 meeting with Ana tomorrow 3pm · calendar: your agenda
+🎉 fun: I answer with GIFs
 
-📅 Calendar
-• meeting with Ana tomorrow 3pm · remind me to pay the power bill Friday 9am
-• /calendario: next 7 days · am I free on Thursday?
-• /vincular your-email@gmail.com: copies your events to Google Calendar
-• /conectar: warns about clashes with your calendar
-
-🕙 Every day at 22:00 I tell you what you spent, and on Sunday how your week went.
-Your time zone: /zona America/New_York
-
-/ayuda shows this again.""",
+Just write the word, no "/". help shows this again.""",
         "zh": """你好 👋 我是 Juani，你手机里的助手。我帮你记录支出、收入和日程。直接给我发消息：
 
-💸 支出和收入（全部以 USD 记录，其他货币会自动换算）
-• -12 午饭 · 25000 cop 超市 · 面包 2, 牛奶 3
-• +1500 工资（+ 表示收入）· 只发金额我会问你
-• 有误？修改: 15 餐饮 可更正最后一笔 · /ultimos、/anular 1
-• /fun：用 GIF 回复你（再发 /fun 关闭）
-• 支出查看器：本月账单面板，已置顶在聊天上方（/tablero 可重新置顶）
+💸 -12 午饭 · 25000 cop 超市 · +1500 工资（+ 表示收入）
+✏️ 修改: 15 餐饮 可更正最后一笔
+📊 dashboard：本月账单 · summary：今天、本周和本月
+📅 明天下午3点和 Ana 开会 · calendar：你的日程
+🎉 fun：用 GIF 回复你
 
-📅 日程
-• 明天下午3点和 Ana 开会 · 周五上午9点提醒我交电费
-• /calendario：未来 7 天 · 我周四有空吗？
-• /vincular 你的邮箱@gmail.com：把事件同步到 Google 日历
-• /conectar：提醒你与日历冲突的安排
-
-🕙 每天 22:00 我会告诉你当天花了多少，周日告诉你本周情况。
-你的时区：/zona Asia/Shanghai
-
-/ayuda 再次显示此说明。""",
+直接发送单词，不用 "/"。help 再次显示此说明。""",
     },
-    "visor": {"es": "Visor de gastos", "en": "Expense viewer", "zh": "支出查看器"},
-    "tablero": {
+    "guide": {"es": "📖 Guía completa", "en": "📖 Full guide", "zh": "📖 完整指南"},
+    "viewer": {"es": "Visor de gastos", "en": "Expense viewer", "zh": "支出查看器"},
+    "dashboard": {
         "es": "Consulta tu tablero aquí 👇 (también en el botón de menú).",
         "en": "Check your dashboard here 👇 (also in the menu button).",
         "zh": "在这里查看你的账单面板 👇（菜单按钮里也有）。",
@@ -90,48 +61,48 @@ Your time zone: /zona America/New_York
         "en": "For more details check your dashboard: Expense viewer 📊",
         "zh": "更多详情请查看你的面板：支出查看器 📊",
     },
-    "gastos_hoy": {
-        "es": "Tus gastos hoy: {total} USD.",
-        "en": "Your spending today: {total} USD.",
-        "zh": "你今天的支出：{total} USD。",
+    "spent_today": {
+        "es": "Tus gastos hoy: {total} {currency}.",
+        "en": "Your spending today: {total} {currency}.",
+        "zh": "你今天的支出：{total} {currency}。",
     },
-    "sin_gastos": {
+    "no_spending": {
         "es": "Hoy no registraste gastos.",
         "en": "You didn't log any expenses today.",
         "zh": "你今天没有记录支出。",
     },
-    "ayer": {
-        "es": "Ayer: {total} USD.",
-        "en": "Yesterday: {total} USD.",
-        "zh": "昨天：{total} USD。",
+    "yesterday": {
+        "es": "Ayer: {total} {currency}.",
+        "en": "Yesterday: {total} {currency}.",
+        "zh": "昨天：{total} {currency}。",
     },
-    "semana": {
-        "es": "Semana {desde}–{hasta}: {total} USD",
-        "en": "Week {desde}–{hasta}: {total} USD",
-        "zh": "本周 {desde}–{hasta}：{total} USD",
+    "week": {
+        "es": "Semana {since}–{until}: {total} {currency}",
+        "en": "Week {since}–{until}: {total} {currency}",
+        "zh": "本周 {since}–{until}：{total} {currency}",
     },
     "top": {"es": "Top: ", "en": "Top: ", "zh": "最多："},
-    "sin_ingresos": {
+    "no_income": {
         "es": "Sin ingresos este mes: registra uno (+1000 salario).",
         "en": "No income this month: log one (+1000 salary).",
         "zh": "本月没有收入：记录一笔（+1000 工资）。",
     },
-    "mes": {
-        "es": "Mes: ingresos {ingresos}, gastos {gastos} USD.",
-        "en": "Month: income {ingresos}, expenses {gastos} USD.",
-        "zh": "本月：收入 {ingresos}，支出 {gastos} USD。",
+    "month": {
+        "es": "Mes: ingresos {income}, gastos {expenses} {currency}.",
+        "en": "Month: income {income}, expenses {expenses} {currency}.",
+        "zh": "本月：收入 {income}，支出 {expenses} {currency}。",
     },
-    "ahorra": {
-        "es": "Ahorra {ahorro} (20%). Te quedan {libre} USD para el mes "
-        "(~{semana}/semana).",
-        "en": "Save {ahorro} (20%). You have {libre} USD left this month "
-        "(~{semana}/week).",
-        "zh": "存下 {ahorro}（20%）。本月还剩 {libre} USD（约每周 {semana}）。",
+    "save": {
+        "es": "Ahorra {savings} (20%). Te quedan {left} {currency} para el mes "
+        "(~{week}/semana).",
+        "en": "Save {savings} (20%). You have {left} {currency} left this month "
+        "(~{week}/week).",
+        "zh": "存下 {savings}（20%）。本月还剩 {left} {currency}（约每周 {week}）。",
     },
-    "pasaste": {
-        "es": "Te pasaste {exceso} USD: el ahorro de {ahorro} está en riesgo.",
-        "en": "You're {exceso} USD over: your {ahorro} savings are at risk.",
-        "zh": "你超支了 {exceso} USD：{ahorro} 的储蓄有风险。",
+    "overspent": {
+        "es": "Te pasaste {excess} {currency}: el ahorro de {savings} está en riesgo.",
+        "en": "You're {excess} {currency} over: your {savings} savings are at risk.",
+        "zh": "你超支了 {excess} {currency}：{savings} 的储蓄有风险。",
     },
     "limit": {
         "es": "Llegaste al límite por ahora. Intenta más tarde.",
@@ -149,57 +120,52 @@ Your time zone: /zona America/New_York
         "zh": "操作失败，请再试一次。",
     },
     # Commands
-    "zona_usage": {
-        "es": "Uso: /zona <zona IANA>, ej. /zona America/Bogota. Ahora: {zona}.",
-        "en": "Usage: /zona <IANA zone>, e.g. /zona America/New_York. Now: {zona}.",
-        "zh": "用法：/zona <IANA 时区>，例如 /zona Asia/Shanghai。当前：{zona}。",
+    "tz_usage": {
+        "es": "Uso: /zona <zona IANA>, ej. /zona America/Bogota. Ahora: {tz}.",
+        "en": "Usage: /zona <IANA zone>, e.g. /zona America/New_York. Now: {tz}.",
+        "zh": "用法：/zona <IANA 时区>，例如 /zona Asia/Shanghai。当前：{tz}。",
     },
-    "zona_ok": {
-        "es": "✓ Zona horaria: {zona}.",
-        "en": "✓ Time zone: {zona}.",
-        "zh": "✓ 时区：{zona}。",
-    },
-    "google_hint": {
-        "es": "Google Calendar: Otros calendarios → + → Desde URL, y pega el enlace.",
-        "en": "Google Calendar: Other calendars → + → From URL, and paste the link.",
-        "zh": "Google 日历：其他日历 → + → 通过网址添加，然后粘贴链接。",
+    "tz_ok": {
+        "es": "✓ Zona horaria: {tz}.",
+        "en": "✓ Time zone: {tz}.",
+        "zh": "✓ 时区：{tz}。",
     },
     "edit_usage": {
         "es": "Uso: /editar <n> <monto>[moneda], ej. /editar 1 3usd",
         "en": "Usage: /editar <n> <amount>[currency], e.g. /editar 1 3usd",
         "zh": "用法：/editar <序号> <金额>[货币]，例如 /editar 1 3usd",
     },
-    "anular_usage": {
+    "void_usage": {
         "es": "Uso: /anular <n>, ej. /anular 1",
         "en": "Usage: /anular <n>, e.g. /anular 1",
         "zh": "用法：/anular <序号>，例如 /anular 1",
     },
-    "conectar_hint": {
-        "es": "Envíame el enlace iCal secreto de tu calendario. Google: Configuración → tu calendario → Integrar el calendario → Dirección secreta en formato iCal.",
-        "en": "Send me your calendar's secret iCal link. Google: Settings → your calendar → Integrate calendar → Secret address in iCal format.",
-        "zh": "把你日历的私密 iCal 链接发给我。Google：设置 → 你的日历 → 集成日历 → iCal 格式的私密地址。",
-    },
-    "vincular_hint": {
-        "es": "Comparte tu Google Calendar con {sa} (Hacer cambios en eventos) y envía /vincular <id>. En una cuenta personal el id es tu Gmail.",
-        "en": "Share your Google Calendar with {sa} (Make changes to events) and send /vincular <id>. On a personal account the id is your Gmail.",
-        "zh": "把你的 Google 日历共享给 {sa}（权限：更改活动），然后发送 /vincular <id>。个人账户的 id 就是你的 Gmail。",
-    },
-    "no_disponible": {
+    "unavailable": {
         "es": "Aún no disponible.",
         "en": "Not available yet.",
         "zh": "暂不可用。",
     },
-    "enlace_no_config": {
+    "link_not_configured": {
         "es": "Enlace no configurado.",
         "en": "Link not configured.",
         "zh": "链接未配置。",
     },
-    "tablero_no_config": {
+    "dashboard_not_configured": {
         "es": "Tablero no configurado.",
         "en": "Dashboard not configured.",
         "zh": "面板未配置。",
     },
-    "cancelado": {"es": "Cancelado.", "en": "Cancelled.", "zh": "已取消。"},
+    "cancelled": {"es": "Cancelado.", "en": "Cancelled.", "zh": "已取消。"},
+    "currency_question": {
+        "es": "¿En qué moneda quieres ver tus montos? Puedes cambiarla luego con moneda.",
+        "en": "Which currency do you want to see your amounts in? Change it later with currency.",
+        "zh": "你想用哪种货币查看金额？之后可以发送 currency 更改。",
+    },
+    "currency_ok": {
+        "es": "✓ Moneda: {currency}. Tus montos se muestran en {currency}.",
+        "en": "✓ Currency: {currency}. Your amounts show in {currency}.",
+        "zh": "✓ 货币：{currency}。你的金额将以 {currency} 显示。",
+    },
     "fun_on": {
         "es": "🎉 Modo fun activado: te respondo con GIFs. /fun lo apaga.",
         "en": "🎉 Fun mode on: I'll answer with GIFs. /fun turns it off.",
@@ -210,155 +176,175 @@ Your time zone: /zona America/New_York
         "en": "Fun mode off: I'll answer with the entry.",
         "zh": "已关闭趣味模式：我会回复记录内容。",
     },
-    "corregir": {
-        "es": "¿Algo mal? Responde: editar: 15 almuerzo restaurantes",
-        "en": "Something off? Reply: edit: 15 lunch restaurants",
-        "zh": "有误？回复：修改: 15 午饭 餐饮",
-    },
-    "corregir_usage": {
+    "correct_usage": {
         "es": "Escribe editar: y lo correcto del último registro: monto, nota y/o categoría. Ej. editar: 15 · almuerzo · restaurantes",
         "en": "Write edit: and what's right for the last entry: amount, note and/or category. E.g. edit: 15 · lunch · restaurants",
         "zh": "发送 修改: 加上最后一笔的正确内容：金额、备注和/或类别。例如 修改: 15 · 午饭 · 餐饮",
     },
     # Ledger
-    "positivo": {
+    "positive": {
         "es": "El monto debe ser mayor que 0.",
         "en": "The amount must be greater than 0.",
         "zh": "金额必须大于 0。",
     },
-    "no_encontrado": {
+    "not_found": {
         "es": "No encontré ese movimiento.",
         "en": "I couldn't find that entry.",
         "zh": "找不到那笔记录。",
     },
-    "moneda_no": {
+    "currency_unsupported": {
         "es": "Moneda no soportada.",
         "en": "Currency not supported.",
         "zh": "不支持该货币。",
     },
-    "sin_tasa": {
+    "no_rate": {
         "es": "No pude obtener la tasa de {cur}, intenta luego.",
         "en": "I couldn't get the {cur} rate, try again later.",
         "zh": "无法获取 {cur} 汇率，请稍后再试。",
     },
-    "anulado": {
-        "es": "✓ anulado: {mov}",
-        "en": "✓ voided: {mov}",
-        "zh": "✓ 已作废：{mov}",
+    "voided": {
+        "es": "✓ anulado: {entry}",
+        "en": "✓ voided: {entry}",
+        "zh": "✓ 已作废：{entry}",
     },
-    "editado": {
-        "es": "✓ editado: {mov}",
-        "en": "✓ edited: {mov}",
-        "zh": "✓ 已修改：{mov}",
+    "edited": {
+        "es": "✓ editado: {entry}",
+        "en": "✓ edited: {entry}",
+        "zh": "✓ 已修改：{entry}",
     },
-    "nada_deshacer": {
+    "nothing_to_undo": {
         "es": "Nada que deshacer.",
         "en": "Nothing to undo.",
         "zh": "没有可撤销的操作。",
     },
-    "lote_no": {
+    "batch_not_found": {
         "es": "Lote no encontrado.",
         "en": "Batch not found.",
         "zh": "找不到该批记录。",
     },
-    "deshecho": {
+    "undone": {
         "es": "↩ deshecho: {n} fila(s)",
         "en": "↩ undone: {n} row(s)",
         "zh": "↩ 已撤销：{n} 条",
     },
-    "ya_deshecho": {
+    "already_undone": {
         "es": "Ese lote ya estaba deshecho.",
         "en": "That batch was already undone.",
         "zh": "该批记录已撤销过。",
     },
-    "sin_movs": {"es": "Sin movimientos.", "en": "No entries.", "zh": "没有记录。"},
+    "no_entries": {"es": "Sin movimientos.", "en": "No entries.", "zh": "没有记录。"},
     # Budgets
-    "dentro": {
+    "within_budget": {
         "es": "Dentro del presupuesto.",
         "en": "Within budget.",
         "zh": "在预算之内。",
     },
-    "exceso": {
-        "es": "Exceso en {cat}{regla}: {gastado} de {cap} USD (+{extra}). Recorta ahí primero.",
-        "en": "Over in {cat}{regla}: {gastado} of {cap} USD (+{extra}). Cut there first.",
-        "zh": "{cat}{regla}超支：{gastado} / {cap} USD（+{extra}）。先从这里削减。",
+    "over_budget": {
+        "es": "Exceso en {cat}{rule}: {spent} de {cap} {currency} (+{extra}). Recorta ahí primero.",
+        "en": "Over in {cat}{rule}: {spent} of {cap} {currency} (+{extra}). Cut there first.",
+        "zh": "{cat}{rule}超支：{spent} / {cap} {currency}（+{extra}）。先从这里削减。",
     },
-    "sin_presupuesto": {
+    "no_budget": {
         "es": "Sin presupuesto ni ingresos del mes para comparar.",
         "en": "No budget or income this month to compare with.",
         "zh": "本月没有预算或收入可供比较。",
     },
     # Agenda and calendars
-    "sin_7_dias": {
+    "empty_7_days": {
         "es": "Sin nada en 7 días.",
         "en": "Nothing in the next 7 days.",
         "zh": "未来 7 天没有安排。",
     },
-    "dias": {
+    "weekdays": {
         "es": "Lun Mar Mié Jue Vie Sáb Dom",
         "en": "Mon Tue Wed Thu Fri Sat Sun",
         "zh": "周一 周二 周三 周四 周五 周六 周日",
     },
-    "gcal_sin_acceso": {
-        "es": "No tengo acceso. Comparte el calendario con {sa} (Hacer cambios en eventos).",
-        "en": "I don't have access. Share the calendar with {sa} (Make changes to events).",
-        "zh": "我没有访问权限。请把日历共享给 {sa}（权限：更改活动）。",
-    },
-    "sin_eventos": {"es": "Sin eventos.", "en": "No events.", "zh": "没有活动。"},
-    "sin_huecos": {
+    "no_events": {"es": "Sin eventos.", "en": "No events.", "zh": "没有活动。"},
+    "no_free_slots": {
         "es": "Sin huecos libres.",
         "en": "No free slots.",
         "zh": "没有空闲时段。",
     },
-    "evento_no": {
+    "event_not_found": {
         "es": "Evento no encontrado.",
         "en": "Event not found.",
         "zh": "找不到该活动。",
     },
-    "evento_cancelado": {
+    "event_cancelled": {
         "es": "✓ evento cancelado",
         "en": "✓ event cancelled",
         "zh": "✓ 活动已取消",
     },
-    "enlace_invalido": {
+    "invalid_link": {
         "es": "Enlace no válido.",
         "en": "Invalid link.",
         "zh": "链接无效。",
     },
-    "cal_ilegible": {
+    "cal_unreadable": {
         "es": "No pude leer ese calendario.",
         "en": "I couldn't read that calendar.",
         "zh": "无法读取该日历。",
     },
-    "cal_desconectado": {
+    "cal_disconnected": {
         "es": "Calendario desconectado.",
         "en": "Calendar disconnected.",
         "zh": "日历已断开。",
     },
-    "cal_conectado": {
+    "cal_connected": {
         "es": "✓ Calendario conectado.",
         "en": "✓ Calendar connected.",
         "zh": "✓ 日历已连接。",
     },
-    "gcal_desvinculado": {
-        "es": "Google Calendar desvinculado.",
-        "en": "Google Calendar unlinked.",
-        "zh": "已取消关联 Google 日历。",
+    "gcal_linked": {
+        "es": "✓ Google Calendar conectado ({n} eventos copiados). Tus citas nuevas aparecerán ahí y te aviso si chocan con las de Google.",
+        "en": "✓ Google Calendar connected ({n} events copied). New appointments will show up there and I'll warn you about clashes with Google.",
+        "zh": "✓ 已连接 Google 日历（已复制 {n} 个活动）。新的安排会出现在那里，与 Google 日历冲突时我会提醒你。",
     },
-    "gcal_id_invalido": {
-        "es": "Id de calendario no válido.",
-        "en": "Invalid calendar id.",
-        "zh": "日历 id 无效。",
+    "cal_connect": {
+        "es": "🔗 Conectar calendario",
+        "en": "🔗 Connect calendar",
+        "zh": "🔗 连接日历",
     },
-    "gcal_no_verifica": {
-        "es": "No pude verificar el calendario, intenta luego.",
-        "en": "I couldn't verify the calendar, try again later.",
-        "zh": "无法验证该日历，请稍后再试。",
+    "cal_disconnect": {
+        "es": "🔌 Desconectar {which}",
+        "en": "🔌 Disconnect {which}",
+        "zh": "🔌 断开 {which}",
     },
-    "gcal_vinculado": {
-        "es": "✓ Google Calendar vinculado ({n} eventos copiados).",
-        "en": "✓ Google Calendar linked ({n} events copied).",
-        "zh": "✓ 已关联 Google 日历（已复制 {n} 个活动）。",
+    "cal_choose": {
+        "es": "¿Qué calendario usas?",
+        "en": "Which calendar do you use?",
+        "zh": "你用哪个日历？",
+    },
+    "cal_google": {
+        "es": "Toca el botón, elige tu cuenta y permite el acceso a tu calendario. El enlace vale 10 minutos.",
+        "en": "Tap the button, pick your account and allow access to your calendar. The link is valid for 10 minutes.",
+        "zh": "点击按钮，选择你的账户并允许访问日历。链接 10 分钟内有效。",
+    },
+    "cal_google_button": {
+        "es": "Conectar con Google",
+        "en": "Connect with Google",
+        "zh": "连接 Google",
+    },
+    "cal_ical": {
+        "es": "Toca 📅 Suscribirme y acepta: tus citas de Juani aparecerán en tu calendario.\n\nOpcional: para que te avise si una cita choca con las de tu calendario, pégame aquí su enlace iCal secreto (iPhone: app Calendario → calendario → Calendario público; Outlook: Configuración → Calendarios compartidos → Publicar).",
+        "en": "Tap 📅 Subscribe and accept: your Juani appointments will show up in your calendar.\n\nOptional: to warn you about clashes with your calendar, paste its secret iCal link here (iPhone: Calendar app → calendar → Public Calendar; Outlook: Settings → Shared calendars → Publish).",
+        "zh": "点击 📅 订阅 并确认：你在 Juani 的安排会出现在日历里。\n\n可选：如需提醒与日历中的安排冲突，请把日历的私密 iCal 链接粘贴到这里（iPhone：日历 App → 日历 → 公开日历；Outlook：设置 → 共享日历 → 发布）。",
+    },
+    "cal_subscribe": {
+        "es": "📅 Suscribirme",
+        "en": "📅 Subscribe",
+        "zh": "📅 订阅",
+    },
+    "oauth_ok": {
+        "es": "✓ Listo, vuelve a Telegram.",
+        "en": "✓ Done, go back to Telegram.",
+        "zh": "✓ 完成，请回到 Telegram。",
+    },
+    "oauth_error": {
+        "es": "No se pudo conectar. Vuelve a Telegram y prueba otra vez con calendario.",
+        "en": "Couldn't connect. Go back to Telegram and try again with calendar.",
+        "zh": "连接失败。请回到 Telegram，发送 calendar 再试一次。",
     },
     # Bot profile (python -m assistant.admin bot-profile)
     "bot_description": {
@@ -372,9 +358,14 @@ Your time zone: /zona America/New_York
         "zh": "Juani：用聊天记录支出、收入和日程。发送 -12 午饭 即可 📊",
     },
     "cmd_tablero": {
-        "es": "Fija tu Visor de gastos del mes",
-        "en": "Pin your monthly Expense viewer",
-        "zh": "置顶本月支出查看器",
+        "es": "Tu Visor de gastos del mes (tablero fijar lo fija)",
+        "en": "Your monthly Expense viewer (dashboard pin pins it)",
+        "zh": "本月支出查看器（dashboard pin 可置顶）",
+    },
+    "cmd_resumen": {
+        "es": "Tus gastos de hoy, la semana y el mes",
+        "en": "Your spending today, this week and this month",
+        "zh": "今天、本周和本月的支出",
     },
     "cmd_ultimos": {
         "es": "Tus últimos 5 movimientos",
@@ -392,29 +383,19 @@ Your time zone: /zona America/New_York
         "zh": "作废记录：/anular 1",
     },
     "cmd_calendario": {
-        "es": "Tu agenda de los próximos 7 días",
-        "en": "Your calendar for the next 7 days",
-        "zh": "未来 7 天的日程",
+        "es": "Tu agenda de 7 días y conectar tu calendario",
+        "en": "Your next 7 days and connecting your calendar",
+        "zh": "未来 7 天的日程，连接你的日历",
     },
     "cmd_fun": {
         "es": "Activa o apaga las respuestas con GIFs",
         "en": "Turn GIF replies on or off",
         "zh": "开启或关闭 GIF 回复",
     },
-    "cmd_zona": {
-        "es": "Tu zona horaria: /zona America/Bogota",
-        "en": "Your time zone: /zona America/New_York",
-        "zh": "你的时区：/zona Asia/Shanghai",
-    },
-    "cmd_vincular": {
-        "es": "Copia tus eventos a Google Calendar",
-        "en": "Copy your events to Google Calendar",
-        "zh": "把活动同步到 Google 日历",
-    },
-    "cmd_conectar": {
-        "es": "Avisa choques con tu calendario",
-        "en": "Warn about clashes with your calendar",
-        "zh": "提醒与日历冲突",
+    "cmd_moneda": {
+        "es": "La moneda en que ves tus montos",
+        "en": "The currency your amounts show in",
+        "zh": "显示金额所用的货币",
     },
     "cmd_ayuda": {
         "es": "Cómo usar a Juani",
@@ -422,48 +403,52 @@ Your time zone: /zona America/New_York
         "zh": "如何使用 Juani",
     },
     # Web dashboard
-    "meses": {
+    "months": {
         "es": "enero febrero marzo abril mayo junio julio agosto septiembre "
         "octubre noviembre diciembre",
         "en": "January February March April May June July August September "
         "October November December",
         "zh": "1月 2月 3月 4月 5月 6月 7月 8月 9月 10月 11月 12月",
     },
-    "d_titulo": {
-        "es": "Tablero de {mes}",
-        "en": "Dashboard · {mes}",
-        "zh": "{mes} 账单",
+    "d_title": {
+        "es": "Tablero de {month}",
+        "en": "Dashboard · {month}",
+        "zh": "{month} 账单",
     },
-    "d_usd": {"es": "Montos en USD.", "en": "Amounts in USD.", "zh": "金额单位：USD。"},
-    "d_antes": {"es": "← Anterior", "en": "← Previous", "zh": "← 上个月"},
-    "d_despues": {"es": "Siguiente →", "en": "Next →", "zh": "下个月 →"},
-    "d_ingresos": {"es": "Ingresos", "en": "Income", "zh": "收入"},
-    "d_gastos": {"es": "Gastos", "en": "Expenses", "zh": "支出"},
-    "d_ahorro": {"es": "Ahorro", "en": "Savings", "zh": "结余"},
-    "d_tasa": {"es": "Tasa de ahorro", "en": "Savings rate", "zh": "储蓄率"},
-    "d_meta": {
-        "es": "Meta 20%: {meta} USD",
-        "en": "20% goal: {meta} USD",
-        "zh": "20% 目标：{meta} USD",
+    "d_amounts_in": {
+        "es": "Montos en {currency}.",
+        "en": "Amounts in {currency}.",
+        "zh": "金额单位：{currency}。",
     },
-    "d_sin_ingresos": {
+    "d_prev": {"es": "← Anterior", "en": "← Previous", "zh": "← 上个月"},
+    "d_next": {"es": "Siguiente →", "en": "Next →", "zh": "下个月 →"},
+    "d_income": {"es": "Ingresos", "en": "Income", "zh": "收入"},
+    "d_expenses": {"es": "Gastos", "en": "Expenses", "zh": "支出"},
+    "d_savings": {"es": "Ahorro", "en": "Savings", "zh": "结余"},
+    "d_rate": {"es": "Tasa de ahorro", "en": "Savings rate", "zh": "储蓄率"},
+    "d_goal": {
+        "es": "Meta 20%: {goal} {currency}",
+        "en": "20% goal: {goal} {currency}",
+        "zh": "20% 目标：{goal} {currency}",
+    },
+    "d_no_income": {
         "es": "Sin ingresos este mes",
         "en": "No income this month",
         "zh": "本月没有收入",
     },
-    "d_por_cat": {
+    "d_by_category": {
         "es": "Gastos por categoría",
         "en": "Expenses by category",
         "zh": "按类别支出",
     },
-    "d_sin_gastos": {"es": "Sin gastos.", "en": "No expenses.", "zh": "没有支出。"},
-    "d_diario": {"es": "Gasto diario", "en": "Daily spending", "zh": "每日支出"},
-    "d_ultimos": {
+    "d_no_expenses": {"es": "Sin gastos.", "en": "No expenses.", "zh": "没有支出。"},
+    "d_daily": {"es": "Gasto diario", "en": "Daily spending", "zh": "每日支出"},
+    "d_latest": {
         "es": "Últimos {n} movimientos",
         "en": "Last {n} entries",
         "zh": "最近 {n} 笔记录",
     },
-    "d_sin_movs": {
+    "d_no_entries": {
         "es": "Sin movimientos.",
         "en": "No entries.",
         "zh": "没有记录。",
@@ -472,7 +457,7 @@ Your time zone: /zona America/New_York
 
 
 # Stored category and 50/30/20 bucket keys (always Spanish) as shown to the user.
-CATEGORIAS: dict[str, dict[str, str]] = {
+CATEGORY_NAMES: dict[str, dict[str, str]] = {
     "vivienda": {"es": "Arriendo", "en": "Housing", "zh": "住房"},
     "servicios": {"es": "Servicios", "en": "Utilities", "zh": "水电网"},
     "supermercado": {"es": "Mercado", "en": "Groceries", "zh": "超市"},
@@ -492,12 +477,12 @@ CATEGORIAS: dict[str, dict[str, str]] = {
 }
 
 
-def categoria(lang: str, clave: str) -> str | None:
+def category_name(lang: str, key: str) -> str | None:
     """A stored category key in ``lang``; None for free text (a note)."""
-    nombres = CATEGORIAS.get(clave)
-    return nombres.get(lang, nombres["es"]) if nombres else None
+    names = CATEGORY_NAMES.get(key)
+    return names.get(lang, names["es"]) if names else None
 
 
-def t(lang: str, clave: str, **valores: object) -> str:
-    textos = TEXTOS[clave]
-    return textos.get(lang, textos["es"]).format(**valores)
+def t(lang: str, key: str, **values: object) -> str:
+    texts = TEXTS[key]
+    return texts.get(lang, texts["es"]).format(**values)

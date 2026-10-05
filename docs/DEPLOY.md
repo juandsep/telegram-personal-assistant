@@ -28,11 +28,14 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
 3. Configure GitHub: set the values from `terraform output github_variables`
    plus the environment-specific variables, then create the `staging`
    (branch `dev`) and `production` (branch `main`) environments. After the
-   first deploy, set per environment `WORKER_URL` (the worker's Cloud Run URL;
-   reminders are skipped while it is empty) and `API_URL` (the api's URL, for
-   the ICS link and the Visor), and the repository variables
-   `TELEGRAM_BOT_ID` / `TELEGRAM_BOT_ID_STAGING` (the number before `:` in each
-   bot token, which checks the Visor's Mini App signature). Then deploy again.
+   first deploy, set per environment both `WORKER_URL` and `API_URL` to the
+   service's Cloud Run URL (`WORKER_URL` is the reminders' target and the OIDC
+   audience `/push` checks; `API_URL` builds the ICS link and the Visor), and
+   the repository variables `TELEGRAM_BOT_ID` / `TELEGRAM_BOT_ID_STAGING` (the
+   number before `:` in each bot token, which checks the Visor's Mini App
+   signature). Then deploy again, set the same URL as `service_url` /
+   `service_url_staging` in `infra/terraform.tfvars` and `terraform apply` to
+   create the Pub/Sub push subscriptions.
 
 4. Set the bot's profile: the command menu, the description shown in an empty
    chat and the about text, in Spanish (default for any other language),
@@ -65,40 +68,121 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
    curl "https://api.telegram.org/bot$TOKEN/setWebhook?url=$API_URL/tg/$PATH&secret_token=$SECRET"
    ```
 
-For `/vincular` (Google Calendar mirror), enable the Calendar API
-(`calendar-json.googleapis.com`) in the project.
+Monitoring needs nothing at runtime: `terraform apply` creates the log-based
+metrics, the alert policies (mailed to `alert_email` in `terraform.tfvars`) and
+the read-only `assistant-grafana` account. To explore the metrics, run the local
+Grafana described in [monitoring/README.md](../monitoring/README.md).
 
-Every merge into `dev` deploys `assistant-api-staging` /
-`assistant-worker-staging` (their own bot and Firestore database); merging
-`dev` into `main` deploys production.
+### Google Calendar sign-in
+
+`calendario` → Conectar → Google uses an OAuth web client, created by hand in
+the console (Terraform cannot create it). Terraform enables the Calendar API
+(`calendar-json.googleapis.com`) and creates the two empty secrets.
+
+1. **APIs & Services → OAuth consent screen**: User type **External**; app name
+   Juani, support and developer email; scope
+   `https://www.googleapis.com/auth/calendar.events` only. Under **Audience**,
+   **Publish app** (status **In production**). The app stays unverified: users
+   see Google's "Google hasn't verified this app" notice (Advanced → Go to
+   Juani) and at most 100 users can sign in, enough for an invite-only bot.
+   ("Testing" would expire every refresh token after 7 days.)
+2. **Credentials → Create credentials → OAuth client ID**: type **Web
+   application**; authorized redirect URI
+   `https://<service-url>/oauth/google/callback` (the `API_URL` of each
+   environment, staging too: one client can hold both).
+3. Store the client id and secret (the deploy mounts them, so it fails while
+   they have no version):
+
+   ```bash
+   read -rs ID     && printf '%s' "$ID"     | gcloud secrets versions add assistant-google-oauth-client-id --data-file=-
+   read -rs SECRET && printf '%s' "$SECRET" | gcloud secrets versions add assistant-google-oauth-client-secret --data-file=-
+   ```
+
+The refresh tokens are encrypted with the `KMS_KEY` key, so both must be set;
+without either, the Google button answers "Aún no disponible".
+
+Every merge into `dev` deploys the `assistant-staging` service (its own bot and
+Firestore database); merging `dev` into `main` deploys `assistant` to
+production.
+
+### One service
+
+Everything runs in one public Cloud Run service. The Telegram webhook
+(`/tg/<secret path>`) only verifies the update, publishes it to Pub/Sub and
+acks in under 300 ms; Pub/Sub pushes it back to the same service's `/push`,
+where the LLM turn runs on its own request. `/push` and `/tasks/reminder` are
+public URLs too, so the app checks Google's OIDC token on them
+(`src/assistant/authz.py`): issued for `WORKER_URL`, on behalf of `WORKER_SA`;
+anything else gets a 403. It runs as one service account,
+`assistant-worker@<project>.iam.gserviceaccount.com` (calendars shared with it
+before the Google sign-in keep working).
+
+### Migrating from two services
+
+Deployments from before v0.4 ran `assistant-api` and `assistant-worker` (plus
+`-staging`) with two service accounts. Moving to the one `assistant` service
+changes the URL, so do it per environment, staging first:
+
+1. **Grant first, with `gcloud`.** Give `assistant-worker` the webhook
+   account's permissions: `roles/pubsub.publisher` on `assistant-updates` and
+   `assistant-updates-staging`, and `roles/secretmanager.secretAccessor` on
+   `assistant-webhook-secret` and `assistant-webhook-path`. Without them the
+   new service cannot mount the webhook secrets and the deploy fails. Do not
+   use `terraform apply -target=...` for this: the target pulls in
+   `google_service_account.sa` and would destroy `assistant-webhook`, which
+   the old services still run on. Terraform adopts these bindings later.
+2. **Deploy.** A merge into `dev` (or `main`) creates `assistant-staging` (or
+   `assistant`). The old services keep serving until step 5.
+3. **Point the service at itself.** Set the environment's `API_URL` and
+   `WORKER_URL` to the new URL, rerun the deploy, and check `/health` (200),
+   `/visor` (200) and `POST /push` without a token (403).
+4. **Repoint the push subscriptions** (`assistant-updates[-staging]-push`, and
+   `assistant-cron-push` in production) to `<url>/push`, with
+   `--push-auth-service-account=assistant-worker@…` and
+   `--push-auth-token-audience=<url>`. The audience must equal `WORKER_URL`, or
+   `/push` answers 403. Set the same URL as `service_url[_staging]` in
+   `infra/terraform.tfvars`. The variables were renamed from `worker_url[_staging]`.
+5. **Move the Telegram webhook** to `<url>/tg/<path>` with `setWebhook` and the
+   same secret token. `getWebhookInfo` must show the new host and no
+   `last_error_message`.
+6. **Test** a quick entry, a free-text (LLM) message, `editar:` and, in
+   production, a scheduled `tick` and a reminder.
+7. **Delete the old services only when Cloud Tasks is drained.** Queued
+   reminders carry the old worker URL and audience, so
+   `gcloud tasks list --queue=assistant-reminders` must show none that target
+   it. Until then, leave the old worker up; it costs nothing while idle.
+8. **Final `terraform apply`** once both environments are migrated. It removes
+   `assistant-webhook` and its grants, and adopts the bindings from step 1.
+   Delete the `GCP_WEBHOOK_SA` and `MLFLOW_TRACKING_URI` repository variables.
 
 ## Configuration
 
 All secrets come from Secret Manager; settings from environment variables.
 Local runs read the same variables from a git-ignored `.env`.
 
-| Variable | Service | Description |
-|---|---|---|
-| `GCP_PROJECT_ID` | both | GCP project |
-| `FIRESTORE_DATABASE` | both | Empty for `(default)`; `staging` on staging |
-| `WEBHOOK_SECRET_TOKEN` | api | Secret `assistant-webhook-secret` (X-Telegram-Bot-Api-Secret-Token) |
-| `WEBHOOK_PATH` | api | Secret `assistant-webhook-path` (webhook route) |
-| `UPDATES_TOPIC` | api | Pub/Sub topic, default `assistant-updates` |
-| `TELEGRAM_BOT_ID` | api | Number before `:` in the bot token; checks the Visor's signature |
-| `TELEGRAM_BOT_TOKEN` | worker | Secret `assistant-bot-token` |
-| `DEEPSEEK_API_KEY` | worker | Secret `assistant-deepseek-key` |
-| `WORKER_URL` | worker | Worker Cloud Run URL, target of the reminder tasks (empty = no reminders) |
-| `WORKER_SA` | worker | Service account that signs the reminder tasks' OIDC token |
-| `TASKS_QUEUE` / `TASKS_LOCATION` | worker | Cloud Tasks queue (`assistant-reminders`) and region (`us-central1`) |
-| `API_URL` | worker | Public api URL, for the ICS link and the Visor |
-| `KMS_KEY` | worker | Cloud KMS key that encrypts iCal URLs (empty = `/conectar` refused) |
-| `BACKUP_BUCKET` | worker | Daily ledger CSV and weekly JSON backup |
-| `MLFLOW_TRACKING_URI` | worker | Shared MLflow server |
-| `LLM_MODEL` / `LLM_BASE_URL` | worker | Default `deepseek-flash` / `https://api.deepseek.com` |
-| `MAX_MSGS_PER_MINUTE` | worker | Per-chat rate limit (default 10) |
-| `MAX_LLM_USD_PER_DAY` | worker | Daily LLM spend cap per chat, default 0.10 (fails closed) |
-| `CONFIRM_ABOVE` | worker | Amount above which a write asks for confirmation (default 100) |
-| `DEFAULT_TIMEZONE` | worker | Default `America/Panama` |
+| Variable | Description |
+|---|---|
+| `GCP_PROJECT_ID` | GCP project |
+| `FIRESTORE_DATABASE` | Empty for `(default)`; `staging` on staging |
+| `WEBHOOK_SECRET_TOKEN` | Secret `assistant-webhook-secret` (X-Telegram-Bot-Api-Secret-Token) |
+| `WEBHOOK_PATH` | Secret `assistant-webhook-path` (webhook route) |
+| `UPDATES_TOPIC` | Pub/Sub topic, default `assistant-updates` |
+| `TELEGRAM_BOT_ID` | Number before `:` in the bot token; checks the Visor's signature |
+| `TELEGRAM_BOT_TOKEN` | Secret `assistant-bot-token` |
+| `DEEPSEEK_API_KEY` | Secret `assistant-deepseek-key` |
+| `WORKER_URL` | The service's URL: reminder target and the OIDC audience of `/push` (empty = no reminders, `/push` refused) |
+| `WORKER_SA` | The runtime service account: signs reminder tasks; the only caller `/push` accepts |
+| `TASKS_QUEUE` / `TASKS_LOCATION` | Cloud Tasks queue (`assistant-reminders`) and region (`us-central1`) |
+| `API_URL` | The service's public URL, for the ICS link and the Visor |
+| `KMS_KEY` | Cloud KMS key that encrypts iCal URLs and Google refresh tokens (empty = both refused) |
+| `GOOGLE_OAUTH_CLIENT_ID` | Secret `assistant-google-oauth-client-id` (empty = Google sign-in refused) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Secret `assistant-google-oauth-client-secret` |
+| `BACKUP_BUCKET` | Daily ledger CSV and weekly JSON backup |
+| `LLM_MODEL` / `LLM_BASE_URL` | Default `deepseek-flash` / `https://api.deepseek.com` |
+| `MAX_MSGS_PER_MINUTE` | Per-chat rate limit (default 10) |
+| `MAX_LLM_USD_PER_DAY` | Daily LLM spend cap per chat, default 0.10 (fails closed) |
+| `CONFIRM_ABOVE` | Amount above which a write asks for confirmation (default 100) |
+| `DEFAULT_TIMEZONE` | Default `America/Panama` |
 
 ## Admin CLI
 

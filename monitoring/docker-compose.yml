@@ -1,0 +1,22 @@
+# Local Grafana over Cloud Monitoring (adapted from uplift-modeling-pipeline's
+# monitoring/). It only reads: the metrics and the alerts live in Cloud
+# Monitoring (infra/monitoring.tf) and keep working when this is stopped.
+# Setup once: monitoring/grafana-key.sh. Start: docker compose -f
+# monitoring/docker-compose.yml up -d, then open http://localhost:3000.
+
+services:
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      # Local only: open without a login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-jd-botjonh}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # The read-only account's private key (git-ignored, see grafana-key.sh).
+      - ./secrets/grafana.pem:/etc/secrets/grafana.pem:ro
+    ports:
+      - "127.0.0.1:3000:3000"

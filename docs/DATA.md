@@ -26,6 +26,11 @@ Nothing is edited or deleted: undo, `/anular`, `/editar` and `editar:` write
 negative `reverso` copies (plus a new `registro` for an edit). Sum `monto` to
 net them out.
 
+Users see amounts in `users.moneda` (display only; the ledger stays USD): a row
+typed in that currency shows `monto_original` exactly, any other row its `monto`
+times that day's rate (`fx/{fecha}_{moneda}`, cached). Sums convert row by row,
+so a reverso still cancels its registro.
+
 Categories map to the 50/30/20 rule:
 
 - **necesidades:** vivienda, servicios, supermercado, transporte, salud, deudas
@@ -33,7 +38,9 @@ Categories map to the 50/30/20 rule:
 - **ahorro:** ahorro, inversion
 
 Budget advice compares the spend per category with `preferences/{chat_id}`, or
-with 50/30/20 of the month's income when there is no budget. It is plain code;
+with 50/30/20 of the month's income when there is no budget. Budget caps are
+USD; for another display currency they are converted at today's rate, and spend
+and income per row as above. It is plain code;
 the LLM only phrases the result.
 
 ## Export, backup and Looker Studio
@@ -76,19 +83,23 @@ with the user's offset, plus `inicio_utc` / `fin_utc` for range queries),
 (`activo` | `cancelado`) and `creado`. The id is the Telegram `update_id`, so a
 retry never duplicates; cancelling only flips `estado`.
 
-A connected iCal URL (`/conectar`) is stored encrypted with Cloud KMS
-(`preferences.ics_url_enc`), never in clear. The ICS feed token lives in
+A chat has at most one connected calendar in `preferences/{chat_id}`, encrypted
+with Cloud KMS (the chat id as associated data), never in clear:
+`gcal_token_enc` (the Google OAuth refresh token, `calendario` → Google) or
+`ics_url_enc` (a secret iCal link pasted in the chat). Connecting one removes
+the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS feed token lives in
 `ics_tokens/{token}` with a pointer in `users.ics_token`.
 
 ## Other collections
 
 | Collection | Content | Expiry |
 |---|---|---|
-| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda`, `zona_horaria`, `idioma`, `fun`, `last_batch` | — |
+| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch` | — |
 | `processed/{update_id}` | Dedup marker | TTL 7 days |
 | `invites/{code}` | Single-use invite | TTL 24 h |
 | `rate`, `spend` | Per-chat message and LLM spend counters | TTL |
 | `pending/{token}` | Confirmation waiting for a button | TTL 10 min |
+| `oauth_states/{token}` | `chat_id` of a Google sign-in in progress (single use) | TTL 10 min |
 | `history/{chat_id}` | Last 6 LLM turns | — |
 | `gif_catalog/{tipo}` | Shared reaction GIFs | — |
 | `cron/{key}` | Export and backup success markers | TTL 30 days |

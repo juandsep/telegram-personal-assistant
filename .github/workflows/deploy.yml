@@ -36,14 +36,12 @@ jobs:
           GCP_ARTIFACT_REPO: ${{ vars.GCP_ARTIFACT_REPO }}
           GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
           GCP_DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
-          GCP_WEBHOOK_SA: ${{ vars.GCP_WEBHOOK_SA }}
           GCP_WORKER_SA: ${{ vars.GCP_WORKER_SA }}
-          MLFLOW_TRACKING_URI: ${{ vars.MLFLOW_TRACKING_URI }}
           BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
         run: |
           missing=0
           for name in GCP_PROJECT_ID GCP_REGION GCP_ARTIFACT_REPO GCP_WIF_PROVIDER \
-                      GCP_DEPLOY_SA GCP_WEBHOOK_SA GCP_WORKER_SA MLFLOW_TRACKING_URI \
+                      GCP_DEPLOY_SA GCP_WORKER_SA \
                       BACKUP_BUCKET; do
             if [ -z "${!name}" ]; then
               echo "::error::variable $name is empty; set it before deploying"
@@ -76,33 +74,13 @@ jobs:
           sbom: true
           tags: ${{ env.IMAGE }}
 
-      - name: Deploy the webhook service
+      # One service: the public Telegram webhook (publishes to Pub/Sub and acks
+      # fast), the Visor and the ICS feed, plus /push and /tasks/reminder, which
+      # check Google's OIDC token in the app (src/assistant/authz.py).
+      - name: Deploy the assistant service
         uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3.0.1
         with:
-          service: ${{ env.STAGING == 'true' && 'assistant-api-staging' || 'assistant-api' }}
-          region: ${{ vars.GCP_REGION }}
-          image: ${{ env.IMAGE }}
-          flags: >-
-            --service-account=${{ vars.GCP_WEBHOOK_SA }}
-            --memory=512Mi
-            --min-instances=0
-            --cpu-boost
-            --max-instances=2
-            --allow-unauthenticated
-            --command=uvicorn,assistant.api:app,--host,0.0.0.0,--port,8080,--no-access-log
-          env_vars: |
-            GCP_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
-            FIRESTORE_DATABASE=${{ env.STAGING == 'true' && 'staging' || '' }}
-            UPDATES_TOPIC=${{ env.STAGING == 'true' && 'assistant-updates-staging' || 'assistant-updates' }}
-            TELEGRAM_BOT_ID=${{ env.STAGING == 'true' && vars.TELEGRAM_BOT_ID_STAGING || vars.TELEGRAM_BOT_ID }}
-          secrets: |
-            WEBHOOK_SECRET_TOKEN=assistant-webhook-secret:latest
-            WEBHOOK_PATH=assistant-webhook-path:latest
-
-      - name: Deploy the worker service
-        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3.0.1
-        with:
-          service: ${{ env.STAGING == 'true' && 'assistant-worker-staging' || 'assistant-worker' }}
+          service: ${{ env.STAGING == 'true' && 'assistant-staging' || 'assistant' }}
           region: ${{ vars.GCP_REGION }}
           image: ${{ env.IMAGE }}
           flags: >-
@@ -110,14 +88,15 @@ jobs:
             --memory=512Mi
             --min-instances=0
             --cpu-boost
-            --max-instances=4
-            --no-allow-unauthenticated
-            --command=uvicorn,assistant.worker:app,--host,0.0.0.0,--port,8080
+            --max-instances=6
+            --allow-unauthenticated
+            --command=uvicorn,assistant.app:app,--host,0.0.0.0,--port,8080,--no-access-log
           env_vars: |
             GCP_PROJECT_ID=${{ vars.GCP_PROJECT_ID }}
             FIRESTORE_DATABASE=${{ env.STAGING == 'true' && 'staging' || '' }}
+            UPDATES_TOPIC=${{ env.STAGING == 'true' && 'assistant-updates-staging' || 'assistant-updates' }}
+            TELEGRAM_BOT_ID=${{ env.STAGING == 'true' && vars.TELEGRAM_BOT_ID_STAGING || vars.TELEGRAM_BOT_ID }}
             BACKUP_BUCKET=${{ vars.BACKUP_BUCKET }}
-            MLFLOW_TRACKING_URI=${{ vars.MLFLOW_TRACKING_URI }}
             WORKER_URL=${{ vars.WORKER_URL }}
             WORKER_SA=${{ vars.GCP_WORKER_SA }}
             TASKS_QUEUE=assistant-reminders
@@ -125,5 +104,9 @@ jobs:
             TASKS_LOCATION=${{ vars.GCP_REGION }}
             API_URL=${{ vars.API_URL }}
           secrets: |
+            WEBHOOK_SECRET_TOKEN=assistant-webhook-secret:latest
+            WEBHOOK_PATH=assistant-webhook-path:latest
             TELEGRAM_BOT_TOKEN=${{ env.STAGING == 'true' && 'assistant-bot-token-staging' || 'assistant-bot-token' }}:latest
             DEEPSEEK_API_KEY=assistant-deepseek-key:latest
+            GOOGLE_OAUTH_CLIENT_ID=assistant-google-oauth-client-id:latest
+            GOOGLE_OAUTH_CLIENT_SECRET=assistant-google-oauth-client-secret:latest

@@ -71,7 +71,7 @@ def _state() -> Any:
     return importlib.import_module("assistant.services.state")
 
 
-def validar(raw: str) -> httpx.URL:
+def validate_url(raw: str) -> httpx.URL:
     """The fetchable https URL, or BusyError("invalid_url")."""
     try:
         url = httpx.URL(raw.strip())
@@ -115,7 +115,7 @@ def _fetch(url: httpx.URL) -> bytes:
 
 
 def _load(raw: str) -> Any:
-    body = _fetch(validar(raw))
+    body = _fetch(validate_url(raw))
     try:
         return icalendar.Calendar.from_ical(body)
     except Exception as exc:  # malformed feeds raise all sorts of things
@@ -131,10 +131,10 @@ def _as_dt(value: date | datetime, zone: ZoneInfo) -> datetime:
 
 
 def _blocks(
-    cal: Any, desde: datetime, hasta: datetime, zone: ZoneInfo
+    cal: Any, since: datetime, until: datetime, zone: ZoneInfo
 ) -> list[tuple[datetime, datetime, str]]:
     out = []
-    for ev in recurring_ical_events.of(cal).between(desde, hasta):
+    for ev in recurring_ical_events.of(cal).between(since, until):
         if str(ev.get("TRANSP", "")).upper() == "TRANSPARENT":
             continue
         if str(ev.get("STATUS", "")).upper() == "CANCELLED":
@@ -147,15 +147,15 @@ def _blocks(
         else:  # RFC 5545: all-day lasts one day, a timed event is instant
             end = start if isinstance(start, datetime) else start + timedelta(1)
         a, b = _as_dt(start, zone), _as_dt(end, zone)
-        if a < hasta and b > desde:
+        if a < until and b > since:
             out.append((a, b, LABEL))
     return sorted(out)
 
 
-def ocupados(
-    chat_id: str, desde: datetime, hasta: datetime
+def busy_blocks(
+    chat_id: str, since: datetime, until: datetime
 ) -> list[tuple[datetime, datetime, str]]:
-    """Busy blocks overlapping [desde, hasta), UTC. [] if none, unset or failing."""
+    """Busy blocks overlapping [since, until), UTC. [] if none, unset or failing."""
     try:
         enc = _state().get_preferences(chat_id).get("ics_url_enc")
         if not enc:
@@ -170,7 +170,7 @@ def ocupados(
             key = get_worker_settings().kms_key
             cal = _load(crypto.decrypt(key, enc, chat_id))
             _cache[chat_id] = (now, enc, cal)
-        return _blocks(cal, desde, hasta, zone)
+        return _blocks(cal, since, until, zone)
     except BusyError as exc:
         log.error("ics_busy_failed code=%s", exc)
     except Exception as exc:  # never raise into the conversation
@@ -178,30 +178,26 @@ def ocupados(
     return []
 
 
-def conectar(ctx: ToolContext, url: str) -> str:
-    """Validate by fetching and parsing once, then store; "off" disconnects."""
+def connect(ctx: ToolContext, url: str) -> str:
+    """Validate by fetching and parsing once, then store. The chat's only
+    calendar: a linked Google Calendar is dropped (``gcal.disconnect`` clears
+    everything)."""
     ref = _db().collection("preferences").document(ctx.chat_id)
     _cache.pop(ctx.chat_id, None)
-    if url.strip().lower() == "off":
-        ref.set(
-            {"ics_url": firestore.DELETE_FIELD, "ics_url_enc": firestore.DELETE_FIELD},
-            merge=True,
-        )
-        log.info("ics_disconnect")
-        return t(ctx.idioma, "cal_desconectado")
     key = get_worker_settings().kms_key
     if not key:  # fail closed: never store the URL in clear
         log.warning("ics_connect_rejected code=no_kms_key")
-        return t(ctx.idioma, "no_disponible")
+        return t(ctx.lang, "unavailable")
     try:
         _load(url)
     except BusyError as exc:
         log.info("ics_connect_rejected code=%s", exc)
         return t(
-            ctx.idioma,
-            "enlace_invalido" if str(exc) == "invalid_url" else "cal_ilegible",
+            ctx.lang,
+            "invalid_link" if str(exc) == "invalid_url" else "cal_unreadable",
         )
     enc = crypto.encrypt(key, url.strip(), ctx.chat_id)
-    ref.set({"ics_url_enc": enc, "ics_url": firestore.DELETE_FIELD}, merge=True)
+    drop = {f: firestore.DELETE_FIELD for f in ("ics_url", "gcal_token_enc", "gcal_id")}
+    ref.set({"ics_url_enc": enc, **drop}, merge=True)
     log.info("ics_connect")
-    return t(ctx.idioma, "cal_conectado")
+    return t(ctx.lang, "cal_connected")

@@ -49,32 +49,32 @@ def run(settings: WorkerSettings) -> None:
     if not settings.backup_bucket:
         log.warning("backup_skipped reason=no_bucket")
         return
-    dia = datetime.now(ZoneInfo(settings.default_timezone)).date().isoformat()
+    day = datetime.now(ZoneInfo(settings.default_timezone)).date().isoformat()
     db = firestore.Client(project=settings.project_id)
-    objetos: dict[str, Any] = {
+    objects: dict[str, Any] = {
         f"firestore/{c}.json": {d.id: d.to_dict() for d in db.collection(c).stream()}
         for c in COLLECTIONS
     }
-    objetos["firestore/ledger.json"] = {
+    objects["firestore/ledger.json"] = {
         d.reference.path: d.to_dict()
         for d in db.collection_group("movimientos").stream()
     }
-    objetos["firestore/agenda.json"] = {
+    objects["firestore/agenda.json"] = {
         d.reference.path: d.to_dict() for d in db.collection_group("eventos").stream()
     }
     bucket = _bucket(settings)
-    for nombre, data in objetos.items():
+    for name, data in objects.items():
         # The worker may only create objects; on a retry the object from the
         # first attempt is already there, so the backup is done.
         try:
-            bucket.blob(f"backup/{dia}/{nombre}").upload_from_string(
+            bucket.blob(f"backup/{day}/{name}").upload_from_string(
                 json.dumps(data, default=str, ensure_ascii=False),
                 content_type="application/json",
                 if_generation_match=0,
             )
         except PreconditionFailed:
-            log.info("backup_exists object=%s", nombre)
-    log.info("backup_done objects=%d", len(objetos))
+            log.info("backup_exists object=%s", name)
+    log.info("backup_done objects=%d", len(objects))
 
 
 def export_ledger(settings: WorkerSettings) -> None:
@@ -82,25 +82,25 @@ def export_ledger(settings: WorkerSettings) -> None:
     if not settings.backup_bucket:
         log.warning("ledger_export_skipped reason=no_bucket")
         return
-    zona = ZoneInfo(settings.default_timezone)
-    ayer = datetime.now(zona).date() - timedelta(days=1)
-    desde = datetime.combine(ayer, time(), zona)
-    hasta = desde + timedelta(days=1)
+    tz = ZoneInfo(settings.default_timezone)
+    yesterday = datetime.now(tz).date() - timedelta(days=1)
+    since = datetime.combine(yesterday, time(), tz)
+    until = since + timedelta(days=1)
     out = io.StringIO()
     writer = csv.DictWriter(out, CSV_FIELDS, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
-    filas = 0
+    rows = 0
     state = importlib.import_module("assistant.services.state")
     for chat_id in state.list_chat_ids():
-        docs = ledger.movimientos(chat_id, "creado", desde, hasta)
+        docs = ledger.query_entries(chat_id, "creado", since, until)
         for d in sorted(docs, key=lambda d: (d["fecha"], d["batch_id"])):
-            categoria = d.get("categoria") or d.get("fuente", "")
-            writer.writerow({**d, "chat_id": chat_id, "categoria": categoria})
-            filas += 1
-    if not filas:
+            category = d.get("categoria") or d.get("fuente", "")
+            writer.writerow({**d, "chat_id": chat_id, "categoria": category})
+            rows += 1
+    if not rows:
         log.info("ledger_export_skipped reason=no_rows")
         return
-    blob = _bucket(settings).blob(f"ledger/mes={ayer:%Y-%m}/{ayer}.csv")
+    blob = _bucket(settings).blob(f"ledger/mes={yesterday:%Y-%m}/{yesterday}.csv")
     try:
         blob.upload_from_string(
             out.getvalue(), content_type="text/csv", if_generation_match=0
@@ -108,4 +108,4 @@ def export_ledger(settings: WorkerSettings) -> None:
     except PreconditionFailed:
         log.info("ledger_export_exists")
         return
-    log.info("ledger_export_done rows=%d", filas)
+    log.info("ledger_export_done rows=%d", rows)

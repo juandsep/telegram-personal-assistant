@@ -21,10 +21,29 @@ commands (`/invitar`, `/usuarios`, `/gif`) answer in Spanish.
 
 Only invited people can use the bot. The owner sends `/invitar <name>` and
 forwards the single-use `t.me` link (valid 24 h). Opening it sends `/start`,
-which creates the user, shows Juani's welcome and pins the Visor de gastos
-(see [Dashboard](#dashboard-visor-de-gastos)). `/ayuda` shows the welcome
-again. `/zona America/Bogota` sets the time zone of the agenda and the reports
-(default `America/Panama`).
+which creates the user, shows Juani's short welcome with a **📖 Guía completa**
+button (this guide's site) and sets the Visor de gastos as the chat's menu
+button (see [Dashboard](#dashboard-visor-de-gastos)), then asks for the
+currency with buttons (🇺🇸 USD · 🇪🇺 EUR · 🇨🇴 COP · 🇨🇳 CNY). `/ayuda` shows
+the welcome again.
+
+**Currency:** `/moneda` (or `moneda` / `currency`) shows the same buttons;
+`/moneda COP` sets it directly. Every amount the bot shows (replies, scheduled
+messages, budgets, the dashboard, the LLM's answers) is in that currency, and an
+amount typed without a currency is taken in it. The ledger itself stays in USD.
+
+**Time zone:** picking a currency sets a first guess when none is set yet (COP →
+America/Bogota, EUR → Europe/Madrid, CNY → Asia/Shanghai, USD →
+America/New_York); opening the Visor de gastos then stores the phone's own zone.
+`/zona America/Bogota` is a manual override, not in the menu. Without any, the
+default is `America/Panama`.
+
+Commands also work as a plain word, without `/`, in any case and with or
+without accents, when the word is the whole message: `tablero` / `dashboard`,
+`tablero fijar` / `dashboard pin`, `resumen` / `summary`, `ultimos` / `last`,
+`ayuda` / `help`, `calendario` / `calendar` / `agenda`, `fun`, `moneda` /
+`currency`. Anything longer
+(`15 cafe`, `ayuda con el arriendo`) is handled as usual.
 
 ## Logging expenses and income (no LLM)
 
@@ -39,8 +58,9 @@ tokens): `gasto 2 usd cafe`, `2 usd cafe`, `cafe 2000cop gasto`,
   expense. A bare amount (`5`, `5 usd`) is not guessed: the bot asks with
   Gasto / Ingreso buttons and registers on the tap.
 - **Currency:** an ISO code next to the amount (USD, COP, EUR, MXN, PEN, CLP,
-  ARS, BRL, GBP, CAD, PAB), `$`, `€`, `dollars` or `美元`; none means USD. The
-  ledger converts to USD. `2,000` / `2.000` are thousands, `2,5` is 2.5.
+  ARS, BRL, GBP, CAD, PAB, CNY), `$`, `€`, `dollars` or `美元`; none means the
+  user's currency (`/moneda`). The ledger converts to USD at the day's rate.
+  `2,000` / `2.000` are thousands, `2,5` is 2.5.
 - **Category:** the other words are the note; keywords in the three languages
   pick the category (`cafe` / `coffee` / `咖啡` → restaurantes, `uber` /
   `打车` → transporte, `groceries` / `超市` → supermercado…), else `otros`.
@@ -50,12 +70,12 @@ tokens): `gasto 2 usd cafe`, `2 usd cafe`, `cafe 2000cop gasto`,
   `明天`, `多少`). In free text the LLM registers, edits and voids the same way
   ("el último era 3 dólares, no 5").
 
-Every registration answers with the entry as stored, category included, and how
-to fix it:
+Every registration answers with the entry in the user's currency, category
+included, and the amount as typed when it was another currency:
 
 ```
 −12.00 USD · Almuerzo · Restaurantes
-¿Algo mal? Responde: editar: 15 almuerzo restaurantes
+−48000.00 COP · Uber · Transporte (12 USD)
 ```
 
 ## Correcting
@@ -74,13 +94,15 @@ of the old row plus a new row (see [DATA.md](DATA.md)).
 
 ## Dashboard (Visor de gastos)
 
-`/tablero` (and `/start`) pins a **Visor de gastos** button in the chat and sets
-it as the chat's menu button. It opens a Telegram Mini App with the month:
+`/tablero` sends a message with a **Visor de gastos** button; `/tablero fijar`
+(`dashboard pin`) also pins it at the top of the chat. `/start` sets the same
+app as the chat's menu button. It opens a Telegram Mini App with the month:
 income, spend, savings rate against the 20% target, spend by category and per
 day, and the last 15 movements; ← → move between months. It is shown in the
-user's language.
+user's language and currency, and sends the phone's time zone (`X-Tz`), stored
+when it changed.
 
-Nothing sensitive travels in the URL. `assistant-api` serves the shell at `/visor`; the
+Nothing sensitive travels in the URL. The service serves the shell at `/visor`; the
 page posts Telegram's signed `initData` to `/visor/datos`, which checks the
 Ed25519 signature with Telegram's public key and `TELEGRAM_BOT_ID` (the number
 before `:` in the bot token, not a secret), so the api never holds the bot
@@ -99,6 +121,10 @@ picks who is due):
 - **Sunday 22:00:** the same, plus the week's spend, top categories and,
   against the month's income, the 20% to save and what is left per week, in
   one message.
+
+`/resumen` (or `resumen` / `summary`) gives the same on demand, without the LLM:
+today's spend and, when there is any spend or income, the week and the month
+against income.
 
 ## GIF reactions (`/fun`)
 
@@ -129,54 +155,53 @@ Natural language works in any of the three languages: "reunión con Ana mañana
 3pm", "remind me to pay the power bill Friday 9am", "我周四有空吗？".
 
 - **Conflicts:** before scheduling, the code checks the agenda and the busy
-  blocks of a connected calendar (`/conectar <url>`); on a clash it asks with
+  blocks of the connected calendar (see below); on a clash it asks with
   buttons whether to schedule anyway. "¿Qué tengo libre el jueves?" lists free
   slots between 08:00 and 20:00.
 - **`/calendario`** lists the next 7 days, one line per day, without the LLM:
-  `Jue 2 · 09:00 Dentista · 16:00 Llamada banco`.
+  `Jue 2 · 09:00 Dentista · 16:00 Llamada banco`, with a **🔗 Conectar
+  calendario** button (or **🔌 Desconectar …** when one is connected).
 - **Reminders** arrive on Telegram at the exact minute (Cloud Tasks, at
   `start - reminder_min`). Tasks are scheduled at most 30 days ahead; later
   ones are queued by the morning digest once within 30 days. Cancelling deletes
   the task.
 
-### Google Calendar (instant)
+### Connecting your calendar
 
-Share your Google Calendar with
-`assistant-worker@jd-botjonh.iam.gserviceaccount.com` (Settings → your calendar
-→ Share with specific people → **Make changes to events**), then send
-`/vincular <calendar_id>` (for a personal account the primary calendar id is
-your Gmail address; `/vincular off` unlinks). From then on every create and
-cancel is mirrored there within seconds, and conflicts read that calendar
-directly. Firestore stays the source of truth; the mirror is best effort.
+`calendario` → **🔗 Conectar calendario** → pick one calendar (connecting one
+replaces the other; **🔌 Desconectar** or `/calendario off` removes it):
 
-### Subscribe from your calendar app
+- **Google:** a button opens Google's sign-in (valid 10 minutes); allow access
+  to your calendar's events. The bot says when it is done and copies your
+  upcoming items. From then on every create and cancel is mirrored to your main
+  Google Calendar within seconds, and conflicts read it directly. Firestore
+  stays the source of truth; the mirror is best effort. Google shows an
+  "unverified app" notice: Advanced → Go to Juani.
+- **iPhone / Outlook:** **📅 Suscribirme** opens your calendar app on your
+  private feed (`$API_URL/ics/<token>.ics`, as `webcal://`). Anyone with that
+  link can read your agenda, so `/calendario nuevo` replaces it and revokes the
+  old one. Optionally, paste your calendar's secret iCal link in the chat to
+  get clash warnings too (the bot deletes the message): iPhone Calendar →
+  calendar info → Public Calendar; Outlook → Settings → Shared calendars →
+  Publish; Google → Settings → Integrate calendar → Secret address in iCal
+  format.
 
-`/calendario enlace` replies with your private URL (`$API_URL/ics/<token>.ics`);
-anyone with it can read your agenda, so `/calendario nuevo` replaces it and
-revokes the old one.
-
-- **Google Calendar (web):** Other calendars → **+** → **From URL** → paste the
-  link → **Add calendar**.
-- **Apple Calendar:** iPhone: Settings → Calendar → Accounts → Add Account →
-  Other → Add Subscribed Calendar. Mac: File → New Calendar Subscription.
-- **Outlook:** Add calendar → Subscribe from web → paste the link → Import.
-
-Subscriptions are read-only and refreshed by the app, not pushed: Google
-refreshes every ~8–24 h, so a new appointment may take hours to show there. The
+Subscriptions are read-only and refreshed by the app, not pushed (Outlook and
+Google take hours), so a new appointment may take a while to show there. The
 Telegram reminder does not depend on that refresh.
 
 ## Command list
 
 | Command | What it does |
 |---|---|
-| `/tablero` | Pins the Visor de gastos |
+| `/tablero [fijar]` | The Visor de gastos; `fijar` pins it |
+| `/resumen` | Today, the week and the month vs income |
 | `/ultimos` | Last 5 movements |
 | `/editar <n> <amount>` | Fixes movement `n` |
 | `/anular <n>` | Voids movement `n` (with confirmation) |
-| `/calendario [enlace\|nuevo]` | Next 7 days; private ICS link |
+| `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/fun` | GIF replies on or off |
-| `/zona <IANA zone>` | Time zone |
-| `/vincular <id\|off>` | Mirror to Google Calendar |
-| `/conectar <url\|off>` | Warn about clashes with an iCal calendar |
+| `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
+| `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |
 | `/invitar <name>`, `/usuarios`, `/gif` | Owner only, not in the menu |

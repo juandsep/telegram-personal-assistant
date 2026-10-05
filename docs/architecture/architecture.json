@@ -13,7 +13,7 @@
       "label": "Telegram",
       "pos": [
         20,
-        300
+        200
       ],
       "size": [
         120,
@@ -21,16 +21,16 @@
       ]
     },
     {
-      "id": "api",
+      "id": "assistant",
       "type": "backend",
-      "label": "assistant-api",
-      "sublabel": "public",
+      "label": "assistant",
+      "sublabel": "Cloud Run · public",
       "pos": [
         210,
-        300
+        200
       ],
       "size": [
-        150,
+        180,
         64
       ]
     },
@@ -38,9 +38,10 @@
       "id": "updates",
       "type": "messagebus",
       "label": "Pub/Sub",
+      "sublabel": "updates + cron",
       "pos": [
-        430,
-        300
+        225,
+        400
       ],
       "size": [
         150,
@@ -48,16 +49,28 @@
       ]
     },
     {
-      "id": "worker",
-      "type": "backend",
-      "label": "assistant-worker",
-      "sublabel": "private",
+      "id": "scheduler",
+      "type": "cloud",
+      "label": "Cloud Scheduler",
       "pos": [
-        650,
-        300
+        225,
+        570
       ],
       "size": [
-        160,
+        150,
+        64
+      ]
+    },
+    {
+      "id": "kms",
+      "type": "security",
+      "label": "Cloud KMS",
+      "pos": [
+        225,
+        40
+      ],
+      "size": [
+        150,
         64
       ]
     },
@@ -67,8 +80,8 @@
       "label": "Firestore",
       "sublabel": "state + ledger",
       "pos": [
-        890,
-        300
+        650,
+        200
       ],
       "size": [
         160,
@@ -81,8 +94,8 @@
       "label": "DeepSeek",
       "sublabel": "LLM",
       "pos": [
-        650,
-        110
+        460,
+        40
       ],
       "size": [
         160,
@@ -95,37 +108,11 @@
       "label": "FX rates",
       "sublabel": "TRM + ECB",
       "pos": [
-        890,
-        110
+        650,
+        40
       ],
       "size": [
         160,
-        64
-      ]
-    },
-    {
-      "id": "kms",
-      "type": "security",
-      "label": "Cloud KMS",
-      "pos": [
-        430,
-        110
-      ],
-      "size": [
-        150,
-        64
-      ]
-    },
-    {
-      "id": "scheduler",
-      "type": "cloud",
-      "label": "Cloud Scheduler",
-      "pos": [
-        430,
-        500
-      ],
-      "size": [
-        150,
         64
       ]
     },
@@ -135,8 +122,8 @@
       "label": "Cloud Tasks",
       "sublabel": "reminders",
       "pos": [
-        650,
-        500
+        460,
+        400
       ],
       "size": [
         160,
@@ -150,7 +137,7 @@
       "sublabel": "CSV",
       "pos": [
         890,
-        500
+        400
       ],
       "size": [
         160,
@@ -163,10 +150,24 @@
       "label": "BigQuery",
       "pos": [
         1120,
-        500
+        400
       ],
       "size": [
         150,
+        64
+      ]
+    },
+    {
+      "id": "monitoring",
+      "type": "cloud",
+      "label": "Cloud Monitoring",
+      "sublabel": "metrics · alerts · Grafana",
+      "pos": [
+        650,
+        570
+      ],
+      "size": [
+        200,
         64
       ]
     }
@@ -176,15 +177,15 @@
       "kind": "region",
       "label": "GCP jd-botjonh",
       "wraps": [
-        "api",
+        "assistant",
         "updates",
-        "worker",
-        "firestore",
-        "kms",
         "scheduler",
+        "kms",
+        "firestore",
         "tasks",
         "gcs",
-        "bigquery"
+        "bigquery",
+        "monitoring"
       ]
     }
   ],
@@ -192,38 +193,43 @@
     {
       "id": "webhook",
       "from": "telegram",
-      "to": "api",
+      "to": "assistant",
       "label": "webhook",
       "variant": "emphasis"
     },
     {
       "id": "publish",
-      "from": "api",
+      "from": "assistant",
       "to": "updates",
       "label": "publish",
-      "variant": "emphasis"
+      "variant": "emphasis",
+      "labelDx": -52,
+      "labelDy": 24
     },
     {
       "id": "push",
       "from": "updates",
-      "to": "worker",
-      "label": "push",
-      "variant": "emphasis"
+      "to": "assistant",
+      "label": "push (OIDC)",
+      "variant": "emphasis",
+      "labelDx": 58
     },
     {
       "id": "state",
-      "from": "worker",
+      "from": "assistant",
       "to": "firestore",
       "label": "write",
-      "variant": "emphasis"
+      "variant": "emphasis",
+      "labelDx": 40,
+      "labelDy": 16
     },
     {
       "id": "llm",
-      "from": "worker",
+      "from": "assistant",
       "to": "deepseek",
-      "label": "fallback",
+      "label": "tool calls",
       "variant": "dashed",
-      "labelDy": -50
+      "toSide": "bottom"
     },
     {
       "id": "rates",
@@ -234,37 +240,40 @@
     },
     {
       "id": "decrypt",
-      "from": "worker",
+      "from": "assistant",
       "to": "kms",
       "label": "decrypt",
-      "variant": "security",
-      "fromSide": "top",
-      "toSide": "right"
+      "variant": "security"
     },
     {
       "id": "cron",
       "from": "scheduler",
-      "to": "worker",
+      "to": "updates",
       "label": "jobs"
     },
     {
       "id": "remind",
-      "from": "worker",
+      "from": "assistant",
       "to": "tasks",
-      "label": "enqueue",
-      "labelDy": 88
+      "label": "enqueue"
     },
     {
       "id": "export",
       "from": "firestore",
       "to": "gcs",
-      "label": "daily export",
-      "labelDy": 88
+      "label": "daily export"
     },
     {
       "id": "external-table",
       "from": "gcs",
       "to": "bigquery"
+    },
+    {
+      "id": "observe",
+      "from": "assistant",
+      "to": "monitoring",
+      "label": "logs + metrics",
+      "labelDy": 63
     }
   ]
 }

@@ -70,18 +70,22 @@ class WorkerSettings:
     project_id: str
     telegram_bot_token: str
     deepseek_api_key: str
-    # Reminders: Cloud Tasks POST to {worker_url}/tasks/reminder with an OIDC
-    # token for worker_sa. Empty worker_url or worker_sa: reminders are skipped.
+    # URL of the assistant service and its runtime account. Cloud Tasks POST to
+    # {worker_url}/tasks/reminder with an OIDC token for worker_sa, and /push
+    # and /tasks/reminder accept only tokens with audience worker_url signed for
+    # worker_sa. Empty: reminders are skipped and those routes refuse (403).
     worker_url: str = ""
     worker_sa: str = ""
     tasks_queue: str = "assistant-reminders"
     tasks_location: str = "us-central1"
-    # Public assistant-api URL, for the ICS subscription link.
+    # Public URL of the assistant service: the ICS link and the Visor.
     api_url: str = ""
-    # Cloud KMS key that encrypts each user's secret iCal URL. Empty: /conectar
-    # is refused, so the URL is never stored in clear.
+    # Cloud KMS key that encrypts each user's secret iCal URL and Google refresh
+    # token. Empty: both are refused, so neither is ever stored in clear.
     kms_key: str = ""
-    mlflow_tracking_uri: str = ""
+    # Google OAuth web client for "Conectar calendario → Google". Empty: refused.
+    google_client_id: str = ""
+    google_client_secret: str = ""
     backup_bucket: str = ""
     llm_model: str = "deepseek-flash"
     llm_base_url: str = "https://api.deepseek.com"
@@ -112,7 +116,8 @@ class WorkerSettings:
             tasks_location=get("TASKS_LOCATION", "us-central1"),
             api_url=get("API_URL", "").rstrip("/"),
             kms_key=get("KMS_KEY", ""),
-            mlflow_tracking_uri=get("MLFLOW_TRACKING_URI", ""),
+            google_client_id=get("GOOGLE_OAUTH_CLIENT_ID", ""),
+            google_client_secret=get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
             backup_bucket=get("BACKUP_BUCKET", ""),
             llm_model=get("LLM_MODEL", "deepseek-flash"),
             llm_base_url=get("LLM_BASE_URL", "https://api.deepseek.com"),

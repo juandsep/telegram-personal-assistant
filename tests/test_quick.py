@@ -6,15 +6,15 @@ from assistant.services.quick import NOT_POSITIVE, amount, parse
 
 
 @pytest.mark.parametrize(
-    ("text", "tipo", "monto", "moneda", "nota", "categoria"),
+    ("text", "kind", "amount", "currency", "note", "category"),
     [
-        ("gasto 2 usd cafe", "gasto", "2", "USD", "cafe", "restaurantes"),
-        ("2 usd cafe", "gasto", "2", "USD", "cafe", "restaurantes"),
-        ("cafe 2000cop gasto", "gasto", "2000", "COP", "cafe", "restaurantes"),
-        ("2000 cop cafe", "gasto", "2000", "COP", "cafe", "restaurantes"),
+        ("gasto 2 usd cafe", "gasto", "2", "USD", "café", "restaurantes"),
+        ("2 usd cafe", "gasto", "2", "USD", "café", "restaurantes"),
+        ("cafe 2000cop gasto", "gasto", "2000", "COP", "café", "restaurantes"),
+        ("2000 cop cafe", "gasto", "2000", "COP", "café", "restaurantes"),
         ("1000usd ingreso", "ingreso", "1000", "USD", "", ""),
         ("ingreso 1000 salario", "ingreso", "1000", "USD", "salario", ""),
-        ("cafe 5", "gasto", "5", "USD", "cafe", "restaurantes"),
+        ("cafe 5", "gasto", "5", "USD", "café", "restaurantes"),
         ("Café 2.5", "gasto", "2.5", "USD", "Café", "restaurantes"),
         ("almuerzo 2,5", "gasto", "2.5", "USD", "almuerzo", "restaurantes"),
         ("2,000 cop taxi", "gasto", "2000", "COP", "taxi", "transporte"),
@@ -25,8 +25,8 @@ from assistant.services.quick import NOT_POSITIVE, amount, parse
         ("5", "", "5", "USD", "", "otros"),
         ("+500 salario", "ingreso", "500", "USD", "salario", ""),
         ("+20 usd", "ingreso", "20", "USD", "", ""),
-        ("-5 cafe", "gasto", "5", "USD", "cafe", "restaurantes"),
-        ("\u22125 cafe", "gasto", "5", "USD", "cafe", "restaurantes"),
+        ("-5 cafe", "gasto", "5", "USD", "café", "restaurantes"),
+        ("\u22125 cafe", "gasto", "5", "USD", "café", "restaurantes"),
         ("gasto 7", "gasto", "7", "USD", "", "otros"),
         ("ingreso 900", "ingreso", "900", "USD", "", ""),
         ("$3.50 uber", "gasto", "3.50", "USD", "uber", "transporte"),
@@ -38,17 +38,17 @@ from assistant.services.quick import NOT_POSITIVE, amount, parse
         ("INGRESO 2,000 Freelance", "ingreso", "2000", "USD", "Freelance", ""),
     ],
 )
-def test_parse_accepts(text, tipo, monto, moneda, nota, categoria) -> None:
+def test_parse_accepts(text, kind, amount, currency, note, category) -> None:
     e = parse(text)
     assert e is not None and e.error is None
-    assert (e.tipo, e.monto, e.moneda, e.nota, e.categoria) == (
-        tipo,
-        Decimal(monto),
-        moneda,
-        nota,
-        categoria,
+    assert (e.kind, e.amount, e.currency, e.note, e.category) == (
+        kind,
+        Decimal(amount),
+        currency,
+        note,
+        category,
     )
-    assert isinstance(e.monto, Decimal)
+    assert isinstance(e.amount, Decimal)
 
 
 @pytest.mark.parametrize("text", ["0 cafe", "-0 cafe", "cafe 0,00"])
@@ -102,7 +102,7 @@ def test_amount(text, expected) -> None:
 
 
 @pytest.mark.parametrize(
-    ("text", "tipo", "categoria"),
+    ("text", "kind", "category"),
     [
         ("-12 lunch", "gasto", "restaurantes"),
         ("20 groceries", "gasto", "supermercado"),
@@ -114,9 +114,9 @@ def test_amount(text, expected) -> None:
         ("8 书", "gasto", "otros"),
     ],
 )
-def test_english_and_chinese_keywords(text, tipo, categoria) -> None:
+def test_english_and_chinese_keywords(text, kind, category) -> None:
     e = parse(text)
-    assert e is not None and (e.tipo, e.categoria) == (tipo, categoria)
+    assert e is not None and (e.kind, e.category) == (kind, category)
 
 
 @pytest.mark.parametrize(
@@ -126,25 +126,56 @@ def test_english_and_chinese_dates_and_questions_go_to_llm(text) -> None:
     assert parse(text) is None
 
 
-def test_correccion_in_any_language_and_order() -> None:
-    from assistant.services.quick import correccion
+def test_correction_in_any_language_and_order() -> None:
+    from assistant.services.quick import correction
 
-    assert correccion("editar: 15 restaurantes") == {
-        "monto": Decimal(15),
-        "categoria": "restaurantes",
+    assert correction("editar: 15 restaurantes") == {
+        "amount": Decimal(15),
+        "category": "restaurantes",
     }
-    assert correccion("Edit: lunch 12,50 cop Restaurants") == {
-        "monto": Decimal("12.50"),
-        "moneda": "COP",
-        "categoria": "restaurantes",
-        "nota": "lunch",
+    assert correction("Edit: lunch 12,50 cop Restaurants") == {
+        "amount": Decimal("12.50"),
+        "currency": "COP",
+        "category": "restaurantes",
+        "note": "lunch",
     }
-    assert correccion("修改：15 午饭 餐饮") == {
-        "monto": Decimal(15),
-        "categoria": "restaurantes",
-        "nota": "午饭",
+    assert correction("修改：15 午饭 餐饮") == {
+        "amount": Decimal(15),
+        "category": "restaurantes",
+        "note": "午饭",
     }
-    assert correccion("editar: Transporte") == {"categoria": "transporte"}
-    assert correccion("editar:") == {}
-    assert correccion("editar la cena 5") is None  # no colon: a normal message
-    assert correccion("nota: 5") is None
+    assert correction("editar: Transporte") == {"category": "transporte"}
+    assert correction("editar:") == {}
+    assert correction("editar la cena 5") is None  # no colon: a normal message
+    assert correction("nota: 5") is None
+
+
+@pytest.mark.parametrize(
+    ("text", "kind", "note"),
+    [("- 5 usd", "gasto", ""), ("+ 5 salario", "ingreso", "salario")],
+)
+def test_detached_sign_joins_the_amount(text, kind, note) -> None:
+    e = parse(text)
+    assert e is not None and (e.kind, e.amount, e.note) == (kind, Decimal(5), note)
+
+
+@pytest.mark.parametrize("text", ["–5usd", "—5usd"])  # en, em dash
+def test_dashes_are_a_minus_sign(text) -> None:
+    e = parse(text)
+    assert e is not None and (e.kind, e.amount, e.currency) == ("gasto", 5, "USD")
+
+
+@pytest.mark.parametrize("text", ["5 cny", "5 yuan", "5 rmb", "5元", "5 人民币", "5块"])
+def test_chinese_yuan(text) -> None:
+    e = parse(text)
+    assert e is not None and (e.amount, e.currency, e.note) == (Decimal(5), "CNY", "")
+
+
+def test_note_gets_its_spanish_accent() -> None:
+    notes = [parse(t).note for t in ("15 cafe", "medico 30", "5 lunch")]
+    assert notes == ["café", "médico", "lunch"]
+
+
+def test_default_currency() -> None:
+    assert parse("5 cafe", default="COP").currency == "COP"
+    assert parse("5 usd cafe", default="COP").currency == "USD"

@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="es" data-lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía de Juani</title>
+<meta name="description" content="Guía de uso de Juani, tu asistente de gastos y agenda en Telegram. User guide for Juani, your expense and calendar assistant on Telegram.">
+<link rel="icon" href="../assets/juani-avatar.jpg">
+<style>
+:root {
+  --bg: #fbfaf7;
+  --card: #ffffff;
+  --text: #1f2328;
+  --muted: #5d6470;
+  --accent: #2a7de1;
+  --accent-soft: #e6f0fc;
+  --line: #e4e2dc;
+  --code-bg: #f1efe9;
+  --soon: #b8590b;
+  --soon-bg: #fdf0e3;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171a;
+    --card: #1e2125;
+    --text: #e8e6e3;
+    --muted: #a3a9b2;
+    --accent: #6aa8f0;
+    --accent-soft: #1d2b3d;
+    --line: #2e3238;
+    --code-bg: #2a2e34;
+    --soon: #f0a35e;
+    --soon-bg: #3a2a1b;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+.wrap { max-width: 680px; margin: 0 auto; padding: 16px 16px 48px; }
+header { display: flex; align-items: center; gap: 14px; padding: 8px 0 4px; }
+header img { width: 64px; height: 64px; border-radius: 50%; flex: none; }
+header h1 { font-size: 1.5rem; line-height: 1.2; margin: 0; }
+header p { margin: 2px 0 0; color: var(--muted); font-size: .95rem; }
+.lang {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; justify-content: flex-end; gap: 6px;
+  padding: 8px 0; background: var(--bg);
+}
+.lang button {
+  font: inherit; font-size: .9rem; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--text);
+  border-radius: 999px; padding: 4px 14px; min-height: 36px;
+}
+.lang button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+nav { margin: 12px 0 8px; }
+nav ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+nav a {
+  display: inline-block; font-size: .88rem; text-decoration: none;
+  background: var(--accent-soft); color: var(--accent);
+  border-radius: 999px; padding: 4px 12px;
+}
+section {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 14px; padding: 4px 18px 14px; margin: 14px 0;
+  scroll-margin-top: 56px;
+}
+h2 { font-size: 1.2rem; margin: 14px 0 6px; }
+h3 { font-size: 1.02rem; margin: 14px 0 4px; }
+p, li { margin: 6px 0; }
+ul { padding-left: 1.2em; }
+a { color: var(--accent); }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .9em; background: var(--code-bg);
+  border-radius: 6px; padding: 1px 6px; white-space: nowrap;
+}
+.bot {
+  background: var(--accent-soft); border-radius: 12px 12px 12px 4px;
+  padding: 8px 12px; margin: 8px 0; font-size: .95rem;
+}
+.ex { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: baseline; margin: 8px 0; }
+.ex code { justify-self: start; }
+.ex span { color: var(--muted); font-size: .95rem; }
+.cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }
+.cats li { margin: 0; border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px; font-size: .95rem; }
+.soon {
+  display: inline-block; font-size: .78rem; font-weight: 600; vertical-align: middle;
+  color: var(--soon); background: var(--soon-bg); border-radius: 999px; padding: 1px 10px; margin-left: 6px;
+}
+details { border-top: 1px solid var(--line); padding: 8px 0; }
+details:first-of-type { border-top: 0; }
+summary { cursor: pointer; font-weight: 600; }
+.muted { color: var(--muted); }
+footer { text-align: center; color: var(--muted); font-size: .85rem; margin-top: 24px; }
+[data-lang="es"] [lang="en"], [data-lang="en"] [lang="es"] { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="lang" role="group" aria-label="Idioma / Language">
+  <button type="button" data-set="es" aria-pressed="true">Español</button>
+  <button type="button" data-set="en" aria-pressed="false">English</button>
+</div>
+
+<!-- ===================== ESPAÑOL ===================== -->
+<div lang="es">
+<header>
+  <img src="../assets/juani-avatar.jpg" alt="Juani">
+  <div>
+    <h1>Guía de Juani</h1>
+    <p>Tu asistente de gastos y agenda en Telegram</p>
+  </div>
+</header>
+
+<nav aria-label="Contenido">
+  <ul>
+    <li><a href="#es-que">Qué es</a></li>
+    <li><a href="#es-empezar">Empezar</a></li>
+    <li><a href="#es-gastos">Gastos e ingresos</a></li>
+    <li><a href="#es-corregir">Corregir</a></li>
+    <li><a href="#es-categorias">Categorías</a></li>
+    <li><a href="#es-visor">Visor de gastos</a></li>
+    <li><a href="#es-resumenes">Resúmenes</a></li>
+    <li><a href="#es-agenda">Agenda</a></li>
+    <li><a href="#es-calendario">Calendario</a></li>
+    <li><a href="#es-fun">GIFs</a></li>
+    <li><a href="#es-palabras">Palabras clave</a></li>
+    <li><a href="#es-idiomas">Idiomas</a></li>
+    <li><a href="#es-privacidad">Privacidad</a></li>
+    <li><a href="#es-faq">Preguntas</a></li>
+  </ul>
+</nav>
+
+<section id="es-que">
+  <h2>¿Qué es Juani? 👋</h2>
+  <p>Juani es un asistente que vive en Telegram. Le escribes como a un amigo y te ayuda a:</p>
+  <ul>
+    <li>💸 Llevar tus <strong>gastos e ingresos</strong> en una línea.</li>
+    <li>📊 Ver tu mes en un <strong>tablero</strong> sencillo.</li>
+    <li>🕙 Recibir un <strong>resumen</strong> cada noche y cada domingo.</li>
+    <li>📅 Guardar tu <strong>agenda</strong> y avisarte a tiempo.</li>
+  </ul>
+  <p>No necesitas aprender comandos: escribe normal.</p>
+</section>
+
+<section id="es-empezar">
+  <h2>Empezar 🚀</h2>
+  <ol>
+    <li>Juani es solo por invitación. Abre el <strong>enlace de invitación</strong> que te enviaron (sirve una vez y dura 24 horas).</li>
+    <li>Toca <strong>Iniciar</strong> (o escribe <code>/start</code>). Juani te saluda.</li>
+    <li><strong>Elige tu moneda</strong>: USD, EUR, COP o CNY (yuan). Es la moneda que se usa cuando no escribes otra.</li>
+  </ol>
+  <p>Tu <strong>zona horaria</strong> se toma de tu teléfono la primera vez que abres el Visor de gastos. No tienes que configurarla.</p>
+</section>
+
+<section id="es-gastos">
+  <h2>Anotar gastos e ingresos 💸</h2>
+  <p>Escribe el monto y una palabra que lo describa. Un <code>-</code> (o nada) es gasto; un <code>+</code> es ingreso.</p>
+  <div class="ex">
+    <code>-12 almuerzo</code><span>gasto de 12 en tu moneda, en Restaurantes</span>
+    <code>25000 cop mercado</code><span>gasto en pesos colombianos, en Mercado</span>
+    <code>+1500 salario</code><span>ingreso de 1500</span>
+    <code>pan 2 leche 3</code><span>dos gastos en un mensaje</span>
+    <code>uber 8</code><span>gasto en Transporte</span>
+    <code>- 5 usd</code><span>con espacio también funciona</span>
+    <code>5元</code><span>5 yuanes</span>
+    <code>20 eur cena</code><span>gasto en euros</span>
+    <code>ingreso 300 venta</code><span>también puedes decir “ingreso”</span>
+  </div>
+  <p>Si escribes solo un monto, como <code>5 usd</code>, Juani te pregunta con dos botones: <strong>Gasto</strong> o <strong>Ingreso</strong>.</p>
+  <p>Cada vez, Juani te confirma lo que guardó:</p>
+  <div class="bot">−12.00 USD · Almuerzo · Restaurantes<br>¿Algo mal? Responde: editar: 15 almuerzo restaurantes</div>
+  <p class="muted">Otras monedas se convierten automáticamente para tus totales.</p>
+</section>
+
+<section id="es-corregir">
+  <h2>Corregir errores ✏️</h2>
+  <ul>
+    <li><strong>El último:</strong> escribe <code>editar:</code> y lo correcto, en cualquier orden. Ej. <code>editar: 15 almuerzo restaurantes</code>, <code>editar: transporte</code> o <code>editar: 20 cop</code>.</li>
+    <li><strong>Ver los últimos 5:</strong> <code>/ultimos</code>. Salen numerados; el 1 es el más reciente.</li>
+    <li><strong>Borrar uno:</strong> <code>/anular 1</code>. Juani te pide confirmar antes.</li>
+    <li>También puedes decirlo con tus palabras: “el último era 3 dólares, no 5”.</li>
+  </ul>
+</section>
+
+<section id="es-categorias">
+  <h2>Categorías 🏷️</h2>
+  <p>Juani elige la categoría por las palabras que escribes. Si no la reconoce, va a <strong>Otros</strong> y puedes cambiarla con <code>editar:</code>.</p>
+  <ul class="cats">
+    <li>🏠 Arriendo</li>
+    <li>💡 Servicios</li>
+    <li>🛒 Mercado</li>
+    <li>🚌 Transporte</li>
+    <li>🩺 Salud</li>
+    <li>💳 Deudas</li>
+    <li>🍽️ Restaurantes</li>
+    <li>🎬 Entretenimiento</li>
+    <li>🛍️ Compras</li>
+    <li>✈️ Viajes</li>
+    <li>🔁 Suscripciones</li>
+    <li>📦 Otros</li>
+  </ul>
+</section>
+
+<section id="es-visor">
+  <h2>Visor de gastos 📊</h2>
+  <p>Tu tablero del mes: ingresos, gastos, cuánto ahorras (la meta es 20%), gastos por categoría y por día, y tus últimos movimientos. Con ← → cambias de mes.</p>
+  <ul>
+    <li>Escribe <code>tablero</code> para verlo.</li>
+    <li>Escribe <code>tablero fijar</code> para dejarlo fijado arriba del chat.</li>
+    <li>O toca el <strong>botón de menú</strong> junto a la caja de texto.</li>
+  </ul>
+</section>
+
+<section id="es-resumenes">
+  <h2>Resúmenes 🕙</h2>
+  <ul>
+    <li>Escribe <code>resumen</code> cuando quieras.</li>
+    <li><strong>07:00</strong>: tu agenda del día y lo que gastaste ayer.</li>
+    <li><strong>22:00</strong>: cuánto gastaste hoy.</li>
+    <li><strong>Domingo 22:00</strong>: cómo te fue en la semana y cuánto te queda para ahorrar.</li>
+  </ul>
+  <p class="muted">Las horas son las de tu zona horaria.</p>
+</section>
+
+<section id="es-agenda">
+  <h2>Agenda y recordatorios 📅</h2>
+  <p>Escríbelo como lo dirías:</p>
+  <div class="ex">
+    <code>reunión con Ana mañana 3pm</code><span>crea la cita</span>
+    <code>recuérdame pagar la luz el viernes 9am</code><span>te avisa a esa hora</span>
+    <code>¿qué tengo libre el jueves?</code><span>tus espacios libres</span>
+    <code>calendario</code><span>tus próximos 7 días</span>
+  </div>
+  <p>Si una cita choca con otra, Juani te pregunta antes de agendarla. Los recordatorios llegan a Telegram al minuto exacto.</p>
+</section>
+
+<section id="es-calendario">
+  <h2>Conectar tu calendario</h2>
+  <p>Ve tus citas de Juani en el calendario de tu teléfono:</p>
+  <ol>
+    <li>Escribe <code>calendario</code>.</li>
+    <li>Toca <strong>Conectar calendario</strong>.</li>
+    <li>Elige:
+      <ul>
+        <li><strong>Google</strong>: toca <strong>Conectar con Google</strong>, elige tu cuenta y permite el acceso. Si Google avisa que la app no está verificada, toca <em>Configuración avanzada</em> → <em>Ir a Juani</em>. Juani te confirma en el chat.</li>
+        <li><strong>iPhone / Outlook</strong>: toca <strong>📅 Suscribirme</strong> y acepta en tu calendario.</li>
+      </ul>
+    </li>
+  </ol>
+  <p>Solo un calendario a la vez. Para quitarlo, escribe <code>calendario</code> y toca <strong>Desconectar</strong>.</p>
+</section>
+
+<section id="es-fun">
+  <h2>Modo divertido 🎉</h2>
+  <p>Escribe <code>fun</code> y Juani te responde con GIFs cuando anotas algo. Escríbelo otra vez para apagarlo.</p>
+</section>
+
+<section id="es-palabras">
+  <h2>Sin “/” ✨</h2>
+  <p>Estas palabras funcionan solas, sin la barra:</p>
+  <div class="ex">
+    <code>tablero</code><span>tu Visor de gastos</span>
+    <code>resumen</code><span>tu resumen ahora</span>
+    <code>ultimos</code><span>tus últimos 5 movimientos</span>
+    <code>calendario</code><span>tus próximos 7 días</span>
+    <code>fun</code><span>GIFs sí / no</span>
+    <code>ayuda</code><span>esta ayuda</span>
+  </div>
+</section>
+
+<section id="es-idiomas">
+  <h2>Idiomas 🌍</h2>
+  <p>Juani habla <strong>español, inglés y chino</strong>. Usa el idioma de tu teléfono (el de Telegram), sin configurar nada.</p>
+</section>
+
+<section id="es-privacidad">
+  <h2>Privacidad 🔒</h2>
+  <ul>
+    <li>Tus datos son solo de tu chat; nadie más los ve.</li>
+    <li>Los enlaces de calendario se guardan cifrados.</li>
+    <li>Juani es solo por invitación.</li>
+  </ul>
+</section>
+
+<section id="es-faq">
+  <h2>Preguntas frecuentes 💬</h2>
+  <details>
+    <summary>Quedó en la categoría equivocada</summary>
+    <p>Escribe <code>editar:</code> y la categoría correcta, ej. <code>editar: transporte</code>. Corrige el último movimiento.</p>
+  </details>
+  <details>
+    <summary>Quedó en la moneda equivocada</summary>
+    <p>Escribe el monto con su moneda, ej. <code>editar: 20000 cop</code>. Para uno más viejo, mira <code>/ultimos</code> y anula el que esté mal con <code>/anular 2</code>.</p>
+  </details>
+  <details>
+    <summary>¿Cómo cambio mi moneda?</summary>
+    <p>Escribe <code>moneda</code> y elige otra: USD, EUR, COP o CNY.</p>
+  </details>
+  <details>
+    <summary>Juani no me entendió</summary>
+    <p>Prueba más corto: el monto y una palabra, como <code>-12 almuerzo</code>. Para citas, pon el día y la hora: “mañana 3pm”.</p>
+  </details>
+  <details>
+    <summary>Me dijo que espere un momento</summary>
+    <p>Hay un límite de mensajes por minuto para que todo funcione bien. Espera un minuto y vuelve a escribir.</p>
+  </details>
+</section>
+</div>
+
+<!-- ===================== ENGLISH ===================== -->
+<div lang="en">
+<header>
+  <img src="../assets/juani-avatar.jpg" alt="Juani">
+  <div>
+    <h1>Juani guide</h1>
+    <p>Your expense and calendar assistant on Telegram</p>
+  </div>
+</header>
+
+<nav aria-label="Contents">
+  <ul>
+    <li><a href="#en-what">What it is</a></li>
+    <li><a href="#en-start">Getting started</a></li>
+    <li><a href="#en-money">Expenses &amp; income</a></li>
+    <li><a href="#en-fix">Fixing</a></li>
+    <li><a href="#en-categories">Categories</a></li>
+    <li><a href="#en-viewer">Expense viewer</a></li>
+    <li><a href="#en-summaries">Summaries</a></li>
+    <li><a href="#en-agenda">Agenda</a></li>
+    <li><a href="#en-calendar">Calendar</a></li>
+    <li><a href="#en-fun">GIFs</a></li>
+    <li><a href="#en-words">Keywords</a></li>
+    <li><a href="#en-languages">Languages</a></li>
+    <li><a href="#en-privacy">Privacy</a></li>
+    <li><a href="#en-faq">FAQ</a></li>
+  </ul>
+</nav>
+
+<section id="en-what">
+  <h2>What is Juani? 👋</h2>
+  <p>Juani is an assistant that lives in Telegram. You write to it like to a friend, and it helps you:</p>
+  <ul>
+    <li>💸 Track your <strong>expenses and income</strong> in one line.</li>
+    <li>📊 See your month on a simple <strong>dashboard</strong>.</li>
+    <li>🕙 Get a <strong>summary</strong> every night and every Sunday.</li>
+    <li>📅 Keep your <strong>agenda</strong> and remind you on time.</li>
+  </ul>
+  <p>No commands to learn: just write normally.</p>
+</section>
+
+<section id="en-start">
+  <h2>Getting started 🚀</h2>
+  <ol>
+    <li>Juani is invite-only. Open the <strong>invite link</strong> you were sent (it works once and lasts 24 hours).</li>
+    <li>Tap <strong>Start</strong> (or send <code>/start</code>). Juani says hi.</li>
+    <li><strong>Choose your currency</strong>: USD, EUR, COP or CNY (yuan). It's used whenever you don't write another one.</li>
+  </ol>
+  <p>Your <strong>time zone</strong> is taken from your phone the first time you open the Expense viewer. Nothing to set up.</p>
+</section>
+
+<section id="en-money">
+  <h2>Logging expenses &amp; income 💸</h2>
+  <p>Write the amount and a word that describes it. A <code>-</code> (or nothing) is an expense; a <code>+</code> is income.</p>
+  <div class="ex">
+    <code>-12 lunch</code><span>a 12 expense in your currency, in Restaurants</span>
+    <code>25000 cop groceries</code><span>an expense in Colombian pesos, in Groceries</span>
+    <code>+1500 salary</code><span>1500 of income</span>
+    <code>bread 2 milk 3</code><span>two expenses in one message</span>
+    <code>uber 8</code><span>an expense in Transport</span>
+    <code>- 5 usd</code><span>a space works too</span>
+    <code>5元</code><span>5 yuan</span>
+    <code>20 eur dinner</code><span>an expense in euros</span>
+    <code>income 300 sale</code><span>you can also say “income”</span>
+  </div>
+  <p>If you send just an amount, like <code>5 usd</code>, Juani asks with two buttons: <strong>Expense</strong> or <strong>Income</strong>.</p>
+  <p>Every time, Juani confirms what it saved:</p>
+  <div class="bot">−12.00 USD · Lunch · Restaurants<br>Something off? Reply: edit: 15 lunch restaurants</div>
+  <p class="muted">Other currencies are converted automatically for your totals.</p>
+</section>
+
+<section id="en-fix">
+  <h2>Fixing mistakes ✏️</h2>
+  <ul>
+    <li><strong>The last one:</strong> write <code>edit:</code> (or <code>editar:</code>) and what's right, in any order. E.g. <code>edit: 15 lunch restaurants</code>, <code>edit: transport</code> or <code>edit: 20 cop</code>.</li>
+    <li><strong>See the last 5:</strong> <code>/ultimos</code>. They're numbered; 1 is the most recent.</li>
+    <li><strong>Delete one:</strong> <code>/anular 1</code>. Juani asks you to confirm first.</li>
+    <li>You can also say it in your own words: “the last one was 3 dollars, not 5”.</li>
+  </ul>
+</section>
+
+<section id="en-categories">
+  <h2>Categories 🏷️</h2>
+  <p>Juani picks the category from the words you write. If it doesn't recognize them, it goes to <strong>Other</strong> and you can change it with <code>edit:</code>.</p>
+  <ul class="cats">
+    <li>🏠 Housing</li>
+    <li>💡 Utilities</li>
+    <li>🛒 Groceries</li>
+    <li>🚌 Transport</li>
+    <li>🩺 Health</li>
+    <li>💳 Debt</li>
+    <li>🍽️ Restaurants</li>
+    <li>🎬 Entertainment</li>
+    <li>🛍️ Shopping</li>
+    <li>✈️ Travel</li>
+    <li>🔁 Subscriptions</li>
+    <li>📦 Other</li>
+  </ul>
+</section>
+
+<section id="en-viewer">
+  <h2>Expense viewer 📊</h2>
+  <p>Your monthly dashboard: income, spending, how much you save (the goal is 20%), spending by category and by day, and your latest entries. Use ← → to change months.</p>
+  <ul>
+    <li>Write <code>tablero</code> to see it.</li>
+    <li>Write <code>tablero fijar</code> to pin it at the top of the chat.</li>
+    <li>Or tap the <strong>menu button</strong> next to the text box.</li>
+  </ul>
+</section>
+
+<section id="en-summaries">
+  <h2>Summaries 🕙</h2>
+  <ul>
+    <li>Write <code>resumen</code> any time.</li>
+    <li><strong>07:00</strong>: your agenda for the day and what you spent yesterday.</li>
+    <li><strong>22:00</strong>: what you spent today.</li>
+    <li><strong>Sunday 22:00</strong>: how your week went and how much is left to save.</li>
+  </ul>
+  <p class="muted">Times follow your time zone.</p>
+</section>
+
+<section id="en-agenda">
+  <h2>Agenda &amp; reminders 📅</h2>
+  <p>Write it the way you'd say it:</p>
+  <div class="ex">
+    <code>meeting with Ana tomorrow 3pm</code><span>creates the appointment</span>
+    <code>remind me to pay the power bill Friday 9am</code><span>pings you at that time</span>
+    <code>am I free on Thursday?</code><span>your free slots</span>
+    <code>calendario</code><span>your next 7 days</span>
+  </div>
+  <p>If an appointment clashes with another, Juani asks before scheduling it. Reminders arrive on Telegram at the exact minute.</p>
+</section>
+
+<section id="en-calendar">
+  <h2>Connecting your calendar</h2>
+  <p>See your Juani appointments in your phone's calendar:</p>
+  <ol>
+    <li>Write <code>calendario</code>.</li>
+    <li>Tap <strong>Connect calendar</strong>.</li>
+    <li>Choose:
+      <ul>
+        <li><strong>Google</strong>: tap <strong>Connect with Google</strong>, pick your account and allow access. If Google says the app isn't verified, tap <em>Advanced</em> → <em>Go to Juani</em>. Juani confirms in the chat.</li>
+        <li><strong>iPhone / Outlook</strong>: tap <strong>📅 Subscribe</strong> and accept in your calendar.</li>
+      </ul>
+    </li>
+  </ol>
+  <p>One calendar at a time. To remove it, write <code>calendario</code> and tap <strong>Disconnect</strong>.</p>
+</section>
+
+<section id="en-fun">
+  <h2>Fun mode 🎉</h2>
+  <p>Write <code>fun</code> and Juani answers with GIFs when you log something. Write it again to turn it off.</p>
+</section>
+
+<section id="en-words">
+  <h2>No “/” needed ✨</h2>
+  <p>These words work on their own, without the slash:</p>
+  <div class="ex">
+    <code>tablero</code><span>your Expense viewer</span>
+    <code>resumen</code><span>your summary now</span>
+    <code>ultimos</code><span>your last 5 entries</span>
+    <code>calendario</code><span>your next 7 days</span>
+    <code>fun</code><span>GIFs on / off</span>
+    <code>ayuda</code><span>this help</span>
+  </div>
+</section>
+
+<section id="en-languages">
+  <h2>Languages 🌍</h2>
+  <p>Juani speaks <strong>Spanish, English and Chinese</strong>. It uses your phone's language (Telegram's), with nothing to set up.</p>
+</section>
+
+<section id="en-privacy">
+  <h2>Privacy 🔒</h2>
+  <ul>
+    <li>Your data belongs to your chat only; nobody else sees it.</li>
+    <li>Calendar links are stored encrypted.</li>
+    <li>Juani is invite-only.</li>
+  </ul>
+</section>
+
+<section id="en-faq">
+  <h2>FAQ 💬</h2>
+  <details>
+    <summary>It went to the wrong category</summary>
+    <p>Write <code>edit:</code> and the right category, e.g. <code>edit: transport</code>. It fixes the last entry.</p>
+  </details>
+  <details>
+    <summary>It used the wrong currency</summary>
+    <p>Write the amount with its currency, e.g. <code>edit: 20000 cop</code>. For an older one, check <code>/ultimos</code> and void the wrong one with <code>/anular 2</code>.</p>
+  </details>
+  <details>
+    <summary>How do I change my currency?</summary>
+    <p>Write <code>moneda</code> and pick another: USD, EUR, COP or CNY.</p>
+  </details>
+  <details>
+    <summary>Juani didn't understand me</summary>
+    <p>Try shorter: the amount and one word, like <code>-12 lunch</code>. For appointments, include the day and time: “tomorrow 3pm”.</p>
+  </details>
+  <details>
+    <summary>It told me to wait a moment</summary>
+    <p>There's a limit of messages per minute to keep things running smoothly. Wait a minute and write again.</p>
+  </details>
+</section>
+</div>
+
+<footer>Juani · <span lang="es">Hecho con cariño · <a href="../privacidad/">Privacidad</a> · <a href="../terminos/">Condiciones</a></span><span lang="en">Made with care · <a href="../privacidad/#en">Privacy</a> · <a href="../terminos/#en">Terms</a></span></footer>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  function set(l) {
+    root.setAttribute("data-lang", l);
+    root.lang = l;
+    document.title = l === "en" ? "Juani guide" : "Guía de Juani";
+    document.querySelectorAll(".lang button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.set === l));
+    });
+    try { localStorage.setItem("lang", l); } catch (e) {}
+  }
+  var q = new URLSearchParams(location.search).get("lang");
+  var saved = null;
+  try { saved = localStorage.getItem("lang"); } catch (e) {}
+  set(q === "en" || q === "es" ? q : saved === "en" ? "en" : "es");
+  document.querySelectorAll(".lang button").forEach(function (b) {
+    b.addEventListener("click", function () { set(b.dataset.set); });
+  });
+})();
+</script>
+</body>
+</html>

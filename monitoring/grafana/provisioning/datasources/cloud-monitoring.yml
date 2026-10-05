@@ -1,0 +1,13 @@
+apiVersion: 1
+datasources:
+  - name: Google Cloud Monitoring
+    uid: cloud-monitoring
+    type: stackdriver
+    access: proxy
+    isDefault: true
+    jsonData:
+      authenticationType: jwt
+      tokenUri: https://oauth2.googleapis.com/token
+      clientEmail: assistant-grafana@${GCP_PROJECT_ID}.iam.gserviceaccount.com
+      defaultProject: ${GCP_PROJECT_ID}
+      privateKeyPath: /etc/secrets/grafana.pem

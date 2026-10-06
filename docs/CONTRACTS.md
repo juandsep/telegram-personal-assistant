@@ -30,6 +30,7 @@ def set_last_batch(chat_id: str, batch_id: str) -> None
 def last_batch(chat_id: str) -> str | None
 def list_chat_ids() -> list[str]                     # for cron jobs
 def ics_token(chat_id: str, rotate: bool = False) -> str   # ics_tokens/{token}; rotate revokes
+def reset_user(chat_id: str) -> None                # /reset: all but users.nombre/rol
 def chat_for_ics_token(token: str) -> str | None     # format checked before any lookup
 # tools
 def invite_beta(ctx, name: str) -> str               # owner only, checked in code

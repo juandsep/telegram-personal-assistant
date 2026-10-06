@@ -30,6 +30,7 @@ COMMANDS = (
     "calendario",
     "fun",
     "moneda",
+    "reset",
     "ayuda",
 )
 

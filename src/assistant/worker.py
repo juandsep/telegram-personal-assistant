@@ -67,7 +67,13 @@ WORDS = {
     "fun": "/fun",
     "moneda": "/moneda",
     "currency": "/moneda",
+    "reset": "/reset",
+    "reiniciar": "/reset",
+    "borrar todo": "/reset",
 }
+RESET_BUTTONS = "rs:ok", "rs:no"
+# Telegram lets a bot delete messages only for 48 h; older ones are skipped.
+RESET_SCAN = 1000
 # Display currencies: /moneda and the onboarding buttons.
 CURRENCIES = {"USD": "🇺🇸 USD", "EUR": "🇪🇺 EUR", "COP": "🇨🇴 COP", "CNY": "🇨🇳 CNY"}
 CURRENCY_BUTTONS = [[(label, f"mo:{cur}") for cur, label in CURRENCIES.items()]]
@@ -174,16 +180,16 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if msg.text.startswith("/moneda"):
         _send(channel, msg, *_currency_command(ctx, msg))
         return ACK
+    if msg.text.startswith("/reset"):
+        ok, no = RESET_BUTTONS
+        buttons = [[(t(ctx.lang, "reset_yes"), ok), (t(ctx.lang, "reset_no"), no)]]
+        _send(channel, msg, t(ctx.lang, "reset_question"), buttons)
+        return ACK
     if msg.text.startswith(("/start", "/ayuda", "/help")):
         guide = [[(t(ctx.lang, "guide"), GUIDE_URL)]]
         _send(channel, msg, t(ctx.lang, "welcome"), guide)
-        if msg.text.startswith("/start") and settings.api_url:  # the menu button
-            try:
-                viewer_url = f"{settings.api_url}/visor"
-                channel.set_menu_webapp(msg.chat_id, t(ctx.lang, "viewer"), viewer_url)
-            except httpx.HTTPError:
-                logger.warning("menu_failed update_id=%s", msg.update_id)
         if msg.text.startswith("/start"):
+            _clear_dashboard(channel, msg)  # the Visor only on /tablero
             _send(channel, msg, t(ctx.lang, "currency_question"), CURRENCY_BUTTONS)
         return ACK
     if msg.animation_file_id:
@@ -430,6 +436,39 @@ def _fun(ctx: ToolContext, msg: InboundMessage) -> str:
     return t(ctx.lang, "fun_off" if ctx.fun else "fun_on")
 
 
+def _clear_dashboard(channel: Telegram, msg: InboundMessage) -> None:
+    """Best effort: the default menu button (older chats got the Visor there)
+    and no pinned messages."""
+    try:
+        channel.clear_menu(msg.chat_id)
+        channel.unpin_all(msg.chat_id)
+    except httpx.HTTPError:
+        logger.warning("clear_dashboard_failed update_id=%s", msg.update_id)
+
+
+def _reset(ctx: ToolContext, msg: InboundMessage, channel: Telegram) -> str:
+    """Erase the chat's data (access stays), forget its calendar and delete the
+    recent messages of the chat, best effort."""
+    try:
+        importlib.import_module("assistant.services.gcal").disconnect(ctx.chat_id)
+        state.reset_user(ctx.chat_id)
+    except Exception as exc:
+        logger.error(
+            "reset_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "failed")
+    logger.info("user_reset update_id=%s", msg.update_id)
+    _clear_dashboard(channel, msg)
+    last = msg.message_id or 0
+    for top in range(last, max(last - RESET_SCAN, 0), -100):
+        try:
+            ids = list(range(max(top - 99, 1), top + 1))
+            channel.delete_messages(ctx.chat_id, ids)
+        except httpx.HTTPError:
+            logger.warning("reset_delete_failed update_id=%s", msg.update_id)
+    return t(ctx.lang, "reset_done")
+
+
 def _timezone_command(ctx: ToolContext, msg: InboundMessage) -> str:
     """/zona America/Bogota: the time zone of the agenda and the reports."""
     tz = msg.text.strip().partition(" ")[2].strip()
@@ -665,6 +704,10 @@ def _callback(
         _send(channel, msg, _set_currency(ctx, msg, token))
     elif action == "cal":  # /calendario buttons
         _send(channel, msg, *_calendar(ctx, msg, token))
+    elif action == "rs":  # /reset buttons
+        confirmed = msg.callback_data == RESET_BUTTONS[0]
+        reply = _reset(ctx, msg, channel) if confirmed else t(ctx.lang, "cancelled")
+        _send(channel, msg, reply)
     elif action == "rv":  # /usuarios revoke button
         ok = ctx.role == "owner" and state.revoke(token)
         logger.info("user_revoked update_id=%s ok=%s", msg.update_id, ok)

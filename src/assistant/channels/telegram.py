@@ -27,6 +27,7 @@ def parse_update(update: object) -> InboundMessage | None:
                 chat_id=str(cq["message"]["chat"]["id"]),
                 text="",
                 update_id=int(update["update_id"]),
+                message_id=cq["message"].get("message_id"),
                 callback_data=str(cq.get("data", "")),
                 callback_query_id=str(cq["id"]),
                 language_code=(cq.get("from") or {}).get("language_code"),
@@ -93,6 +94,10 @@ class Telegram(Channel):
     def delete_message(self, chat_id: str, message_id: int) -> None:
         self._post("deleteMessage", chat_id=chat_id, message_id=message_id)
 
+    def delete_messages(self, chat_id: str, message_ids: list[int]) -> None:
+        """Up to 100 ids; Telegram skips the ones it cannot find."""
+        self._post("deleteMessages", chat_id=chat_id, message_ids=message_ids)
+
     def send_animation(self, chat_id: str, file_id: str) -> None:
         self._post("sendAnimation", chat_id=chat_id, animation=file_id)
 
@@ -141,10 +146,11 @@ class Telegram(Channel):
             disable_notification=True,
         )
 
-    def set_menu_webapp(self, chat_id: str, label: str, url: str) -> None:
-        """The Mini App as the chat's menu button."""
+    def clear_menu(self, chat_id: str) -> None:
+        """The chat's menu button back to Telegram's default (the commands)."""
         self._post(
-            "setChatMenuButton",
-            chat_id=chat_id,
-            menu_button={"type": "web_app", "text": label, "web_app": {"url": url}},
+            "setChatMenuButton", chat_id=chat_id, menu_button={"type": "default"}
         )
+
+    def unpin_all(self, chat_id: str) -> None:
+        self._post("unpinAllChatMessages", chat_id=chat_id)

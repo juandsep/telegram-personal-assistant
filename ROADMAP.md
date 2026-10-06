@@ -40,6 +40,7 @@ and income in Google Sheets, recommends budgets to save, schedules appointments
 | Calendar | **Dedicated Google Calendar** | Does not touch your main calendar. |
 | Proactive | **Cloud Scheduler → Pub/Sub → worker** | Cloud Scheduler publishes straight to Pub/Sub: no `/cron/*` endpoints with OIDC needed. |
 | Google access | **Service account** + share ONE sheet and ONE calendar | No personal OAuth refresh token. The SA only sees what you share with it. |
+| Google OAuth verification (2026-10) | **Not now**: the consent screen stays published but unverified | Verification only removes the "unverified app" notice and the 100-user cap. It needs an owned domain verified in Search Console for the home, privacy and terms pages (today on `github.io`, with no root `index.html`). Revisit before opening the bot beyond invited users. Apple and Outlook use the ICS feed, which needs neither. |
 
 Data model: **Firestore** = operational state (users, idempotency,
 confirmations, preferences, budgets, LLM counters). **Sheets** = ledger

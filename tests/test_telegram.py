@@ -57,7 +57,7 @@ def test_webapp_send_pin_and_menu() -> None:
     )
     tg = Telegram("1:x")
     tg.pin("42", tg.send_webapp("42", "aquí", "Visor", "https://a/visor"))
-    tg.set_menu_webapp("42", "Visor", "https://a/visor")
+    tg.clear_menu("42")
     app = {"text": "Visor", "web_app": {"url": "https://a/visor"}}
     assert json.loads(sent.calls.last.request.read())["reply_markup"] == {
         "inline_keyboard": [[app]]
@@ -68,8 +68,7 @@ def test_webapp_send_pin_and_menu() -> None:
         "disable_notification": True,
     }
     assert json.loads(menu.calls.last.request.read())["menu_button"] == {
-        "type": "web_app",
-        **app,
+        "type": "default"
     }
 
 

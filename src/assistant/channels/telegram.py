@@ -146,10 +146,11 @@ class Telegram(Channel):
             disable_notification=True,
         )
 
-    def set_menu_webapp(self, chat_id: str, label: str, url: str) -> None:
-        """The Mini App as the chat's menu button."""
+    def clear_menu(self, chat_id: str) -> None:
+        """The chat's menu button back to Telegram's default (the commands)."""
         self._post(
-            "setChatMenuButton",
-            chat_id=chat_id,
-            menu_button={"type": "web_app", "text": label, "web_app": {"url": url}},
+            "setChatMenuButton", chat_id=chat_id, menu_button={"type": "default"}
         )
+
+    def unpin_all(self, chat_id: str) -> None:
+        self._post("unpinAllChatMessages", chat_id=chat_id)

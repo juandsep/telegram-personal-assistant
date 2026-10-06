@@ -141,16 +141,6 @@ class LatestEntries(_Args):
     n: int = Field(default=5, ge=1, le=20)
 
 
-class EditEntry(_Args):
-    """Corrige un movimiento por índice; solo cambia los campos no nulos."""
-
-    index: Index
-    amount: Amount | None = None
-    currency: Currency | None = None
-    category: Category | None = None
-    note: str | None = None
-
-
 class VoidEntry(_Args):
     """Anula un movimiento por índice (el usuario confirma con un botón)."""
 
@@ -192,7 +182,6 @@ TOOLS: dict[str, tuple[type[_Args], str]] = {
         LatestEntries,
         "assistant.services.ledger:latest_text",
     ),
-    "edit_entry": (EditEntry, "assistant.services.ledger:edit"),
     "void_entry": (VoidEntry, "assistant.services.ledger:void"),
     "invite_beta": (InviteBeta, "assistant.services.state:invite_beta"),
     "list_users": (ListUsers, "assistant.services.state:list_users"),

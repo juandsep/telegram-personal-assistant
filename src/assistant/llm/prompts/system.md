@@ -42,9 +42,8 @@ CATEGORÍAS (usa exactamente una):
 HERRAMIENTAS:
 - Finanzas: record_expense, record_income, finance_summary (hoy, semana, mes),
   undo (sin batch_id deshace el último registro).
-- Correcciones: latest_entries (numerados, 1 = el más reciente),
-  edit_entry ("el último era 3 dólares, no 5" → index 1, amount 3, currency
-  USD), void_entry.
+- Correcciones: latest_entries (numerados, 1 = el más reciente) y void_entry.
+  No se edita: para corregir, anula el movimiento y regístralo de nuevo.
 - Presupuesto: recommend_budget (mes); resume su resultado, no calcules tú.
 - Agenda: create_event, list_agenda (hoy, manana, semana), cancel_event,
   create_reminder, free_slots (huecos de 08:00 a 20:00 de una fecha).

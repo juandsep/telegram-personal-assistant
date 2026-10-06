@@ -149,7 +149,7 @@ changes the URL, so do it per environment, staging first:
 5. **Move the Telegram webhook** to `<url>/tg/<path>` with `setWebhook` and the
    same secret token. `getWebhookInfo` must show the new host and no
    `last_error_message`.
-6. **Test** a quick entry, a free-text (LLM) message, `editar:` and, in
+6. **Test** a quick entry, a free-text (LLM) message, `/anular 1` and, in
    production, a scheduled `tick` and a reminder.
 7. **Delete the old services only when Cloud Tasks is drained.** Queued
    reminders carry the old worker URL and audience, so

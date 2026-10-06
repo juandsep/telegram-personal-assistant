@@ -187,7 +187,7 @@ def reminder_text(chat_id: str, event_id: str) -> str | None:
     d = snap.to_dict() if snap.exists else None
     if not d or d["estado"] != "activo":
         return None
-    return f"⏰ {d['titulo']} {datetime.fromisoformat(d['inicio']):%H:%M}"
+    return f"🛎️ {d['titulo']} {datetime.fromisoformat(d['inicio']):%H:%M}"
 
 
 # --- tools -----------------------------------------------------------------------

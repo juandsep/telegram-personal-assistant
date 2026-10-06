@@ -17,7 +17,7 @@ plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
 
 - **Logs money in one line.** `-12 lunch`, `2000 cop cafe`, `+1500 salario`
   are registered by code with zero LLM tokens; free text goes to the LLM. Each
-  entry comes back as stored, and `editar: 15 restaurantes` fixes the last one.
+  entry comes back as stored; `/anular 1` voids the last one to write it again.
 - **Shows your month.** The pinned *Visor de gastos* opens a Telegram Mini App
   with income, spend by category and day, and the savings rate. No secret in
   the URL: Telegram signs the user in.

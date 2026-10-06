@@ -25,7 +25,6 @@ COMMANDS = (
     "tablero",
     "resumen",
     "ultimos",
-    "editar",
     "anular",
     "calendario",
     "fun",

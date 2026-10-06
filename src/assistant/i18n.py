@@ -21,45 +21,45 @@ def lang_of(language_code: str | None) -> str:
 
 TEXTS: dict[str, dict[str, str]] = {
     "welcome": {
-        "es": """Hola 👋 Soy Juani, tu asistente en tu teléfono. Llevo tus gastos, ingresos y agenda. Escríbeme normal:
+        "es": """Hola 🫶 Soy Juani, tu asistente en tu teléfono. Llevo tus gastos, ingresos y agenda. Escríbeme normal:
 
-💸 -12 almuerzo · 25000 cop mercado · +1500 salario (el + es ingreso)
-✏️ editar: 15 restaurantes corrige el último
-📊 tablero: tu mes · resumen: hoy, semana y mes
-📅 reunión con Ana mañana 3pm · calendario: tu agenda
-🎉 fun: te respondo con GIFs
+🪙 -12 almuerzo · 25000 cop mercado · +1500 salario (el + es ingreso)
+🧹 /anular 1 quita el último; luego escríbelo bien
+🧭 tablero: tu mes · resumen: hoy, semana y mes
+🗓️ reunión con Ana mañana 3pm · calendario: tu agenda
+🪅 fun: te respondo con GIFs
 
 Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
-        "en": """Hi 👋 I'm Juani, your assistant on your phone. I track your expenses, income and calendar. Just write to me:
+        "en": """Hi 🫶 I'm Juani, your assistant on your phone. I track your expenses, income and calendar. Just write to me:
 
-💸 -12 lunch · 25000 cop groceries · +1500 salary (+ means income)
-✏️ edit: 15 restaurants fixes the last one
-📊 dashboard: your month · summary: today, week and month
-📅 meeting with Ana tomorrow 3pm · calendar: your agenda
-🎉 fun: I answer with GIFs
+🪙 -12 lunch · 25000 cop groceries · +1500 salary (+ means income)
+🧹 /anular 1 removes the last one; then write it again
+🧭 dashboard: your month · summary: today, week and month
+🗓️ meeting with Ana tomorrow 3pm · calendar: your agenda
+🪅 fun: I answer with GIFs
 
 Just write the word, no "/". help shows this again.""",
-        "zh": """你好 👋 我是 Juani，你手机里的助手。我帮你记录支出、收入和日程。直接给我发消息：
+        "zh": """你好 🫶 我是 Juani，你手机里的助手。我帮你记录支出、收入和日程。直接给我发消息：
 
-💸 -12 午饭 · 25000 cop 超市 · +1500 工资（+ 表示收入）
-✏️ 修改: 15 餐饮 可更正最后一笔
-📊 dashboard：本月账单 · summary：今天、本周和本月
-📅 明天下午3点和 Ana 开会 · calendar：你的日程
-🎉 fun：用 GIF 回复你
+🪙 -12 午饭 · 25000 cop 超市 · +1500 工资（+ 表示收入）
+🧹 /anular 1 删除最后一笔，然后重新记录
+🧭 dashboard：本月账单 · summary：今天、本周和本月
+🗓️ 明天下午3点和 Ana 开会 · calendar：你的日程
+🪅 fun：用 GIF 回复你
 
 直接发送单词，不用 "/"。help 再次显示此说明。""",
     },
-    "guide": {"es": "📖 Guía completa", "en": "📖 Full guide", "zh": "📖 完整指南"},
+    "guide": {"es": "🗺️ Guía completa", "en": "🗺️ Full guide", "zh": "🗺️ 完整指南"},
     "viewer": {"es": "Visor de gastos", "en": "Expense viewer", "zh": "支出查看器"},
     "dashboard": {
-        "es": "Consulta tu tablero aquí 👇",
-        "en": "Check your dashboard here 👇",
-        "zh": "在这里查看你的账单面板 👇",
+        "es": "Consulta tu tablero aquí 🫳",
+        "en": "Check your dashboard here 🫳",
+        "zh": "在这里查看你的账单面板 🫳",
     },
     "hint": {
-        "es": "Para más detalles revisa tu tablero: Visor de gastos 📊",
-        "en": "For more details check your dashboard: Expense viewer 📊",
-        "zh": "更多详情请查看你的面板：支出查看器 📊",
+        "es": "Para más detalles revisa tu tablero: Visor de gastos 🧭",
+        "en": "For more details check your dashboard: Expense viewer 🧭",
+        "zh": "更多详情请查看你的面板：支出查看器 🧭",
     },
     "spent_today": {
         "es": "Tus gastos hoy: {total} {currency}.",
@@ -130,11 +130,6 @@ Just write the word, no "/". help shows this again.""",
         "en": "✓ Time zone: {tz}.",
         "zh": "✓ 时区：{tz}。",
     },
-    "edit_usage": {
-        "es": "Uso: /editar <n> <monto>[moneda], ej. /editar 1 3usd",
-        "en": "Usage: /editar <n> <amount>[currency], e.g. /editar 1 3usd",
-        "zh": "用法：/editar <序号> <金额>[货币]，例如 /editar 1 3usd",
-    },
     "void_usage": {
         "es": "Uso: /anular <n>, ej. /anular 1",
         "en": "Usage: /anular <n>, e.g. /anular 1",
@@ -162,9 +157,9 @@ Just write the word, no "/". help shows this again.""",
         "zh": "清除全部？你的支出、收入、日程、提醒、已连接的日历、设置和对话都会被删除。此操作无法撤销。",
     },
     "reset_yes": {
-        "es": "🗑 Sí, borrar todo",
-        "en": "🗑 Yes, erase all",
-        "zh": "🗑 是，全部清除",
+        "es": "🧨 Sí, borrar todo",
+        "en": "🧨 Yes, erase all",
+        "zh": "🧨 是，全部清除",
     },
     "reset_no": {"es": "Cancelar", "en": "Cancel", "zh": "取消"},
     "reset_done": {
@@ -183,19 +178,14 @@ Just write the word, no "/". help shows this again.""",
         "zh": "✓ 货币：{currency}。你的金额将以 {currency} 显示。",
     },
     "fun_on": {
-        "es": "🎉 Modo fun activado: te respondo con GIFs. /fun lo apaga.",
-        "en": "🎉 Fun mode on: I'll answer with GIFs. /fun turns it off.",
-        "zh": "🎉 已开启趣味模式：我会用 GIF 回复。再发 /fun 关闭。",
+        "es": "🪅 Modo fun activado: te respondo con GIFs. /fun lo apaga.",
+        "en": "🪅 Fun mode on: I'll answer with GIFs. /fun turns it off.",
+        "zh": "🪅 已开启趣味模式：我会用 GIF 回复。再发 /fun 关闭。",
     },
     "fun_off": {
         "es": "Modo fun apagado: te respondo con el registro.",
         "en": "Fun mode off: I'll answer with the entry.",
         "zh": "已关闭趣味模式：我会回复记录内容。",
-    },
-    "correct_usage": {
-        "es": "Escribe editar: y lo correcto del último registro: monto, nota y/o categoría. Ej. editar: 15 · almuerzo · restaurantes",
-        "en": "Write edit: and what's right for the last entry: amount, note and/or category. E.g. edit: 15 · lunch · restaurants",
-        "zh": "发送 修改: 加上最后一笔的正确内容：金额、备注和/或类别。例如 修改: 15 · 午饭 · 餐饮",
     },
     # Ledger
     "positive": {
@@ -222,11 +212,6 @@ Just write the word, no "/". help shows this again.""",
         "es": "✓ anulado: {entry}",
         "en": "✓ voided: {entry}",
         "zh": "✓ 已作废：{entry}",
-    },
-    "edited": {
-        "es": "✓ editado: {entry}",
-        "en": "✓ edited: {entry}",
-        "zh": "✓ 已修改：{entry}",
     },
     "nothing_to_undo": {
         "es": "Nada que deshacer.",
@@ -318,14 +303,14 @@ Just write the word, no "/". help shows this again.""",
         "zh": "✓ 已连接 Google 日历（已复制 {n} 个活动）。新的安排会出现在那里，与 Google 日历冲突时我会提醒你。",
     },
     "cal_connect": {
-        "es": "🔗 Conectar calendario",
-        "en": "🔗 Connect calendar",
-        "zh": "🔗 连接日历",
+        "es": "🪢 Conectar calendario",
+        "en": "🪢 Connect calendar",
+        "zh": "🪢 连接日历",
     },
     "cal_disconnect": {
-        "es": "🔌 Desconectar {which}",
-        "en": "🔌 Disconnect {which}",
-        "zh": "🔌 断开 {which}",
+        "es": "✂️ Desconectar {which}",
+        "en": "✂️ Disconnect {which}",
+        "zh": "✂️ 断开 {which}",
     },
     "cal_choose": {
         "es": "¿Qué calendario usas?",
@@ -343,14 +328,14 @@ Just write the word, no "/". help shows this again.""",
         "zh": "连接 Google",
     },
     "cal_ical": {
-        "es": "Toca 📅 Suscribirme y acepta: tus citas de Juani aparecerán en tu calendario.\n\nOpcional: para que te avise si una cita choca con las de tu calendario, pégame aquí su enlace iCal secreto (iPhone: app Calendario → calendario → Calendario público; Outlook: Configuración → Calendarios compartidos → Publicar).",
-        "en": "Tap 📅 Subscribe and accept: your Juani appointments will show up in your calendar.\n\nOptional: to warn you about clashes with your calendar, paste its secret iCal link here (iPhone: Calendar app → calendar → Public Calendar; Outlook: Settings → Shared calendars → Publish).",
-        "zh": "点击 📅 订阅 并确认：你在 Juani 的安排会出现在日历里。\n\n可选：如需提醒与日历中的安排冲突，请把日历的私密 iCal 链接粘贴到这里（iPhone：日历 App → 日历 → 公开日历；Outlook：设置 → 共享日历 → 发布）。",
+        "es": "Toca 🗓️ Suscribirme y acepta: tus citas de Juani aparecerán en tu calendario.\n\nOpcional: para que te avise si una cita choca con las de tu calendario, pégame aquí su enlace iCal secreto (iPhone: app Calendario → calendario → Calendario público; Outlook: Configuración → Calendarios compartidos → Publicar).",
+        "en": "Tap 🗓️ Subscribe and accept: your Juani appointments will show up in your calendar.\n\nOptional: to warn you about clashes with your calendar, paste its secret iCal link here (iPhone: Calendar app → calendar → Public Calendar; Outlook: Settings → Shared calendars → Publish).",
+        "zh": "点击 🗓️ 订阅 并确认：你在 Juani 的安排会出现在日历里。\n\n可选：如需提醒与日历中的安排冲突，请把日历的私密 iCal 链接粘贴到这里（iPhone：日历 App → 日历 → 公开日历；Outlook：设置 → 共享日历 → 发布）。",
     },
     "cal_subscribe": {
-        "es": "📅 Suscribirme",
-        "en": "📅 Subscribe",
-        "zh": "📅 订阅",
+        "es": "🗓️ Suscribirme",
+        "en": "🗓️ Subscribe",
+        "zh": "🗓️ 订阅",
     },
     "oauth_ok": {
         "es": "✓ Listo, vuelve a Telegram.",
@@ -364,14 +349,14 @@ Just write the word, no "/". help shows this again.""",
     },
     # Bot profile (python -m assistant.admin bot-profile)
     "bot_description": {
-        "es": "Hola, soy Juani 👋 Tu asistente de gastos y agenda.\n\n💸 Escribe -12 almuerzo y lo registro al instante.\n📊 Mira tu mes en el Visor de gastos.\n📅 Agenda y recordatorios en lenguaje natural.\n🌎 Hablo español, inglés y chino.\n\nSolo por invitación.",
-        "en": "Hi, I'm Juani 👋 Your expense and calendar assistant.\n\n💸 Write -12 lunch and I log it right away.\n📊 See your month in the Expense viewer.\n📅 Calendar and reminders in plain language.\n🌎 I speak English, Spanish and Chinese.\n\nInvitation only.",
-        "zh": "你好，我是 Juani 👋 你的记账和日程助手。\n\n💸 发送 -12 午饭，我马上记下。\n📊 在支出查看器里查看本月账单。\n📅 用自然语言管理日程和提醒。\n🌎 我会说中文、英语和西班牙语。\n\n仅限邀请使用。",
+        "es": "Hola, soy Juani 🫶 Tu asistente de gastos y agenda.\n\n🪙 Escribe -12 almuerzo y lo registro al instante.\n🧭 Mira tu mes en el Visor de gastos.\n🗓️ Agenda y recordatorios en lenguaje natural.\n🌎 Hablo español, inglés y chino.\n\nSolo por invitación.",
+        "en": "Hi, I'm Juani 🫶 Your expense and calendar assistant.\n\n🪙 Write -12 lunch and I log it right away.\n🧭 See your month in the Expense viewer.\n🗓️ Calendar and reminders in plain language.\n🌎 I speak English, Spanish and Chinese.\n\nInvitation only.",
+        "zh": "你好，我是 Juani 🫶 你的记账和日程助手。\n\n🪙 发送 -12 午饭，我马上记下。\n🧭 在支出查看器里查看本月账单。\n🗓️ 用自然语言管理日程和提醒。\n🌎 我会说中文、英语和西班牙语。\n\n仅限邀请使用。",
     },
     "bot_about": {
-        "es": "Juani: tus gastos, ingresos y agenda por chat. Escribe -12 almuerzo y listo 📊",
-        "en": "Juani: your expenses, income and calendar by chat. Write -12 lunch and done 📊",
-        "zh": "Juani：用聊天记录支出、收入和日程。发送 -12 午饭 即可 📊",
+        "es": "Juani: tus gastos, ingresos y agenda por chat. Escribe -12 almuerzo y listo 🧭",
+        "en": "Juani: your expenses, income and calendar by chat. Write -12 lunch and done 🧭",
+        "zh": "Juani：用聊天记录支出、收入和日程。发送 -12 午饭 即可 🧭",
     },
     "cmd_tablero": {
         "es": "Tu Visor de gastos del mes (tablero fijar lo fija)",
@@ -387,11 +372,6 @@ Just write the word, no "/". help shows this again.""",
         "es": "Tus últimos 5 movimientos",
         "en": "Your last 5 entries",
         "zh": "最近 5 笔记录",
-    },
-    "cmd_editar": {
-        "es": "Corrige un movimiento: /editar 1 3usd",
-        "en": "Fix an entry: /editar 1 3usd",
-        "zh": "修改记录：/editar 1 3usd",
     },
     "cmd_anular": {
         "es": "Anula un movimiento: /anular 1",

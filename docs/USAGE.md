@@ -95,8 +95,9 @@ of the old row plus a new row (see [DATA.md](DATA.md)).
 ## Dashboard (Visor de gastos)
 
 `/tablero` sends a message with a **Visor de gastos** button; `/tablero fijar`
-(`dashboard pin`) also pins it at the top of the chat. `/start` sets the same
-app as the chat's menu button. It opens a Telegram Mini App with the month:
+(`dashboard pin`) also pins it at the top of the chat. The Visor shows only
+when asked: `/start` and `/reset` put the menu button back to Telegram's default
+and unpin the chat. It opens a Telegram Mini App with the month:
 income, spend, savings rate against the 20% target, spend by category and per
 day, and the last 15 movements; ← → move between months. It is shown in the
 user's language and currency, and sends the phone's time zone (`X-Tz`), stored

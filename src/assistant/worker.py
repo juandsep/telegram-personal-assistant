@@ -188,13 +188,8 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if msg.text.startswith(("/start", "/ayuda", "/help")):
         guide = [[(t(ctx.lang, "guide"), GUIDE_URL)]]
         _send(channel, msg, t(ctx.lang, "welcome"), guide)
-        if msg.text.startswith("/start") and settings.api_url:  # the menu button
-            try:
-                viewer_url = f"{settings.api_url}/visor"
-                channel.set_menu_webapp(msg.chat_id, t(ctx.lang, "viewer"), viewer_url)
-            except httpx.HTTPError:
-                logger.warning("menu_failed update_id=%s", msg.update_id)
         if msg.text.startswith("/start"):
+            _clear_dashboard(channel, msg)  # the Visor only on /tablero
             _send(channel, msg, t(ctx.lang, "currency_question"), CURRENCY_BUTTONS)
         return ACK
     if msg.animation_file_id:
@@ -441,6 +436,16 @@ def _fun(ctx: ToolContext, msg: InboundMessage) -> str:
     return t(ctx.lang, "fun_off" if ctx.fun else "fun_on")
 
 
+def _clear_dashboard(channel: Telegram, msg: InboundMessage) -> None:
+    """Best effort: the default menu button (older chats got the Visor there)
+    and no pinned messages."""
+    try:
+        channel.clear_menu(msg.chat_id)
+        channel.unpin_all(msg.chat_id)
+    except httpx.HTTPError:
+        logger.warning("clear_dashboard_failed update_id=%s", msg.update_id)
+
+
 def _reset(ctx: ToolContext, msg: InboundMessage, channel: Telegram) -> str:
     """Erase the chat's data (access stays), forget its calendar and delete the
     recent messages of the chat, best effort."""
@@ -453,6 +458,7 @@ def _reset(ctx: ToolContext, msg: InboundMessage, channel: Telegram) -> str:
         )
         return t(ctx.lang, "failed")
     logger.info("user_reset update_id=%s", msg.update_id)
+    _clear_dashboard(channel, msg)
     last = msg.message_id or 0
     for top in range(last, max(last - RESET_SCAN, 0), -100):
         try:

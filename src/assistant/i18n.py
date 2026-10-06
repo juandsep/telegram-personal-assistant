@@ -52,9 +52,9 @@ Just write the word, no "/". help shows this again.""",
     "guide": {"es": "📖 Guía completa", "en": "📖 Full guide", "zh": "📖 完整指南"},
     "viewer": {"es": "Visor de gastos", "en": "Expense viewer", "zh": "支出查看器"},
     "dashboard": {
-        "es": "Consulta tu tablero aquí 👇 (también en el botón de menú).",
-        "en": "Check your dashboard here 👇 (also in the menu button).",
-        "zh": "在这里查看你的账单面板 👇（菜单按钮里也有）。",
+        "es": "Consulta tu tablero aquí 👇",
+        "en": "Check your dashboard here 👇",
+        "zh": "在这里查看你的账单面板 👇",
     },
     "hint": {
         "es": "Para más detalles revisa tu tablero: Visor de gastos 📊",

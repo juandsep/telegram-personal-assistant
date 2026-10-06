@@ -132,7 +132,7 @@ def tg():
         router.post(f"{TG}/deleteMessage").mock(
             return_value=httpx.Response(200, json={"ok": True})
         )
-        for method in ("pinChatMessage", "setChatMenuButton"):
+        for method in ("pinChatMessage", "setChatMenuButton", "unpinAllChatMessages"):
             router.post(f"{TG}/{method}").mock(
                 return_value=httpx.Response(200, json={"ok": True})
             )
@@ -235,7 +235,9 @@ def test_start_and_non_text_skip_llm(st, llm, tg) -> None:
     ]
 
 
-def test_start_in_phone_language_sets_menu_button(monkeypatch, st, llm, tg, settings):
+def test_start_in_phone_language_clears_the_dashboard(
+    monkeypatch, st, llm, tg, settings
+):
     set_lang = MagicMock()
     monkeypatch.setattr(state, "set_lang", set_lang)
     update = message("/start abc")
@@ -249,13 +251,14 @@ def test_start_in_phone_language_sets_menu_button(monkeypatch, st, llm, tg, sett
     }
     set_lang.assert_called_once_with("42", "en")
     paths = [c.request.url.path.rsplit("/", 1)[1] for c in tg.calls]
-    assert paths == ["sendMessage", "setChatMenuButton", "sendMessage"]  # no pin
+    assert paths == [
+        "sendMessage",
+        "setChatMenuButton",
+        "unpinAllChatMessages",
+        "sendMessage",
+    ]
     menu = json.loads(tg.calls[1].request.read())["menu_button"]
-    assert menu == {
-        "type": "web_app",
-        "text": "Expense viewer",
-        "web_app": {"url": "https://api.example/visor"},
-    }
+    assert menu == {"type": "default"}
     st.get_user.return_value = {"idioma": "zh"}  # stored and unchanged: no write
     update["message"]["from"]["language_code"] = "zh-hans"
     client.post("/push", json=envelope(update))
@@ -963,6 +966,8 @@ def test_reset_asks_then_erases_data_and_recent_messages(monkeypatch, st, llm, t
     assert sent_texts(tg)[1:] == [t("es", "cancelled"), t("es", "reset_done")]
     disconnect.assert_called_once_with("42")
     reset_user.assert_called_once_with("42")
+    paths = [c.request.url.path.rsplit("/", 1)[1] for c in tg.calls]
+    assert {"setChatMenuButton", "unpinAllChatMessages"} <= set(paths)
     batches = [json.loads(c.request.read())["message_ids"] for c in deleted.calls]
     assert [(b[0], b[-1]) for b in batches] == [(51, 150), (1, 50)]
     llm.run_turn.assert_not_called()

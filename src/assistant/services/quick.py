@@ -44,6 +44,9 @@ _CUR = {c.lower(): c for c in CODES} | {
 # "5元": Chinese currency glued to the number like a symbol.
 _TOKEN = re.compile(r"([$€])?([-+]?\d[\d.,]*)([$€元块]|[a-z]{3})?")
 _DASH = str.maketrans("\u2212\u2013\u2014", "---")  # minus, en and em dash
+# "-5cafe", "3euros": a word glued to the amount is split off unless the
+# token already reads as an amount with its currency ("5usd").
+_GLUED = re.compile(r"(?<!\w)([$€]?[-+]?\d[\d.,]*)([^\W\d_]{2,})")
 # "- 5": a lone sign before the amount joins it.
 _SIGN = re.compile(r"(?<!\S)([+-])\s+(?=\d)")
 _TIME = re.compile(r"\d{1,2}:\d{2}|\b\d{1,2}\s*(am|pm|a\.m|p\.m)\b|\ba las\b")
@@ -94,8 +97,6 @@ def _category(word: str) -> str | None:
     return next((cat for w, cat in _CATEGORY_ZH if w in word), None)
 
 
-# "editar: ..." in each language; a category by its key or any shown name.
-EDIT_WORDS = frozenset({"editar", "edit", "修改"})
 MAX_WORDS = 8  # ponytail: longer messages are prose; let the LLM read them
 NOT_POSITIVE = "El monto debe ser mayor que 0."
 
@@ -163,54 +164,13 @@ def _amount(tok: str) -> tuple[Decimal, str | None] | None:
     return None if value is None else (value, _CUR[sym] if sym else None)
 
 
-def amount(text: str) -> tuple[Decimal, str | None] | None:
-    """``3usd``, ``2000 cop``, ``usd 2``, ``$3`` or ``3``: for /editar."""
-    toks = norm(text).split()
-    code = None
-    if len(toks) == 2 and toks[1] in _CUR:
-        code = toks.pop()
-    elif len(toks) == 2 and toks[0] in _CUR:
-        code = toks.pop(0)
-    found = _amount(toks[0]) if len(toks) == 1 else None
-    if found is None or (code and found[1]):
-        return None
-    return found[0], found[1] or (_CUR[code] if code else None)
-
-
-def correction(text: str) -> dict | None:
-    """``editar: 15 cop · almuerzo · restaurantes`` -> the fields to change in
-    the last movement ({} when nothing is recognized); None if not a correction.
-
-    Amount (and currency), category by name in any language, and the other
-    words as the note, in any order.
-    """
-    head, sep, rest = text.replace("：", ":").partition(":")
-    if not sep or norm(head.strip()) not in EDIT_WORDS:
-        return None
-    fields: dict = {}
-    note = []
-    for raw in re.split(r"[\s/·;]+", rest.strip()):
-        tok = norm(raw)
-        found = _amount(tok) if tok else None
-        if not tok:
-            continue
-        if found and "amount" not in fields:
-            fields["amount"] = abs(found[0])
-            if found[1]:
-                fields["currency"] = found[1]
-        elif tok in _CUR:
-            fields["currency"] = _CUR[tok]
-        elif tok in _CATEGORY_NAMES:
-            fields["category"] = _CATEGORY_NAMES[tok]
-        else:
-            note.append(raw)
-    if note:
-        fields["note"] = " ".join(note)
-    return fields
+def _unglue(m: re.Match[str]) -> str:
+    return m[0] if _amount(norm(m[0])) else f"{m[1]} {m[2]}"
 
 
 def parse(text: str, default: str = "USD") -> Entry | None:
-    raw = _SIGN.sub(r"\1", text.translate(_DASH)).split()  # "– 5" as "-5"
+    text = _GLUED.sub(_unglue, text.translate(_DASH))
+    raw = _SIGN.sub(r"\1", text).split()  # "– 5" as "-5"
     toks = [norm(t).strip(".,;:!") for t in raw]
     joined = " ".join(toks)
     if (

@@ -377,49 +377,6 @@ def void(ctx: ToolContext, index: int = 1) -> str:
     return t(ctx.lang, "voided", entry=describe(d, lang=ctx.lang, base=ctx.currency))
 
 
-def edit(
-    ctx: ToolContext,
-    index: int = 1,
-    amount: Decimal | None = None,
-    currency: str | None = None,
-    category: str | None = None,
-    note: str | None = None,
-) -> str:
-    """Reverso of the chosen movement plus a new registro with merged fields."""
-    previous = _already_written(ctx)
-    if previous is not None:
-        return t(
-            ctx.lang, "edited", entry=_with_category(previous, ctx.lang, ctx.currency)
-        )
-    chosen = _pick(ctx, index)
-    if chosen is None:
-        return t(ctx.lang, "not_found")
-    doc_id, d = chosen
-    usd = _fx(
-        d.get("monto_original", d["monto"]) if amount is None else amount,
-        currency or d.get("moneda_original", d.get("moneda", "USD")),
-        date.fromisoformat(d["fecha"]),
-        ctx.lang,
-    )
-    if isinstance(usd, str):
-        return usd
-    field = "categoria" if d["tipo_mov"] == "gasto" else "fuente"
-    new = {
-        **{k: v for k, v in d.items() if k != "creado"},
-        **usd,
-        "batch_id": f"e{ctx.update_id}",
-        "update_id": ctx.update_id,
-    }
-    if category is not None:
-        new[field] = category.strip() or ("otros" if field == "categoria" else "")
-    if note is not None:
-        new["nota"] = note
-    docs = {f"{doc_id}-x": _reversal(ctx, doc_id, d), f"{ctx.update_id}-e0": new}
-    if not _create(ctx.chat_id, docs):
-        return t(ctx.lang, "not_found")
-    return t(ctx.lang, "edited", entry=_with_category(new, ctx.lang, ctx.currency))
-
-
 def of_day(chat_id: str, day: date) -> list[dict]:
     """Registros of one day still in force (not reversed), oldest first."""
     return active_entries(chat_id, day, day)

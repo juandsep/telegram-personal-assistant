@@ -46,7 +46,7 @@ GIF_USAGE = (
 GIF_OWNER_ONLY = "Solo el owner cura los GIFs."
 OWNER_COMMANDS = ("/invitar", "/usuarios")
 INVITE_USAGE = "Uso: /invitar <nombre>. Crea un enlace de un uso, válido 24 h."
-LEDGER_COMMANDS = ("/ultimos", "/editar", "/anular", "/gif")
+LEDGER_COMMANDS = ("/ultimos", "/anular", "/gif")
 RECORD_TOOLS = {"record_expense": "gasto", "record_income": "ingreso"}
 GUIDE_URL = "https://juandsep.github.io/telegram-personal-assistant/guia/"
 # A whole message of just these words (any case or accents) runs the command.
@@ -216,14 +216,6 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     if msg.text.startswith("/fun"):
         _send(channel, msg, _fun(ctx, msg))
-        return ACK
-    if (fields := quick.correction(msg.text)) is not None:
-        if not fields:
-            _send(channel, msg, t(ctx.lang, "correct_usage"))
-            return ACK
-        args = {"index": 1, **fields}  # the last movement
-        usage = t(ctx.lang, "correct_usage")
-        _send(channel, msg, *_tool(ctx, msg, "edit_entry", args, usage))
         return ACK
     if msg.text.startswith("/tablero"):
         _dashboard(ctx, channel, msg, settings)
@@ -538,23 +530,17 @@ def _owner_command(
 def _ledger_command(
     ctx: ToolContext, msg: InboundMessage
 ) -> tuple[str, list[list[tuple[str, str]]] | None]:
-    """/ultimos, /editar n monto, /anular n (buttons), /gif: no LLM."""
+    """/ultimos, /anular n (buttons), /gif: no LLM."""
 
     cmd, _, arg = msg.text.strip().partition(" ")
     cmd, arg = cmd.split("@")[0], arg.strip()
     if cmd == "/gif":
         return _gif_command(ctx, msg, arg, msg.reply_animation_file_id), None
     n, _, rest = arg.partition(" ")
-    usage = t(ctx.lang, "void_usage" if cmd == "/anular" else "edit_usage")
+    usage = t(ctx.lang, "void_usage")
     args: dict[str, Any] = {"index": int(n)} if n.isdecimal() else {}
-    found = quick.amount(rest) if rest else None
     if cmd == "/ultimos":
         name, args = "latest_entries", {"n": 5}
-    elif cmd == "/editar" and args and found:
-        name, args = (
-            "edit_entry",
-            {**args, "amount": found[0], "currency": found[1]},
-        )
     elif cmd == "/anular" and args and not rest:
         name = "void_entry"
     else:

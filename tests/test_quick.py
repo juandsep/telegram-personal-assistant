@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from assistant.services.quick import NOT_POSITIVE, amount, parse
+from assistant.services.quick import NOT_POSITIVE, parse
 
 
 @pytest.mark.parametrize(
@@ -74,8 +74,7 @@ def test_not_positive_is_an_error_entry(text) -> None:
         "el último era 3 dólares, no 5",
         "cambia el ultimo a 3",
         "recuérdame pagar 5",
-        "/editar 1 3usd",
-        "2abc cafe",
+        "/anular 1",
         "5/10 cafe",
         "1.2,3 cafe",
         "cafe 5 con juan en el centro de la ciudad",
@@ -83,22 +82,6 @@ def test_not_positive_is_an_error_entry(text) -> None:
 )
 def test_parse_leaves_everything_else_to_the_llm(text) -> None:
     assert parse(text) is None
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("3usd", (Decimal(3), "USD")),
-        ("2000 cop", (Decimal(2000), "COP")),
-        ("usd 2", (Decimal(2), "USD")),
-        ("3", (Decimal(3), None)),
-        ("x", None),
-        ("3usd cop", None),
-        ("", None),
-    ],
-)
-def test_amount(text, expected) -> None:
-    assert amount(text) == expected
 
 
 @pytest.mark.parametrize(
@@ -124,30 +107,6 @@ def test_english_and_chinese_keywords(text, kind, category) -> None:
 )
 def test_english_and_chinese_dates_and_questions_go_to_llm(text) -> None:
     assert parse(text) is None
-
-
-def test_correction_in_any_language_and_order() -> None:
-    from assistant.services.quick import correction
-
-    assert correction("editar: 15 restaurantes") == {
-        "amount": Decimal(15),
-        "category": "restaurantes",
-    }
-    assert correction("Edit: lunch 12,50 cop Restaurants") == {
-        "amount": Decimal("12.50"),
-        "currency": "COP",
-        "category": "restaurantes",
-        "note": "lunch",
-    }
-    assert correction("修改：15 午饭 餐饮") == {
-        "amount": Decimal(15),
-        "category": "restaurantes",
-        "note": "午饭",
-    }
-    assert correction("editar: Transporte") == {"category": "transporte"}
-    assert correction("editar:") == {}
-    assert correction("editar la cena 5") is None  # no colon: a normal message
-    assert correction("nota: 5") is None
 
 
 @pytest.mark.parametrize(
@@ -179,3 +138,17 @@ def test_note_gets_its_spanish_accent() -> None:
 def test_default_currency() -> None:
     assert parse("5 cafe", default="COP").currency == "COP"
     assert parse("5 usd cafe", default="COP").currency == "USD"
+
+
+@pytest.mark.parametrize(
+    ("text", "amount", "currency", "note"),
+    [
+        ("-5Cafe", Decimal(5), "USD", "café"),
+        ("3euros cena", Decimal(3), "EUR", "cena"),
+        ("25000cop mercado", Decimal(25000), "COP", "mercado"),
+    ],
+)
+def test_word_glued_to_the_amount_is_split(text, amount, currency, note) -> None:
+    entry = parse(text)
+    assert entry is not None
+    assert (entry.amount, entry.currency, entry.note) == (amount, currency, note)

@@ -386,11 +386,6 @@ def test_client_error_raises() -> None:
     [
         ("latest_entries", '{"n": 5, "x": 1}'),
         ("latest_entries", '{"n": 0}'),
-        ("edit_entry", '{"index": 1, "amount": 3, "extra": true}'),
-        ("edit_entry", '{"index": 0, "amount": 3}'),
-        ("edit_entry", '{"index": 1, "amount": -3}'),
-        ("edit_entry", '{"index": 1, "currency": "dolares"}'),
-        ("edit_entry", '{"index": 1, "category": "cafe"}'),
         ("void_entry", '{"index": 1, "todo": true}'),
         ("void_entry", "{}"),
     ],
@@ -398,28 +393,6 @@ def test_client_error_raises() -> None:
 def test_edit_tools_reject_bad_args(name, raw) -> None:
     with pytest.raises(ToolRejected, match="invalid_args"):
         validate_args(name, raw)
-
-
-def test_latest_and_edit_map_to_the_ledger(calls) -> None:
-    assert tools.handle_call(ctx(), "latest_entries", '{"n": 5}') == (
-        "ok latest_text",
-        None,
-    )
-    raw = '{"index": 1, "amount": 3, "currency": "USD", "category": null, "note": null}'
-    assert tools.handle_call(ctx(), "edit_entry", raw)[0] == "ok edit"
-    assert calls == [
-        ("latest_text", {"n": 5}),
-        (
-            "edit",
-            {
-                "index": 1,
-                "amount": Decimal(3),
-                "currency": "USD",
-                "category": None,
-                "note": None,
-            },
-        ),
-    ]
 
 
 def test_void_entry_needs_confirmation(calls) -> None:

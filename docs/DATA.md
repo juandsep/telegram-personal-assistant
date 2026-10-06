@@ -22,9 +22,9 @@ append-only document per movement with:
 
 Doc ids make writes idempotent, so a Pub/Sub retry never duplicates a row:
 gasto `{update_id}-{i}`, ingreso `{update_id}-i0`, undo `{batch_id}-r{i}`.
-Nothing is edited or deleted: undo, `/anular`, `/editar` and `editar:` write
-negative `reverso` copies (plus a new `registro` for an edit). Sum `monto` to
-net them out.
+Nothing is edited or deleted: undo and `/anular` write negative `reverso`
+copies. Sum `monto` to net them out. Rows from older releases may also hold an
+edit's new `registro` (batch `e{update_id}`).
 
 Users see amounts in `users.moneda` (display only; the ledger stays USD): a row
 typed in that currency shows `monto_original` exactly, any other row its `monto`

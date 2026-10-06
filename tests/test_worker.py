@@ -244,10 +244,10 @@ def test_start_in_phone_language_clears_the_dashboard(
     update["message"]["from"] = {"id": 42, "language_code": "en-US"}
     client.post("/push", json=envelope(update))
     assert sent_texts(tg) == [t("en", "welcome"), t("en", "currency_question")]
-    assert sent_texts(tg)[0].startswith("Hi 👋 I'm Juani")
+    assert sent_texts(tg)[0].startswith("Hi 🫶 I'm Juani")
     welcome = json.loads(tg.calls[0].request.read())
     assert welcome["reply_markup"] == {
-        "inline_keyboard": [[{"text": "📖 Full guide", "url": worker.GUIDE_URL}]]
+        "inline_keyboard": [[{"text": "🗺️ Full guide", "url": worker.GUIDE_URL}]]
     }
     set_lang.assert_called_once_with("42", "en")
     paths = [c.request.url.path.rsplit("/", 1)[1] for c in tg.calls]
@@ -380,9 +380,9 @@ def test_calendar_lists_week_without_llm(monkeypatch, st, llm, tg) -> None:
     client.post("/push", json=envelope(message("calendar")))
     assert sent_texts(tg) == ["Jue 1 · 09:00 Dentista", *["Sin nada en 7 días."] * 2]
     assert keyboards(tg) == [
-        [("🔗 Conectar calendario", "cal:menu")],
-        [("🔌 Desconectar Google", "cal:off")],
-        [("🔌 Desconectar iPhone / Outlook", "cal:off")],
+        [("🪢 Conectar calendario", "cal:menu")],
+        [("✂️ Desconectar Google", "cal:off")],
+        [("✂️ Desconectar iPhone / Outlook", "cal:off")],
     ]
     assert week.call_args.args[0].chat_id == "42"
     llm.run_turn.assert_not_called()
@@ -427,9 +427,9 @@ def test_calendar_buttons(monkeypatch, st, llm, tg, cal_settings) -> None:
     assert keyboards(tg) == [
         [("Google", "cal:g"), ("iPhone / Outlook", "cal:i")],
         [("Conectar con Google", f"https://api.example/oauth/google?s={'s' * 22}")],
-        [("📅 Suscribirme", f"https://api.example/ics/{'a' * 32}/suscribir")],
+        [("🗓️ Suscribirme", f"https://api.example/ics/{'a' * 32}/suscribir")],
         [],
-        [("📅 Suscribirme", f"https://api.example/ics/{'b' * 32}/suscribir")],
+        [("🗓️ Suscribirme", f"https://api.example/ics/{'b' * 32}/suscribir")],
     ]
     disconnect.assert_called_once_with("42")
     llm.run_turn.assert_not_called()
@@ -460,7 +460,6 @@ def ledger(monkeypatch):
         record_expense=MagicMock(return_value="−2.00 USD · cafe"),
         record_income=MagicMock(return_value="+1000.00 USD · salario"),
         latest_text=MagicMock(return_value="1. cafe 2.00 USD"),
-        edit=MagicMock(return_value="✓ editado"),
         void=MagicMock(return_value="✓ anulado"),
         reaction_key=MagicMock(return_value=""),
     )
@@ -557,39 +556,6 @@ def test_llm_registration_sends_gif(st, llm, tg, ledger) -> None:
     llm.result.tools = ["record_expense"]
     client.post("/push", json=envelope(message("vuelo de 900 ayer")))
     assert len(animations(tg)) == 1
-
-
-def test_latest_and_edit(st, llm, tg, ledger) -> None:
-    client.post("/push", json=envelope(message("/ultimos")))
-    client.post("/push", json=envelope(message("/editar 1 3usd")))
-    client.post("/push", json=envelope(message("/editar 2 2000 cop")))
-    for bad in ("/editar", "/editar x 3", "/editar 1 0", "/editar 1 tres"):
-        client.post("/push", json=envelope(message(bad)))
-    assert sent_texts(tg) == [
-        "1. cafe 2.00 USD",
-        "✓ editado",
-        "✓ editado",
-        *[t("es", "edit_usage")] * 4,
-    ]
-    ledger.latest_text.assert_called_once()
-    assert ledger.latest_text.call_args.kwargs == {"n": 5}
-    assert [c.kwargs for c in ledger.edit.call_args_list] == [
-        {
-            "index": 1,
-            "amount": Decimal(3),
-            "currency": "USD",
-            "category": None,
-            "note": None,
-        },
-        {
-            "index": 2,
-            "amount": Decimal(2000),
-            "currency": "COP",
-            "category": None,
-            "note": None,
-        },
-    ]
-    llm.run_turn.assert_not_called()
 
 
 def test_void_asks_then_runs_on_ok(monkeypatch, st, llm, tg, ledger) -> None:
@@ -693,12 +659,12 @@ def test_gif_target(text, expected) -> None:
 
 
 def test_reminder_sends_for_active(monkeypatch, tg) -> None:
-    reminder_text = MagicMock(return_value="⏰ Dentista 09:00")
+    reminder_text = MagicMock(return_value="🛎️ Dentista 09:00")
     monkeypatch.setattr(agenda, "reminder_text", reminder_text)
     body = {"chat_id": "42", "evento_id": "100"}
     assert client.post("/tasks/reminder", json=body).status_code == 204
     reminder_text.assert_called_once_with("42", "100")
-    assert sent_texts(tg) == ["⏰ Dentista 09:00"]
+    assert sent_texts(tg) == ["🛎️ Dentista 09:00"]
     assert json.loads(tg.calls.last.request.read())["chat_id"] == "42"
 
 
@@ -712,7 +678,7 @@ def test_reminder_cancelled_or_malformed_is_204(monkeypatch, tg) -> None:
 
 
 def test_reminder_telegram_error_is_not_5xx(monkeypatch, tg, caplog) -> None:
-    monkeypatch.setattr(agenda, "reminder_text", MagicMock(return_value="⏰ X 09:00"))
+    monkeypatch.setattr(agenda, "reminder_text", MagicMock(return_value="🛎️ X 09:00"))
     tg.post(f"{TG}/sendMessage").mock(return_value=httpx.Response(500))
     body = {"chat_id": "42", "evento_id": "100"}
     assert client.post("/tasks/reminder", json=body).status_code == 204
@@ -930,21 +896,6 @@ def test_registration_replies_without_a_correction_hint(st, llm, tg, ledger) -> 
     assert animations(tg) == []
 
 
-def test_edit_colon_fixes_the_last_entry(st, llm, tg, ledger) -> None:
-    client.post("/push", json=envelope(message("editar: 15 · almuerzo · restaurantes")))
-    assert ledger.edit.call_args.kwargs == {
-        "index": 1,
-        "amount": Decimal(15),
-        "currency": None,
-        "category": "restaurantes",
-        "note": "almuerzo",
-    }
-    client.post("/push", json=envelope(message("editar:")))
-    client.post("/push", json=envelope(message("editar: 0")))  # rejected amount
-    assert sent_texts(tg) == ["✓ editado", *[t("es", "correct_usage")] * 2]
-    llm.run_turn.assert_not_called()
-
-
 def test_reset_asks_then_erases_data_and_recent_messages(monkeypatch, st, llm, tg):
     disconnect, reset_user = MagicMock(), MagicMock()
     fake_module(monkeypatch, "assistant.services.gcal", disconnect=disconnect)
@@ -971,3 +922,11 @@ def test_reset_asks_then_erases_data_and_recent_messages(monkeypatch, st, llm, t
     batches = [json.loads(c.request.read())["message_ids"] for c in deleted.calls]
     assert [(b[0], b[-1]) for b in batches] == [(51, 150), (1, 50)]
     llm.run_turn.assert_not_called()
+
+
+def test_latest_without_llm_and_editar_is_gone(st, llm, tg, ledger) -> None:
+    client.post("/push", json=envelope(message("/ultimos")))
+    assert sent_texts(tg) == ["1. cafe 2.00 USD"]
+    assert ledger.latest_text.call_args.kwargs == {"n": 5}
+    client.post("/push", json=envelope(message("editar: 15")))  # now plain text
+    llm.run_turn.assert_called_once()

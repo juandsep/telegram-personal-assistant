@@ -21,7 +21,7 @@ commands (`/invitar`, `/usuarios`, `/gif`) answer in Spanish.
 
 Only invited people can use the bot. The owner sends `/invitar <name>` and
 forwards the single-use `t.me` link (valid 24 h). Opening it sends `/start`,
-which creates the user, shows Juani's short welcome with a **📖 Guía completa**
+which creates the user, shows Juani's short welcome with a **🗺️ Guía completa**
 button (this guide's site) and sets the Visor de gastos as the chat's menu
 button (see [Dashboard](#dashboard-visor-de-gastos)), then asks for the
 currency with buttons (🇺🇸 USD · 🇪🇺 EUR · 🇨🇴 COP · 🇨🇳 CNY). `/ayuda` shows
@@ -80,17 +80,17 @@ included, and the amount as typed when it was another currency:
 
 ## Correcting
 
-- **`editar:`** (also `edit:` / `修改:`) followed by what is right fixes the
-  **last** movement, without the LLM: amount, currency, category (by name in
-  any of the three languages) and note, in any order, separated by spaces, `·`
-  or `/`. `editar: 15`, `editar: transporte`, `editar: 20 cop`,
-  `edit: 15 lunch Restaurants`.
+There is no editing: to fix a movement, void it and write it again.
+
 - **`/ultimos`:** the last 5 movements, numbered (1 = the most recent).
-- **`/editar <n> <amount>[currency]`:** `/editar 1 3usd`, `/editar 2 2000 cop`.
 - **`/anular <n>`:** asks with Confirmar / Cancelar buttons, then voids it.
 
-Nothing is edited or deleted in place: a correction writes a negative `reverso`
-of the old row plus a new row (see [DATA.md](DATA.md)).
+Nothing is deleted in place: voiding writes a negative `reverso` of the row
+(see [DATA.md](DATA.md)).
+
+A word glued to the amount is split off (`-5cafe` is `-5 cafe`, `3euros` is
+`3 euros`), unless the token already reads as an amount with its currency
+(`5usd`).
 
 ## Dashboard (Visor de gastos)
 
@@ -118,7 +118,7 @@ picks who is due):
 - **07:00:** the agenda of the day and yesterday's spend.
 - **22:00:** `Tus gastos hoy: 12.49 USD.` (income excluded) or
   `Hoy no registraste gastos.`, then `Para más detalles revisa tu tablero:
-  Visor de gastos 📊`.
+  Visor de gastos 🧭`.
 - **Sunday 22:00:** the same, plus the week's spend, top categories and,
   against the month's income, the 20% to save and what is left per week, in
   one message.
@@ -160,8 +160,8 @@ Natural language works in any of the three languages: "reunión con Ana mañana
   buttons whether to schedule anyway. "¿Qué tengo libre el jueves?" lists free
   slots between 08:00 and 20:00.
 - **`/calendario`** lists the next 7 days, one line per day, without the LLM:
-  `Jue 2 · 09:00 Dentista · 16:00 Llamada banco`, with a **🔗 Conectar
-  calendario** button (or **🔌 Desconectar …** when one is connected).
+  `Jue 2 · 09:00 Dentista · 16:00 Llamada banco`, with a **🪢 Conectar
+  calendario** button (or **✂️ Desconectar …** when one is connected).
 - **Reminders** arrive on Telegram at the exact minute (Cloud Tasks, at
   `start - reminder_min`). Tasks are scheduled at most 30 days ahead; later
   ones are queued by the morning digest once within 30 days. Cancelling deletes
@@ -169,8 +169,8 @@ Natural language works in any of the three languages: "reunión con Ana mañana
 
 ### Connecting your calendar
 
-`calendario` → **🔗 Conectar calendario** → pick one calendar (connecting one
-replaces the other; **🔌 Desconectar** or `/calendario off` removes it):
+`calendario` → **🪢 Conectar calendario** → pick one calendar (connecting one
+replaces the other; **✂️ Desconectar** or `/calendario off` removes it):
 
 - **Google:** a button opens Google's sign-in (valid 10 minutes); allow access
   to your calendar's events. The bot says when it is done and copies your
@@ -178,7 +178,7 @@ replaces the other; **🔌 Desconectar** or `/calendario off` removes it):
   Google Calendar within seconds, and conflicts read it directly. Firestore
   stays the source of truth; the mirror is best effort. Google shows an
   "unverified app" notice: Advanced → Go to Juani.
-- **iPhone / Outlook:** **📅 Suscribirme** opens your calendar app on your
+- **iPhone / Outlook:** **🗓️ Suscribirme** opens your calendar app on your
   private feed (`$API_URL/ics/<token>.ics`, as `webcal://`). Anyone with that
   link can read your agenda, so `/calendario nuevo` replaces it and revokes the
   old one. Optionally, paste your calendar's secret iCal link in the chat to
@@ -202,7 +202,7 @@ now. Change it there; the prompt version bumps on its own.
 ## Starting over (`/reset`)
 
 `/reset` (or `reset`, `reiniciar`, `borrar todo`) asks first, with
-**🗑 Sí, borrar todo** / **Cancelar** buttons. Confirming:
+**🧨 Sí, borrar todo** / **Cancelar** buttons. Confirming:
 
 - disconnects a linked calendar (revokes the Google grant),
 - deletes the chat's ledger, agenda (pending reminders then fire into nothing),
@@ -224,7 +224,6 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/tablero [fijar]` | The Visor de gastos; `fijar` pins it |
 | `/resumen` | Today, the week and the month vs income |
 | `/ultimos` | Last 5 movements |
-| `/editar <n> <amount>` | Fixes movement `n` |
 | `/anular <n>` | Voids movement `n` (with confirmation) |
 | `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/fun` | GIF replies on or off |

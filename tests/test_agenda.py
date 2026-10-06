@@ -350,7 +350,7 @@ def test_week_text_format(db: FakeDB, tasks: MagicMock, busy: types.ModuleType) 
 
 def test_reminder_text(db: FakeDB, tasks: MagicMock) -> None:
     agenda.create_event(make_ctx(), "Dentista", at(30, 9), reminder_min=15)
-    assert agenda.reminder_text("42", "100") == "⏰ Dentista 09:00"
+    assert agenda.reminder_text("42", "100") == "🛎️ Dentista 09:00"
     assert agenda.reminder_text("42", "999") is None
     assert agenda.reminder_text("42", "a/b") is None
     agenda.cancel_event(make_ctx(), "100")

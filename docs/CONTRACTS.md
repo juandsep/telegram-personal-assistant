@@ -68,12 +68,6 @@ def query_entries(chat_id: str, field: str, since, until) -> list[dict]  # since
 def latest(ctx, n: int = 5) -> list[dict]
 def latest_text(ctx, n: int = 5) -> str              # "1) 30/09 −0.49 USD café (2,000 COP)"
                                                      # one per line; "Sin movimientos."
-# edit: reverso of entry <index> + new registro (batch e{update_id}) with
-# the merged fields; amount/currency re-converted at the original fecha. A retry of
-# the same update answers the same and writes nothing.
-def edit(ctx, index: int = 1, amount: Decimal | None = None, currency: str | None = None,
-         category: str | None = None, note: str | None = None) -> str
-                                                     # "✓ editado: −1.00 USD · café"
 def void(ctx, index: int = 1) -> str                 # reverso only: "✓ anulado: ..."
 # Bad index -> "No encontré ese movimiento."
 # fx: rates to USD in code, never the LLM. COP = official TRM (datos.gov.co

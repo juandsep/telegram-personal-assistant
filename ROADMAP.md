@@ -327,6 +327,25 @@ retention, IAM review, home-made test (missing header, wrong route, unknown
 `chat_id`, injection attempt).
 *AC:* the four attempts fail closed and are logged.
 
+### Backlog (2026-10)
+
+Next, with photos read by Gemini (project `gen-lang-client-0241526918`,
+named `botjonh-gemini`):
+
+- **Meal tracking:** a photo of a plate gives estimated kcal and macros, with a
+  daily total. The photo is not stored.
+- **Split the check:** a photo of a receipt is split between people, and the
+  bot tracks who still owes the owner money.
+
+Pending, to review later:
+
+- **Habits and goals:** a daily yes/no check-in in the `tick`, with streaks.
+- **Savings goals:** "save 500 by December", with progress in the weekly
+  summary.
+- **Recurring expenses:** detect monthly charges and warn before they repeat.
+
+Ruled out: voice notes, and receipt photos as a way to log expenses.
+
 ---
 
 ## 10. Risks

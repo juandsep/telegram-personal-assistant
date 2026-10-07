@@ -930,3 +930,120 @@ def test_latest_without_llm_and_editar_is_gone(st, llm, tg, ledger) -> None:
     assert ledger.latest_text.call_args.kwargs == {"n": 5}
     client.post("/push", json=envelope(message("editar: 15")))  # now plain text
     llm.run_turn.assert_called_once()
+
+
+# --- photos ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def photo(monkeypatch, tg):
+    """A photo update; Telegram serves its file, Gemini is a fake module."""
+    tg.post(f"{TG}/getFile").mock(
+        return_value=httpx.Response(200, json={"result": {"file_path": "p/1.jpg"}})
+    )
+    tg.get(f"{API_BASE}/file/bot123:test/p/1.jpg").mock(
+        return_value=httpx.Response(200, content=b"jpg")
+    )
+    photos = importlib.import_module("assistant.services.photos")
+    fake = MagicMock(PhotoUnavailable=photos.PhotoUnavailable, split=photos.split)
+    fake.save_split.return_value = "s1"
+    fake.add_meal.return_value = "m1"
+    fake.kcal_today.return_value = 900
+    fake_module(
+        monkeypatch,
+        "assistant.services.photos",
+        **{
+            n: getattr(fake, n)
+            for n in (
+                "analyze",
+                "add_meal",
+                "kcal_today",
+                "delete_meal",
+                "save_split",
+                "mark_paid",
+                "open_splits",
+            )
+        },
+        split=photos.split,
+        PhotoUnavailable=photos.PhotoUnavailable,
+    )
+    return fake
+
+
+def photo_update(caption: str = "") -> dict:
+    msg = {"chat": {"id": 42}, "photo": [{"file_id": "s"}, {"file_id": "big"}]}
+    return {"update_id": 11, "message": {**msg, "caption": caption}}
+
+
+def test_meal_photo_is_saved_with_todays_total(st, llm, tg, photo) -> None:
+    photo.analyze.return_value = {"kind": "meal", "name": "Arepa", "kcal": 300}
+    assert client.post("/push", json=envelope(photo_update())).status_code == 204
+    assert photo.analyze.call_args.args[0] == b"jpg"
+    assert "Arepa · ~300 kcal" in sent_texts(tg)[0]
+    assert "~900 kcal" in sent_texts(tg)[0]
+    assert keyboards(tg) == [[("🗑️ Quitar", "ml:m1")]]
+    llm.run_turn.assert_not_called()
+
+
+def test_receipt_with_people_is_split(st, llm, tg, photo) -> None:
+    photo.analyze.return_value = {
+        "kind": "receipt",
+        "name": "Cena",
+        "total": 200000,
+        "currency": "cop",
+        "people": 4,
+    }
+    client.post("/push", json=envelope(photo_update("cena salida 4")))
+    assert photo.analyze.call_args.args[1] == "cena salida 4"
+    text = sent_texts(tg)[0]
+    assert "Cena: 200,000 COP entre 4" in text and "👤3: 50,000" in text
+    assert keyboards(tg)[0][0] == ("✅ 👤1", "sp:s1:0")
+
+
+def test_receipt_without_people_asks_how_many(st, llm, tg, photo) -> None:
+    photo.analyze.return_value = {"kind": "receipt", "name": "Bar", "total": 90}
+    client.post("/push", json=envelope(photo_update()))
+    assert "¿Entre cuántos" in sent_texts(tg)[0]
+    assert keyboards(tg)[0][0] == ("2", f"pp:{'t' * 22}:2")
+    st.pop_pending.return_value = st.create_pending.call_args.args[1]
+    client.post("/push", json=envelope(callback(f"pp:{'t' * 22}:3")))
+    assert "Bar: 90 USD entre 3" in sent_texts(tg)[1]
+
+
+def test_paid_button_settles_the_split(st, llm, tg, photo) -> None:
+    photo.mark_paid.return_value = {"abierta": False, "titulo": "Cena"}
+    client.post("/push", json=envelope(callback("sp:s1:0")))
+    photo.mark_paid.assert_called_once_with("42", "s1", 0)
+    assert sent_texts(tg) == [t("es", "split_settled", title="Cena")]
+
+
+def test_cuentas_lists_who_owes(st, llm, tg, photo) -> None:
+    photo.open_splits.return_value = [
+        (
+            "s1",
+            {
+                "titulo": "Cena",
+                "fecha": "2026-10-07",
+                "moneda": "COP",
+                "deudores": [
+                    {"nombre": "Ana", "monto": "50000", "pagado": False},
+                    {"nombre": "👤1", "monto": "50000", "pagado": True},
+                ],
+            },
+        ),
+    ]
+    client.post("/push", json=envelope(message("me deben")))
+    assert sent_texts(tg) == ["Te deben:\n🧾 Cena (07/10): Ana 50,000 COP"]
+    assert keyboards(tg) == [[("✅ Ana · Cena", "sp:s1:0")]]
+
+
+def test_photo_failure_is_reported(st, llm, tg, photo) -> None:
+    photo.analyze.side_effect = photo.PhotoUnavailable("x")
+    client.post("/push", json=envelope(photo_update()))
+    assert sent_texts(tg) == [t("es", "photo_unavailable")]
+
+
+def test_meal_remove_button(st, llm, tg, photo) -> None:
+    client.post("/push", json=envelope(callback("ml:m1")))
+    photo.delete_meal.assert_called_once_with("42", "m1")
+    assert sent_texts(tg) == [t("es", "meal_removed")]

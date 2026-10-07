@@ -27,6 +27,7 @@ TEXTS: dict[str, dict[str, str]] = {
 🧹 /anular 1 quita el último; luego escríbelo bien
 🧭 tablero: tu mes · resumen: hoy, semana y mes
 🗓️ reunión con Ana mañana 3pm · calendario: tu agenda
+📸 foto de tu plato (calorías) o de un recibo con «cena 4» (divido la cuenta) · cuentas: quién te debe
 🪅 fun: te respondo con GIFs
 
 Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
@@ -36,6 +37,7 @@ Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
 🧹 /anular 1 removes the last one; then write it again
 🧭 dashboard: your month · summary: today, week and month
 🗓️ meeting with Ana tomorrow 3pm · calendar: your agenda
+📸 a photo of your meal (calories) or of a receipt with "dinner 4" (I split it) · splits: who owes you
 🪅 fun: I answer with GIFs
 
 Just write the word, no "/". help shows this again.""",
@@ -45,6 +47,7 @@ Just write the word, no "/". help shows this again.""",
 🧹 /anular 1 删除最后一笔，然后重新记录
 🧭 dashboard：本月账单 · summary：今天、本周和本月
 🗓️ 明天下午3点和 Ana 开会 · calendar：你的日程
+📸 餐食照片（热量）或带「晚餐 4」的收据（分账）· splits：谁欠你钱
 🪅 fun：用 GIF 回复你
 
 直接发送单词，不用 "/"。help 再次显示此说明。""",
@@ -110,9 +113,9 @@ Just write the word, no "/". help shows this again.""",
         "zh": "暂时已达上限，请稍后再试。",
     },
     "text_only": {
-        "es": "Por ahora solo entiendo texto.",
-        "en": "For now I only understand text.",
-        "zh": "目前我只能理解文字。",
+        "es": "Por ahora entiendo texto y fotos.",
+        "en": "For now I understand text and photos.",
+        "zh": "目前我能理解文字和照片。",
     },
     "failed": {
         "es": "No pude hacerlo, intenta de nuevo.",
@@ -151,6 +154,52 @@ Just write the word, no "/". help shows this again.""",
         "zh": "面板未配置。",
     },
     "cancelled": {"es": "Cancelado.", "en": "Cancelled.", "zh": "已取消。"},
+    "photo_unavailable": {
+        "es": "No pude leer la foto ahora. Prueba en un rato.",
+        "en": "I couldn't read the photo right now. Try again in a bit.",
+        "zh": "暂时无法读取这张照片，请稍后再试。",
+    },
+    "photo_other": {
+        "es": "Mándame la foto de un plato (cuento calorías) o de un recibo con cuántos son, ej. «cena 4» (divido la cuenta).",
+        "en": 'Send me a photo of a meal (I count calories) or of a receipt with how many people, e.g. "dinner 4" (I split the bill).',
+        "zh": "发给我一张餐食照片（我估算热量），或一张收据并写上人数，例如「晚餐 4」（我来分账）。",
+    },
+    "meal": {
+        "es": "🍽️ {name} · ~{kcal} kcal\nP {protein} g · C {carbs} g · G {fat} g\nHoy llevas ~{today} kcal.",
+        "en": "🍽️ {name} · ~{kcal} kcal\nP {protein} g · C {carbs} g · F {fat} g\nToday so far: ~{today} kcal.",
+        "zh": "🍽️ {name} · 约 {kcal} 千卡\n蛋白质 {protein} 克 · 碳水 {carbs} 克 · 脂肪 {fat} 克\n今天累计约 {today} 千卡。",
+    },
+    "meal_remove": {"es": "🗑️ Quitar", "en": "🗑️ Remove", "zh": "🗑️ 删除"},
+    "meal_removed": {
+        "es": "Listo, la quité.",
+        "en": "Done, removed.",
+        "zh": "已删除。",
+    },
+    "split_people": {
+        "es": "🧾 {title}: {total} {currency}. ¿Entre cuántos la dividimos (contándote)?",
+        "en": "🧾 {title}: {total} {currency}. How many people split it (you included)?",
+        "zh": "🧾 {title}：{total} {currency}。几个人分（包括你）？",
+    },
+    "split": {
+        "es": "🧾 {title}: {total} {currency} entre {people}\n{shares}\nToca ✅ cuando te paguen. cuentas muestra lo pendiente.",
+        "en": "🧾 {title}: {total} {currency} split {people} ways\n{shares}\nTap ✅ when they pay you. splits shows what's pending.",
+        "zh": "🧾 {title}：{total} {currency}，{people} 人分\n{shares}\n收到付款后点 ✅。发送 splits 查看未付。",
+    },
+    "split_settled": {
+        "es": "🎉 {title}: ya te pagaron todos.",
+        "en": "🎉 {title}: everyone has paid you.",
+        "zh": "🎉 {title}：大家都已付清。",
+    },
+    "split_pending": {
+        "es": "Te deben:",
+        "en": "You're owed:",
+        "zh": "别人欠你：",
+    },
+    "split_none": {
+        "es": "Nadie te debe nada. 🙌",
+        "en": "Nobody owes you anything. 🙌",
+        "zh": "没有人欠你钱。🙌",
+    },
     "reset_question": {
         "es": "¿Borrar todo? Se eliminan tus gastos, ingresos, agenda, recordatorios, calendario conectado, ajustes y la conversación. No se puede deshacer.",
         "en": "Erase everything? Your expenses, income, agenda, reminders, connected calendar, settings and conversation are deleted. This cannot be undone.",

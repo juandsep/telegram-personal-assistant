@@ -191,6 +191,26 @@ Subscriptions are read-only and refreshed by the app, not pushed (Outlook and
 Google take hours), so a new appointment may take a while to show there. The
 Telegram reminder does not depend on that refresh.
 
+## Photos: meals and split checks
+
+Send a photo; Gemini (`GEMINI_MODEL`, default `gemini-3.5-flash-lite`) reads
+it once and the photo is not kept. The caption guides it.
+
+- **A meal:** the reply shows the dish, estimated kcal and macros, and today's
+  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`). **🗑️ Quitar**
+  removes a wrong one. Photo estimates are rough (often ±20–30%): good for
+  habits, not for a clinical diet.
+- **A receipt:** with the people in the caption (`cena salida 4`) the total is
+  split between 4, you included; without them the bot asks with buttons.
+  Naming items assigns them (`Ana: pizza; yo: pasta`); the rest is shared, and
+  tax or tip scale every share alike. Each share gets a **✅** button to mark
+  it paid. No expense is recorded: log your own share as usual.
+- **`cuentas`** (or `me deben`, `/cuentas`) lists who still owes you, with the
+  ✅ buttons.
+
+The Gemini project runs on the free tier: Google may use the photos to improve
+its products. Turn on billing in that project to stop it.
+
 ## Talking to Juani
 
 Questions about the bot itself or small talk ("¿cómo te llamas?", "¿quién te
@@ -226,6 +246,7 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/ultimos` | Last 5 movements |
 | `/anular <n>` | Voids movement `n` (with confirmation) |
 | `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
+| `/cuentas` | Split checks people still owe you, with ✅ buttons |
 | `/fun` | GIF replies on or off |
 | `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |

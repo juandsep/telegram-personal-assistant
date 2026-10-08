@@ -15,7 +15,7 @@ to Spanish.
 category names (stored keys stay Spanish, so no data changes with the
 language). The LLM is told to answer in the user's language. Commands keep their
 Spanish names (`/tablero`, `/ultimos`…) in every language. Only the owner-only
-commands (`/invitar`, `/usuarios`, `/gif`) answer in Spanish.
+commands (`/invitar`, `/usuarios`, `/catalogo`) answer in Spanish.
 
 ## Getting started
 
@@ -127,28 +127,29 @@ picks who is due):
 today's spend and, when there is any spend or income, the week and the month
 against income.
 
-## GIF reactions (`/fun`)
+## Reactions (`/fun`)
 
-`/fun` toggles GIF replies per user (`users.fun`, **off by default**). With it
-on, a registration answers with a random reaction GIF instead of the text; the
-text is the fallback when no GIF fits or sending it fails.
+`/fun` toggles reaction replies per user (`users.fun`, **off by default**). With
+it on, a registration answers with a random image or GIF instead of the text,
+and a meal photo gets one after its reply; the text is the fallback when the
+catalog has nothing that fits or sending fails.
 
-One shared catalog, curated by the owner, serves every user:
-`gif_catalog/{tipo}` (`gasto` | `ingreso`) maps a key (a gasto category such as
-`restaurantes`, an ingreso source such as `salario`, or `general`) to up to 20
-Telegram file_ids. The movement's category or source picks the GIFs, else
-`general`. Owner only (anyone else gets a one-line refusal):
+One shared catalog, curated by the owner, serves every user. Each item has a
+tag `<kind>/<key>`:
 
-- Send a GIF with the caption `gasto`, `gasto restaurantes`, `ingreso` or
-  `ingreso salario` (no key = `general`), or reply to a GIF with
-  `/gif gasto restaurantes`.
-- `/gif borrar` replying to a GIF removes it from every key.
-- `/gif` alone lists the counts per type and key.
+- `gasto/<category>` (`gasto/restaurantes`…) and `ingreso/<source>`
+  (`ingreso/salario`…): the movement's category or source picks the tag, else
+  `gasto/general` or `ingreso/general`.
+- `comida/sana`, `comida/meh`, `comida/chatarra`: Gemini's verdict on a meal
+  photo.
 
-Telegram file_ids are per bot, so staging (its own Firestore database and bot)
-and production keep separate catalogs; curate each from its own bot. Old
-per-user libraries move with
-`uv run python -m assistant.admin migrate-gifs <owner_chat_id>`.
+The owner fills it from the **/catalogo** Mini App (anyone else gets a one-line
+refusal): pick an existing tag or type a new one, choose one or more files
+(JPEG, PNG, WebP or GIF, 5 MB each; the type is checked by content), upload;
+🗑️ on a thumbnail deletes it. Files go to the public-read bucket
+`<project>-media` (Telegram fetches them by URL; the bucket cannot be listed)
+and each tag lives in Firestore `media/{id}`. Staging and production share the
+bucket but each has its own Firestore database, so curate each from its own bot.
 
 ## Agenda
 
@@ -196,8 +197,11 @@ Telegram reminder does not depend on that refresh.
 Send a photo; Gemini (`GEMINI_MODEL`, default `gemini-3.5-flash-lite`) reads
 it once and the photo is not kept. The caption guides it.
 
-- **A meal:** the reply shows the dish, estimated kcal and macros, and today's
-  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`). **🗑️ Quitar**
+- **A meal:** the reply shows the dish, estimated kcal and macros, today's
+  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`) and a 💡 tip that
+  balances the day (Gemini sees what you already ate today). Gemini also rates
+  the dish healthy, meh or unhealthy: with `/fun` on, a `comida/sana`,
+  `comida/meh` or `comida/chatarra` reaction follows. **🗑️ Quitar**
   removes a wrong one. Photo estimates are rough (often ±20–30%): good for
   habits, not for a clinical diet.
 - **A receipt:** with the people in the caption (`cena salida 4`) the total is
@@ -247,9 +251,9 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/anular <n>` | Voids movement `n` (with confirmation) |
 | `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/cuentas` | Split checks people still owe you, with ✅ buttons |
-| `/fun` | GIF replies on or off |
+| `/fun` | Reaction images on or off |
 | `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |
-| `/invitar <name>`, `/usuarios`, `/gif` | Owner only, not in the menu |
+| `/invitar <name>`, `/usuarios`, `/catalogo` | Owner only, not in the menu |

@@ -28,7 +28,7 @@ plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
 - **Reads photos.** A meal gives estimated calories and macros; a receipt is
   split between people, and `cuentas` shows who still owes you.
 - **Speaks your language.** Spanish, English or Chinese, following your phone.
-- **Has fun if you want.** `/fun` turns on reaction GIFs.
+- **Has fun if you want.** `/fun` turns on reaction images, picked by category and by how healthy your meal is.
 
 The full guide, with every command and example, is in the documentation below.
 
@@ -49,7 +49,7 @@ in [`docs/architecture/`](docs/architecture/).
 
 | Document | What it covers |
 |---|---|
-| [docs/USAGE.md](docs/USAGE.md) | Logging, corrections, dashboard, reports, GIFs, agenda, languages, commands |
+| [docs/USAGE.md](docs/USAGE.md) | Logging, corrections, dashboard, reports, reactions, agenda, languages, commands |
 | [docs/DATA.md](docs/DATA.md) | Ledger model, CSV export and backup, Looker Studio, agenda and other collections |
 | [ROADMAP.md](ROADMAP.md) | The original plan: decisions, architecture, costs, security, roadmap |
 

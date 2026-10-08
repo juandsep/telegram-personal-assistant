@@ -97,6 +97,7 @@ jobs:
             UPDATES_TOPIC=${{ env.STAGING == 'true' && 'assistant-updates-staging' || 'assistant-updates' }}
             TELEGRAM_BOT_ID=${{ env.STAGING == 'true' && vars.TELEGRAM_BOT_ID_STAGING || vars.TELEGRAM_BOT_ID }}
             BACKUP_BUCKET=${{ vars.BACKUP_BUCKET }}
+            MEDIA_BUCKET=${{ vars.GCP_PROJECT_ID }}-media
             WORKER_URL=${{ vars.WORKER_URL }}
             WORKER_SA=${{ vars.GCP_WORKER_SA }}
             TASKS_QUEUE=assistant-reminders

@@ -53,7 +53,7 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
      uv run python -m assistant.admin bot-profile --photo
    ```
 
-   Owner commands (`/invitar`, `/usuarios`, `/gif`) work but are not listed.
+   Owner commands (`/invitar`, `/usuarios`, `/catalogo`) work but are not listed.
 
 5. Add yourself as the owner (your chat id from @userinfobot), with ADC pointed
    at the project, and enable the TTL cleanup of the dedup markers, invites,
@@ -123,6 +123,15 @@ the console (Terraform cannot create it). Terraform enables the Calendar API
 
 The refresh tokens are encrypted with the `KMS_KEY` key, so both must be set;
 without either, the Google button answers "Aún no disponible".
+
+### Reaction catalog
+
+Terraform creates the `<project>-media` bucket: objects readable by anyone
+(`roles/storage.legacyObjectReader` for `allUsers`, which allows reading a
+known object but never listing the bucket) so Telegram can fetch them by URL,
+and `roles/storage.objectUser` for the service account. The deploy sets
+`MEDIA_BUCKET=<GCP_PROJECT_ID>-media`; no repository variable is needed. The
+owner fills it from `/catalogo` in the chat (see docs/USAGE.md).
 
 ### Photos (Gemini)
 
@@ -233,5 +242,4 @@ Local runs read the same variables from a git-ignored `.env`.
 ```bash
 uv run python -m assistant.admin add-owner <chat_id> <nombre>   # create or promote the owner
 uv run python -m assistant.admin bot-profile [--photo]          # menu, texts and photo
-uv run python -m assistant.admin migrate-gifs <owner_chat_id>   # old per-user GIFs → shared catalog
 ```

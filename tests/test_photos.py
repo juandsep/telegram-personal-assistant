@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -58,16 +59,22 @@ def test_named_people_raise_the_count() -> None:
     assert names == ["Ana", "Luis"]
 
 
-def test_analyze_parses_gemini_json() -> None:
+def test_analyze_parses_gemini_json(db: FakeDB) -> None:
+    photos.add_meal(CTX, {"name": "Arepa", "kcal": 300, "protein_g": 8})
     body = {"candidates": [{"content": {"parts": [{"text": '{"kind": "other"}'}]}}]}
     with respx.mock:
         route = respx.post(URL).mock(return_value=httpx.Response(200, json=body))
         assert photos.analyze(b"jpg", "cena 4", CTX, "k", "m") == {"kind": "other"}
     assert route.calls[0].request.headers["x-goog-api-key"] == "k"
+    sent = json.loads(route.calls[0].request.read())
+    prompt = sent["contents"][0]["parts"][1]["text"]
+    assert "(300 kcal, protein 8 g, carbs 0 g, fat 0 g)" in prompt  # the day so far
+    schema = sent["generationConfig"]["responseSchema"]
+    assert {"health", "tip"} <= set(schema["required"])
 
 
 @pytest.mark.parametrize("response", [httpx.Response(500), httpx.Response(200)])
-def test_analyze_failures_are_unavailable(response: httpx.Response) -> None:
+def test_analyze_failures_are_unavailable(db: FakeDB, response: httpx.Response) -> None:
     with respx.mock:
         respx.post(URL).mock(return_value=response)
         with pytest.raises(photos.PhotoUnavailable):

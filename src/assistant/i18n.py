@@ -36,7 +36,7 @@ TEXTS: dict[str, dict[str, str]] = {
 🧭 tablero: tu mes · resumen: hoy, semana y mes
 🗓️ reunión con Ana mañana 3pm · calendario: tu agenda
 📸 foto de tu plato (calorías) o de un recibo con «cena 4» (divido la cuenta) · cuentas: quién te debe
-🪅 fun: te respondo con GIFs
+🪅 fun: te respondo con imágenes
 
 Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
         "en": """Hi 🫶 I'm Juani, your assistant on your phone. I track your expenses, income and calendar. Just write to me:
@@ -46,7 +46,7 @@ Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
 🧭 dashboard: your month · summary: today, week and month
 🗓️ meeting with Ana tomorrow 3pm · calendar: your agenda
 📸 a photo of your meal (calories) or of a receipt with "dinner 4" (I split it) · splits: who owes you
-🪅 fun: I answer with GIFs
+🪅 fun: I answer with images
 
 Just write the word, no "/". help shows this again.""",
         "zh": """你好 🫶 我是 Juani，你手机里的助手。我帮你记录支出、收入和日程。直接给我发消息：
@@ -56,7 +56,7 @@ Just write the word, no "/". help shows this again.""",
 🧭 dashboard：本月账单 · summary：今天、本周和本月
 🗓️ 明天下午3点和 Ana 开会 · calendar：你的日程
 📸 餐食照片（热量）或带「晚餐 4」的收据（分账）· splits：谁欠你钱
-🪅 fun：用 GIF 回复你
+🪅 fun：用图片回复你
 
 直接发送单词，不用 "/"。help 再次显示此说明。""",
     },
@@ -235,9 +235,9 @@ Just write the word, no "/". help shows this again.""",
         "zh": "✓ 货币：{currency}。你的金额将以 {currency} 显示。",
     },
     "fun_on": {
-        "es": "🪅 Modo fun activado: te respondo con GIFs. /fun lo apaga.",
-        "en": "🪅 Fun mode on: I'll answer with GIFs. /fun turns it off.",
-        "zh": "🪅 已开启趣味模式：我会用 GIF 回复。再发 /fun 关闭。",
+        "es": "🪅 Modo fun activado: te respondo con imágenes y GIFs. /fun lo apaga.",
+        "en": "🪅 Fun mode on: I'll answer with images and GIFs. /fun turns it off.",
+        "zh": "🪅 已开启趣味模式：我会用图片和 GIF 回复。再发 /fun 关闭。",
     },
     "fun_off": {
         "es": "Modo fun apagado: te respondo con el registro.",
@@ -441,9 +441,9 @@ Just write the word, no "/". help shows this again.""",
         "zh": "未来 7 天的日程，连接你的日历",
     },
     "cmd_fun": {
-        "es": "Activa o apaga las respuestas con GIFs",
-        "en": "Turn GIF replies on or off",
-        "zh": "开启或关闭 GIF 回复",
+        "es": "Activa o apaga las respuestas con imágenes",
+        "en": "Turn image replies on or off",
+        "zh": "开启或关闭图片回复",
     },
     "cmd_moneda": {
         "es": "La moneda en que ves tus montos",
@@ -545,7 +545,7 @@ FR: dict[str, str] = {
 🧭 dashboard : ton mois · summary : aujourd'hui, semaine et mois
 🗓️ réunion avec Ana demain 15h · calendar : ton agenda
 📸 une photo de ton assiette (calories) ou d'un ticket avec « dîner 4 » (je partage l'addition) · splits : qui te doit
-🪅 fun : je réponds avec des GIF
+🪅 fun : je réponds avec des images
 
 Écris juste le mot, sans « / ». help affiche ce message à nouveau.""",
     "guide": "🗺️ Guide complet",
@@ -587,7 +587,7 @@ FR: dict[str, str] = {
     "reset_done": "✓ C'est fait, nouveau départ. Telegram me laisse supprimer seulement les messages des dernières 48 h ; pour les plus anciens, utilise Effacer l'historique dans le chat.",
     "currency_question": "Dans quelle devise veux-tu voir tes montants ? Change-la plus tard avec currency.",
     "currency_ok": "✓ Devise : {currency}. Tes montants s'affichent en {currency}.",
-    "fun_on": "🪅 Mode fun activé : je réponds avec des GIF. /fun le désactive.",
+    "fun_on": "🪅 Mode fun activé : je réponds avec des images et des GIF. /fun le désactive.",
     "fun_off": "Mode fun désactivé : je réponds avec l'enregistrement.",
     "positive": "Le montant doit être supérieur à 0.",
     "not_found": "Je n'ai pas trouvé cet enregistrement.",
@@ -629,7 +629,7 @@ FR: dict[str, str] = {
     "cmd_ultimos": "Tes 5 derniers enregistrements",
     "cmd_anular": "Annuler un enregistrement : /anular 1",
     "cmd_calendario": "Tes 7 prochains jours et la connexion de ton calendrier",
-    "cmd_fun": "Activer ou désactiver les réponses en GIF",
+    "cmd_fun": "Activer ou désactiver les réponses en images",
     "cmd_moneda": "La devise de tes montants",
     "cmd_reset": "Effacer toutes tes données et le chat",
     "cmd_ayuda": "Comment utiliser Juani",
@@ -660,7 +660,7 @@ DE: dict[str, str] = {
 🧭 dashboard: dein Monat · summary: heute, Woche und Monat
 🗓️ Treffen mit Ana morgen 15 Uhr · calendar: deine Termine
 📸 ein Foto deines Essens (Kalorien) oder einer Rechnung mit „Abendessen 4“ (ich teile sie auf) · splits: wer dir etwas schuldet
-🪅 fun: ich antworte mit GIFs
+🪅 fun: ich antworte mit Bildern
 
 Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "guide": "🗺️ Vollständige Anleitung",
@@ -702,7 +702,7 @@ Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "reset_done": "✓ Erledigt, ein Neuanfang. Telegram lässt mich nur Nachrichten der letzten 48 Std. löschen; für ältere nutze Verlauf leeren im Chat.",
     "currency_question": "In welcher Währung willst du deine Beträge sehen? Ändere sie später mit currency.",
     "currency_ok": "✓ Währung: {currency}. Deine Beträge erscheinen in {currency}.",
-    "fun_on": "🪅 Fun-Modus an: ich antworte mit GIFs. /fun schaltet ihn aus.",
+    "fun_on": "🪅 Fun-Modus an: ich antworte mit Bildern und GIFs. /fun schaltet ihn aus.",
     "fun_off": "Fun-Modus aus: ich antworte mit dem Eintrag.",
     "positive": "Der Betrag muss größer als 0 sein.",
     "not_found": "Ich konnte diesen Eintrag nicht finden.",
@@ -744,7 +744,7 @@ Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "cmd_ultimos": "Deine letzten 5 Einträge",
     "cmd_anular": "Einen Eintrag stornieren: /anular 1",
     "cmd_calendario": "Deine nächsten 7 Tage und Kalender verbinden",
-    "cmd_fun": "GIF-Antworten an- oder ausschalten",
+    "cmd_fun": "Bild-Antworten an- oder ausschalten",
     "cmd_moneda": "Die Währung deiner Beträge",
     "cmd_reset": "Alle deine Daten und den Chat löschen",
     "cmd_ayuda": "So nutzt du Juani",

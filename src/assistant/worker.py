@@ -562,7 +562,7 @@ def _summary(ctx: ToolContext, msg: InboundMessage) -> str:
 
 
 def _fun(ctx: ToolContext, msg: InboundMessage) -> str:
-    """/fun toggles GIF replies to registrations."""
+    """/fun toggles reaction images after registrations and meal photos."""
     try:
         state.set_fun(ctx.chat_id, not ctx.fun)
     except Exception as exc:

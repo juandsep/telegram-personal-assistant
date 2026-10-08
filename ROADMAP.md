@@ -346,6 +346,10 @@ Pending, to review later:
 - **Response latency:** some replies feel slow. Measure where a turn spends
   its time (Pub/Sub hop, cold start, LLM call, Firestore reads, Telegram send)
   from the `llm_turn` logs and Grafana, then optimize the slowest step.
+- **Python 3.14 (consideration):** the image stays on 3.12 and Dependabot
+  ignores minor and major `python` bumps (`.github/dependabot.yml`). Before
+  moving, check that every dependency ships 3.14 wheels, then update the
+  Dockerfile, `.python-version` and `pyproject.toml` together.
 
 Ruled out: voice notes, and receipt photos as a way to log expenses.
 

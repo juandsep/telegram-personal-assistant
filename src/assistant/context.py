@@ -44,5 +44,5 @@ class ToolContext:
     timezone: str
     update_id: int
     now: datetime  # timezone-aware, in the user's zone
-    lang: str = "es"  # es | en | zh, see assistant.i18n
-    fun: bool = False  # /fun: registrations answered with a GIF, not the text
+    lang: str = "es"  # es | en | zh | fr | de, see assistant.i18n
+    fun: bool = False  # /fun: reaction images from the catalog (services/media.py)

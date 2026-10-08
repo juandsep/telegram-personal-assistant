@@ -167,6 +167,7 @@ locals {
     "assistant-deepseek-key",               # DeepSeek API key
     "assistant-google-oauth-client-id",     # OAuth web client: Conectar → Google
     "assistant-google-oauth-client-secret", # its secret
+    "assistant-gemini-key",                 # Gemini API key: reads photos
   ]
 }
 
@@ -238,6 +239,7 @@ resource "google_secret_manager_secret_iam_member" "worker_reads_secrets" {
     "assistant-bot-token", "assistant-bot-token-staging", "assistant-deepseek-key",
     "assistant-webhook-secret", "assistant-webhook-path",
     "assistant-google-oauth-client-id", "assistant-google-oauth-client-secret",
+    "assistant-gemini-key",
   ])
   secret_id = google_secret_manager_secret.secret[each.value].id
   role      = "roles/secretmanager.secretAccessor"

@@ -22,6 +22,7 @@ class InboundMessage:
     caption: str = ""
     reply_animation_file_id: str | None = None  # the GIF a message replies to
     language_code: str | None = None  # the sender's Telegram app language
+    photo_file_id: str | None = None  # the largest size of a photo
 
 
 class Channel(Protocol):

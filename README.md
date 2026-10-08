@@ -25,6 +25,8 @@ plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
   how the week went against the 20% savings rule.
 - **Runs your agenda.** Appointments and reminders in natural language,
   conflict checks, a Google Calendar mirror and a private ICS feed.
+- **Reads photos.** A meal gives estimated calories and macros; a receipt is
+  split between people, and `cuentas` shows who still owes you.
 - **Speaks your language.** Spanish, English or Chinese, following your phone.
 - **Has fun if you want.** `/fun` turns on reaction GIFs.
 

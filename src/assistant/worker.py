@@ -98,16 +98,17 @@ async def reminder(request: Request) -> Response:
     try:
         body = json.loads(await request.body())
         chat_id, event_id = str(body["chat_id"]), str(body["evento_id"])
-    except (ValueError, KeyError, TypeError):
+        version = int(body.get("version", 0))
+    except (ValueError, KeyError, TypeError, AttributeError):
         logger.warning("malformed_task")
         return Response(status_code=ACK)
-    await run_in_threadpool(_remind, chat_id, event_id)
+    await run_in_threadpool(_remind, chat_id, event_id, version)
     return Response(status_code=ACK)
 
 
-def _remind(chat_id: str, event_id: str) -> None:
-    text = agenda.reminder_text(chat_id, event_id)
-    if text is None:  # cancelled or missing
+def _remind(chat_id: str, event_id: str, version: int) -> None:
+    text = agenda.reminder_text(chat_id, event_id, version)
+    if text is None:  # cancelled, moved or missing
         return
     try:
         Telegram(get_worker_settings().telegram_bot_token).send_message(chat_id, text)

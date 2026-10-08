@@ -357,6 +357,73 @@ def test_reminder_text(db: FakeDB, tasks: MagicMock) -> None:
     assert agenda.reminder_text("42", "100") is None
 
 
+def test_moved_item_gets_new_task_and_stale_reminder_is_skipped(
+    db: FakeDB, tasks: MagicMock
+) -> None:
+    db.store[f"{BASE}/100"] = {"estado": "activo", "titulo": "X", "version": 1}
+    db.store[f"{BASE}/100"]["inicio"] = "2026-09-30T10:00:00-05:00"
+    assert agenda.reminder_text("42", "100") is None  # task of the old time
+    assert agenda.reminder_text("42", "100", 1) == "🛎️ X 10:00"
+    assert agenda.task_name(SETTINGS, "42", "100", 1) != agenda.task_name(
+        SETTINGS, "42", "100"
+    )
+
+
+# --- back from Google Calendar ---------------------------------------------------
+
+
+def test_sync_gcal_applies_google_moves_renames_and_deletes(
+    db: FakeDB, tasks: MagicMock, gcal: types.SimpleNamespace, caplog
+) -> None:
+    caplog.set_level("INFO")
+    for n, hour in ((1, 9), (2, 11), (3, 15), (4, 17)):
+        agenda.create_event(make_ctx(n), f"E{n}", at(30, hour), reminder_min=10)
+    gcal.event_gid = lambda chat_id, event_id: f"g{event_id}"
+    gcal.changes = MagicMock(
+        return_value=[
+            ("g1", False, at(30, 13).astimezone(UTC), at(30, 14).astimezone(UTC), ""),
+            ("g2", False, at(30, 11), at(30, 12), "Médico"),
+            ("g3", True, at(30, 0), at(30, 0), ""),
+            ("g4", False, at(30, 17), at(30, 18), "E4"),  # our own write: no-op
+            ("gX", True, at(30, 0), at(30, 0), ""),  # not an upcoming item
+        ]
+    )
+    tasks.reset_mock()
+    agenda.sync_gcal(make_ctx(0))
+    since = gcal.changes.call_args.args[1]
+    assert since == make_ctx().now - agenda.SYNC_WINDOW
+    moved = db.store[f"{BASE}/1"]
+    assert (moved["inicio"], moved["fin"], moved["titulo"], moved["version"]) == (
+        "2026-09-30T13:00:00-05:00",
+        "2026-09-30T14:00:00-05:00",
+        "E1",
+        1,
+    )
+    tasks.delete_task.assert_any_call(name=agenda.task_name(SETTINGS, "42", "1"))
+    task = tasks.create_task.call_args.kwargs["task"]
+    assert task.name == agenda.task_name(SETTINGS, "42", "1", 1)
+    assert task.schedule_time == datetime(2026, 9, 30, 17, 50, tzinfo=UTC)
+    assert json.loads(task.http_request.body)["version"] == 1
+    assert db.store[f"{BASE}/2"]["titulo"] == "Médico"
+    assert db.store[f"{BASE}/3"]["estado"] == "cancelado"
+    assert db.store[f"{BASE}/4"].get("version") is None
+    assert tasks.create_task.call_count == 1
+    assert "E1" not in caplog.text and "Médico" not in caplog.text
+    gcal.mirror_cancel.assert_not_called()  # already gone in Google
+
+
+def test_sync_gcal_without_items_or_failing_never_raises(
+    db: FakeDB, tasks: MagicMock, gcal: types.SimpleNamespace, caplog
+) -> None:
+    gcal.changes = MagicMock(side_effect=AssertionError("not called"))
+    agenda.sync_gcal(make_ctx())  # nothing upcoming: no Google call
+    agenda.create_event(make_ctx(), "A", at(30, 9))
+    gcal.event_gid = lambda chat_id, event_id: event_id
+    gcal.changes = MagicMock(side_effect=RuntimeError("down"))
+    agenda.sync_gcal(make_ctx())
+    assert "gcal_sync_failed error=RuntimeError" in caplog.text
+
+
 # --- ICS -------------------------------------------------------------------------
 
 

@@ -5,11 +5,13 @@ Everything a user can do with Juani, in detail. Back to the
 
 ## Languages
 
-Juani speaks Spanish, English and Chinese. The language comes from the
+Juani speaks Spanish, English, Chinese, French and German. The language comes from the
 `language_code` of the user's Telegram app (it follows the phone unless changed
 in Telegram) and is saved as `users.idioma` whenever it changes, so the
-scheduled messages use it too. Anything other than English or Chinese falls back
-to Spanish.
+scheduled messages use it too. Any other language falls back to English.
+French and German get every reply, report and the dashboard; the quick
+category keywords stay in Spanish, English and Chinese, so a French or German
+entry without one goes to the LLM, which picks the category.
 
 `src/assistant/i18n.py` holds every reply, the reports, the dashboard and the
 category names (stored keys stay Spanish, so no data changes with the
@@ -176,8 +178,10 @@ replaces the other; **✂️ Desconectar** or `/calendario off` removes it):
 - **Google:** a button opens Google's sign-in (valid 10 minutes); allow access
   to your calendar's events. The bot says when it is done and copies your
   upcoming items. From then on every create and cancel is mirrored to your main
-  Google Calendar within seconds, and conflicts read it directly. Firestore
-  stays the source of truth; the mirror is best effort. Google shows an
+  Google Calendar within seconds, and conflicts read it directly. It works
+  both ways: move, rename or delete one of those items in Google and the bot
+  follows within the hour (the reminder moves with it). Events you create in
+  Google itself show as busy time. The mirror is best effort. Google shows an
   "unverified app" notice: Advanced → Go to Juani.
 - **iPhone / Outlook:** **🗓️ Suscribirme** opens your calendar app on your
   private feed (`$API_URL/ics/<token>.ics`, as `webcal://`). Anyone with that

@@ -616,7 +616,7 @@ def test_reminder_sends_for_active(monkeypatch, tg) -> None:
     monkeypatch.setattr(agenda, "reminder_text", reminder_text)
     body = {"chat_id": "42", "evento_id": "100"}
     assert client.post("/tasks/reminder", json=body).status_code == 204
-    reminder_text.assert_called_once_with("42", "100")
+    reminder_text.assert_called_once_with("42", "100", 0)
     assert sent_texts(tg) == ["🛎️ Dentista 09:00"]
     assert json.loads(tg.calls.last.request.read())["chat_id"] == "42"
 

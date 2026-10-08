@@ -127,6 +127,7 @@ def _tick(ctx: ToolContext) -> str | None:
     ponytail: :30/:45 offsets (India, Nepal) get the local hour the tick lands
     in (07:30, 22:30); add half-hour ticks if those users want the exact time.
     """
+    agenda.sync_gcal(ctx)  # Google-side moves first, so the digest sees them
     if ctx.now.hour == 7:
         return _digest(ctx)
     if ctx.now.hour != 22:

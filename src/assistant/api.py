@@ -301,7 +301,7 @@ def _accept(update: Any, topic: str) -> Response:
         )
         state.unmark_processed(msg.update_id)
         return Response(status_code=500)
-    if msg.text and not msg.callback_query_id:
+    if (msg.text or msg.photo_file_id) and not msg.callback_query_id:
         # Telegram runs a method returned in the webhook reply: "escribiendo…"
         # shows at once while the worker (maybe cold) and the LLM answer.
         typing = {

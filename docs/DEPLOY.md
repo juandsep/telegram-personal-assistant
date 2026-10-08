@@ -105,6 +105,25 @@ the console (Terraform cannot create it). Terraform enables the Calendar API
 The refresh tokens are encrypted with the `KMS_KEY` key, so both must be set;
 without either, the Google button answers "Aún no disponible".
 
+### Photos (Gemini)
+
+Photos of meals and receipts are read by Gemini through an API key from a
+separate AI Studio project (`gen-lang-client-0241526918`, named
+`botjonh-gemini`; free tier, no billing). Terraform creates the empty
+`assistant-gemini-key` secret; store the key once (the deploy mounts it, so it
+fails while the secret has no version):
+
+```bash
+KEY_ID=$(gcloud services api-keys list --project gen-lang-client-0241526918 \
+  --filter="displayName=botjonh" --format="value(uid)")
+gcloud services api-keys get-key-string "$KEY_ID" --project gen-lang-client-0241526918 \
+  --format="value(keyString)" | tr -d '\n' \
+  | gcloud secrets versions add assistant-gemini-key --data-file=-
+```
+
+The key is restricted to `generativelanguage.googleapis.com`. Without it,
+photos answer "No pude leer la foto ahora".
+
 Every merge into `dev` deploys the `assistant-staging` service (its own bot and
 Firestore database); merging `dev` into `main` deploys `assistant` to
 production.
@@ -181,6 +200,8 @@ Local runs read the same variables from a git-ignored `.env`.
 | `KMS_KEY` | Cloud KMS key that encrypts iCal URLs and Google refresh tokens (empty = both refused) |
 | `GOOGLE_OAUTH_CLIENT_ID` | Secret `assistant-google-oauth-client-id` (empty = Google sign-in refused) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Secret `assistant-google-oauth-client-secret` |
+| `GEMINI_API_KEY` | Secret `assistant-gemini-key` (empty = photos refused) |
+| `GEMINI_MODEL` | Gemini model that reads photos (default `gemini-3.5-flash-lite`) |
 | `BACKUP_BUCKET` | Daily ledger CSV and weekly JSON backup |
 | `LLM_MODEL` / `LLM_BASE_URL` | Default `deepseek-flash` / `https://api.deepseek.com` |
 | `MAX_MSGS_PER_MINUTE` | Per-chat rate limit (default 10) |

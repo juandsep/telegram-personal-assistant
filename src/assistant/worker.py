@@ -18,6 +18,7 @@ import json
 import logging
 import time
 from datetime import datetime
+from decimal import Decimal
 from functools import cache
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -67,6 +68,9 @@ WORDS = {
     "fun": "/fun",
     "moneda": "/moneda",
     "currency": "/moneda",
+    "cuentas": "/cuentas",
+    "splits": "/cuentas",
+    "me deben": "/cuentas",
     "reset": "/reset",
     "reiniciar": "/reset",
     "borrar todo": "/reset",
@@ -77,6 +81,7 @@ RESET_SCAN = 1000
 # Display currencies: /moneda and the onboarding buttons.
 CURRENCIES = {"USD": "🇺🇸 USD", "EUR": "🇪🇺 EUR", "COP": "🇨🇴 COP", "CNY": "🇨🇳 CNY"}
 CURRENCY_BUTTONS = [[(label, f"mo:{cur}") for cur, label in CURRENCIES.items()]]
+PEOPLE_CHOICES = range(2, 7)
 
 
 @router.post("/push")
@@ -195,6 +200,12 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if msg.animation_file_id:
         _send(channel, msg, _gif_command(ctx, msg, msg.caption, msg.animation_file_id))
         return ACK
+    if msg.photo_file_id:
+        if not state.check_rate(msg.chat_id, settings.max_msgs_per_minute):
+            _send(channel, msg, t(ctx.lang, "limit"))
+        else:
+            _send(channel, msg, *_photo(ctx, msg, channel, settings))
+        return ACK
     if not msg.text.strip():
         _send(channel, msg, t(ctx.lang, "text_only"))
         return ACK
@@ -219,6 +230,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     if msg.text.startswith("/tablero"):
         _dashboard(ctx, channel, msg, settings)
+        return ACK
+    if msg.text.startswith("/cuentas"):
+        _send(channel, msg, *_splits(ctx, msg))
         return ACK
     if msg.text.startswith("/resumen"):
         _send(channel, msg, _summary(ctx, msg))
@@ -400,6 +414,130 @@ def _send_record(
     if kind and ctx.fun and _gif(channel, msg, kind):
         return
     _send(channel, msg, reply)
+
+
+Keyboard = list[list[tuple[str, str]]] | None
+
+
+def _photo(
+    ctx: ToolContext, msg: InboundMessage, channel: Telegram, settings: WorkerSettings
+) -> tuple[str, Keyboard]:
+    """A meal (kcal, saved) or a receipt (split, saved when the people count is
+    known, else asked with buttons). The photo is not kept."""
+    photos = importlib.import_module("assistant.services.photos")
+    try:
+        image = channel.download(str(msg.photo_file_id))
+        data = photos.analyze(
+            image, msg.caption, ctx, settings.gemini_api_key, settings.gemini_model
+        )
+        logger.info("photo update_id=%s kind=%s", msg.update_id, data.get("kind"))
+        if data.get("kind") == "meal":
+            meal_id = photos.add_meal(ctx, data)
+            reply = t(
+                ctx.lang,
+                "meal",
+                name=data.get("name") or "?",
+                kcal=int(data.get("kcal") or 0),
+                protein=int(data.get("protein_g") or 0),
+                carbs=int(data.get("carbs_g") or 0),
+                fat=int(data.get("fat_g") or 0),
+                today=photos.kcal_today(ctx),
+            )
+            return reply, [[(t(ctx.lang, "meal_remove"), f"ml:{meal_id}")]]
+        if data.get("kind") == "receipt" and Decimal(str(data.get("total") or 0)) > 0:
+            receipt: dict[str, Any] = {
+                "title": str(data.get("name") or "🧾"),
+                "total": str(data["total"]),
+                "currency": str(data.get("currency") or ctx.currency).upper()[:3],
+                "items": [
+                    {
+                        "name": str(i.get("name", "")),
+                        "price": str(i.get("price", 0)),
+                        "person": str(i.get("person") or ""),
+                    }
+                    for i in data.get("items") or []
+                ],
+            }
+            named = any(i["person"] for i in receipt["items"])
+            if int(data.get("people") or 0) >= 2 or named:
+                return _split(ctx, receipt, int(data.get("people") or 0))
+            token = state.create_pending(ctx.chat_id, {"split": receipt})
+            total = _money(Decimal(receipt["total"]))
+            question = t(
+                ctx.lang,
+                "split_people",
+                title=receipt["title"],
+                total=total,
+                currency=receipt["currency"],
+            )
+            return question, [[(str(n), f"pp:{token}:{n}") for n in PEOPLE_CHOICES]]
+        return t(ctx.lang, "photo_other"), None
+    except (photos.PhotoUnavailable, httpx.HTTPError) as exc:
+        logger.warning(
+            "photo_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "photo_unavailable"), None
+    except Exception as exc:
+        logger.error(
+            "photo_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "failed"), None
+
+
+def _money(value: Decimal) -> str:
+    return str(importlib.import_module("assistant.services.ledger")._figure(value))
+
+
+def _split(ctx: ToolContext, receipt: dict, people: int) -> tuple[str, Keyboard]:
+    """Split a read receipt, save it and list the shares with ✅ buttons."""
+    photos = importlib.import_module("assistant.services.photos")
+    total = Decimal(receipt["total"])
+    debtors = photos.split(total, people, receipt["items"])
+    split_id = photos.save_split(
+        ctx, receipt["title"], total, receipt["currency"], debtors
+    )
+    shares = "\n".join(f"{name}: {_money(amount)}" for name, amount in debtors)
+    reply = t(
+        ctx.lang,
+        "split",
+        title=receipt["title"],
+        total=_money(total),
+        currency=receipt["currency"],
+        people=len(debtors) + 1,
+        shares=shares,
+    )
+    buttons = [
+        (f"✅ {name}", f"sp:{split_id}:{i}") for i, (name, _) in enumerate(debtors)
+    ]
+    return reply, [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
+
+
+def _splits(ctx: ToolContext, msg: InboundMessage) -> tuple[str, Keyboard]:
+    """/cuentas: who still owes the owner, with a ✅ per unpaid share."""
+    try:
+        rows = importlib.import_module("assistant.services.photos").open_splits(
+            ctx.chat_id
+        )
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "failed"), None
+    if not rows:
+        return t(ctx.lang, "split_none"), None
+    lines, buttons = [t(ctx.lang, "split_pending")], []
+    for split_id, d in rows:
+        unpaid = [(i, x) for i, x in enumerate(d["deudores"]) if not x["pagado"]]
+        owed = ", ".join(
+            f"{x['nombre']} {_money(Decimal(x['monto']))}" for _, x in unpaid
+        )
+        day = f"{d['fecha'][8:]}/{d['fecha'][5:7]}"
+        lines.append(f"🧾 {d['titulo']} ({day}): {owed} {d['moneda']}")
+        buttons += [
+            [(f"✅ {x['nombre']} · {d['titulo']}", f"sp:{split_id}:{i}")]
+            for i, x in unpaid
+        ]
+    return "\n".join(lines), buttons[:20]
 
 
 def _summary(ctx: ToolContext, msg: InboundMessage) -> str:
@@ -648,6 +786,37 @@ def _send(
         logger.warning("send_failed update_id=%s", msg.update_id)
 
 
+def _photo_button(
+    ctx: ToolContext, msg: InboundMessage, action: str, token: str
+) -> tuple[str, Keyboard]:
+    """ml:<meal> removes a meal; sp:<split>:<i> marks a share paid; pp:<token>:<n>
+    splits a pending receipt between n people."""
+    photos = importlib.import_module("assistant.services.photos")
+    key, _, arg = token.partition(":")
+    try:
+        if action == "ml":
+            photos.delete_meal(ctx.chat_id, key)
+            return t(ctx.lang, "meal_removed"), None
+        if action == "pp":
+            pending = state.pop_pending(ctx.chat_id, key)
+            if not pending or not arg.isdecimal():
+                return t(ctx.lang, "cancelled"), None
+            return _split(ctx, pending["split"], int(arg))
+        split = photos.mark_paid(ctx.chat_id, key, int(arg) if arg.isdecimal() else -1)
+        if split is None:
+            return t(ctx.lang, "cancelled"), None
+        if not split["abierta"]:
+            return t(ctx.lang, "split_settled", title=split["titulo"]), None
+        return _splits(ctx, msg)
+    except Exception as exc:
+        logger.error(
+            "photo_button_failed update_id=%s error=%s",
+            msg.update_id,
+            type(exc).__name__,
+        )
+        return t(ctx.lang, "failed"), None
+
+
 def _callback(
     ctx: ToolContext, msg: InboundMessage, query_id: str, channel: Telegram
 ) -> int:
@@ -688,6 +857,8 @@ def _callback(
         _send(channel, msg, t(ctx.lang, "cancelled"))
     elif action == "mo" and token in CURRENCIES:  # /moneda and onboarding buttons
         _send(channel, msg, _set_currency(ctx, msg, token))
+    elif action in ("ml", "sp", "pp"):  # photo buttons
+        _send(channel, msg, *_photo_button(ctx, msg, action, token))
     elif action == "cal":  # /calendario buttons
         _send(channel, msg, *_calendar(ctx, msg, token))
     elif action == "rs":  # /reset buttons

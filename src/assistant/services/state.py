@@ -23,6 +23,8 @@ Collections (Firestore native):
   ``state`` of a Google sign-in started from Telegram.
 - ``ics_tokens/{token}``: chat_id of a private ICS feed; ``users.ics_token``
   points back so the link can be shown again or rotated. Never log tokens.
+- ``comidas/{chat_id}/registros`` and ``cuentas/{chat_id}/divisiones``: meals
+  and split checks read from photos (see ``assistant.services.photos``).
 - ``gif_catalog/{tipo}`` (gasto|ingreso): one shared, owner-curated map
   ``{key: [file_id, ...]}`` (max 20 each, newest last). ``key`` is a gasto
   categoria, an ingreso fuente or ``general`` (the fallback). A random one is
@@ -422,14 +424,16 @@ def revoke(chat_id: str) -> bool:
 
 def reset_user(chat_id: str) -> None:
     """Erase everything stored for the chat except its access (nombre, rol):
-    ledger, agenda, LLM history, preferences, settings and the feed link. The
-    rate and spend counters stay, so a reset never lifts the daily LLM cap."""
+    ledger, agenda, meals, split checks, LLM history, preferences, settings and
+    the feed link. The rate and spend counters stay, so a reset never lifts the
+    daily LLM cap."""
     db = _db()
     user = _doc("users", chat_id)
     data = _data(user.get()) or {}
     if token := data.get("ics_token"):
         _doc("ics_tokens", token).delete()
-    for name in ("ledger", "agenda"):  # the doc plus movimientos / eventos
+    # the doc plus movimientos / eventos / registros / divisiones
+    for name in ("ledger", "agenda", "comidas", "cuentas"):
         db.recursive_delete(db.collection(name).document(chat_id))
     for name in ("history", "preferences"):
         _doc(name, chat_id).delete()

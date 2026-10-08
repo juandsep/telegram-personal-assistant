@@ -45,6 +45,7 @@ def parse_update(update: object) -> InboundMessage | None:
             caption=str(msg.get("caption", "")),
             reply_animation_file_id=replied.get("file_id"),
             language_code=(msg.get("from") or {}).get("language_code"),
+            photo_file_id=(msg.get("photo") or [{}])[-1].get("file_id"),
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
@@ -97,6 +98,13 @@ class Telegram(Channel):
     def delete_messages(self, chat_id: str, message_ids: list[int]) -> None:
         """Up to 100 ids; Telegram skips the ones it cannot find."""
         self._post("deleteMessages", chat_id=chat_id, message_ids=message_ids)
+
+    def download(self, file_id: str) -> bytes:
+        """A file the user sent. Its URL carries the bot token: never log it."""
+        path = self._post("getFile", file_id=file_id)["result"]["file_path"]
+        resp = self._client.get(f"{API_BASE}/file/bot{self._token}/{path}")
+        resp.raise_for_status()
+        return resp.content
 
     def send_animation(self, chat_id: str, file_id: str) -> None:
         self._post("sendAnimation", chat_id=chat_id, animation=file_id)

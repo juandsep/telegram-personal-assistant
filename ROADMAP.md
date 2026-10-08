@@ -343,6 +343,9 @@ Pending, to review later:
 - **Savings goals:** "save 500 by December", with progress in the weekly
   summary.
 - **Recurring expenses:** detect monthly charges and warn before they repeat.
+- **Response latency:** some replies feel slow. Measure where a turn spends
+  its time (Pub/Sub hop, cold start, LLM call, Firestore reads, Telegram send)
+  from the `llm_turn` logs and Grafana, then optimize the slowest step.
 
 Ruled out: voice notes, and receipt photos as a way to log expenses.
 

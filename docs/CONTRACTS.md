@@ -96,7 +96,8 @@ def conflicts(ctx, start: datetime, end: datetime) -> list[str]  # "Dentista 09:
 def free_slot_list(ctx, day: date) -> list[str]      # free slots 08:00–20:00, "11:00–19:00"
 def week_text(ctx) -> str                            # /calendario, no LLM
 def enqueue_reminders(ctx) -> None                   # digest: reminders now within 30 days
-def reminder_text(chat_id: str, event_id: str) -> str | None   # "⏰ <titulo> <HH:MM>"; None if gone
+def reminder_text(chat_id: str, event_id: str, version: int = 0) -> str | None   # "⏰ <titulo> <HH:MM>"; None if gone or moved
+def sync_gcal(ctx) -> None                           # tick, hourly: Google moves/renames/deletes of our items win
 def ics(chat_id: str, now: datetime) -> str          # VCALENDAR, -30 d to +365 d
 # busy (separate branch): external ICS busy blocks. Loaded with importlib; when
 # missing or raising, the agenda ignores it (logs the error class only).
@@ -112,12 +113,17 @@ def connect(ctx, url: str) -> str                    # a lone secret iCal link
 # 404/410 count as done. Mirror calls never raise (log codes only); agenda calls
 # them after the Firestore write via importlib. busy_blocks reads events.list and
 # skips our own "bj…" ids, so an event never conflicts with its mirror.
+# changes reads events.list with updatedMin and showDeleted (all pages) and
+# returns only our "bj…" ids; agenda.sync_gcal applies them every hour over a
+# 3 h window: a moved item bumps ``version`` (new reminder task name), a deleted
+# one is cancelled without a mirror call.
 def auth_url(s: WorkerSettings, state_token: str) -> str  # Google consent page
 def connect(chat_id: str, code: str, s: WorkerSettings) -> None  # code -> refresh token
 def disconnect(chat_id: str) -> None                 # cal:off; revokes, clears all
 def mirror_create(ctx, event_id: str, event: dict) -> None
 def mirror_cancel(ctx, event_id: str) -> None
 def busy_blocks(chat_id: str, since: datetime, until: datetime) -> list[tuple[datetime, datetime, str]]
+def changes(chat_id: str, since: datetime, zone: ZoneInfo) -> list[tuple[str, bool, datetime, datetime, str]]
 ```
 
 Conflicts: `llm/tools.py` calls `agenda.conflicts` before `create_event` and

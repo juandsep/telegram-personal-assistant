@@ -375,3 +375,54 @@ def test_backfill_mirrors_only_active_items(
     monkeypatch.setattr(gcal, "mirror_create", lambda c, i, e: mirrored.append(i))
     assert gcal._backfill(ctx()) == 1
     assert mirrored == ["1"]
+
+
+# --- changes made in Google ------------------------------------------------------
+
+
+@respx.mock
+def test_changes_pages_and_keeps_only_our_mirrors(prefs: dict) -> None:
+    mine, other = gcal.event_gid("42", "100"), gcal.event_gid("42", "101")
+    moved = {
+        "id": mine,
+        "summary": "Dentista",
+        "start": {"dateTime": "2026-09-30T11:00:00-05:00"},
+        "end": {"date": "2026-10-01"},
+    }
+    route = respx.get(EVENTS).mock(
+        side_effect=[
+            httpx.Response(200, json={"items": [moved], "nextPageToken": "p2"}),
+            httpx.Response(
+                200,
+                json={"items": [{"id": other, "status": "cancelled"}, {"id": "abc"}]},
+            ),
+        ]
+    )
+    assert gcal.changes("42", SINCE, PANAMA) == [
+        (
+            mine,
+            False,
+            datetime(2026, 9, 30, 16, tzinfo=UTC),
+            datetime(2026, 10, 1, 5, tzinfo=UTC),
+            "Dentista",
+        ),
+        (other, True, SINCE, SINCE, ""),
+    ]
+    first, second = (c.request.url.params for c in route.calls)
+    assert first["updatedMin"] == "2026-09-30T00:00:00+00:00"
+    assert first["showDeleted"] == "true" and "pageToken" not in first
+    assert second["pageToken"] == "p2"
+
+
+@pytest.mark.parametrize("response", [httpx.Response(410), httpx.ConnectTimeout("t")])
+def test_changes_failure_or_unlinked_is_empty(
+    prefs: dict, caplog: pytest.LogCaptureFixture, response: object
+) -> None:
+    with respx.mock:
+        if isinstance(response, Exception):
+            respx.get(EVENTS).mock(side_effect=response)
+        else:
+            respx.get(EVENTS).mock(return_value=response)
+        assert gcal.changes("42", SINCE, PANAMA) == []
+        assert gcal.changes("7", SINCE, PANAMA) == []
+    assert "gcal_changes_failed" in caplog.text and "secreto" not in caplog.text

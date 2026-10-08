@@ -37,7 +37,7 @@ COMMANDS = (
 def bot_profile(telegram: Telegram, photo: bool) -> None:
     for lang in LANGS:
         telegram.set_profile(
-            "" if lang == "es" else lang,  # Spanish for every other language
+            "" if lang == "en" else lang,  # English for every other language
             commands=[
                 {"command": c, "description": t(lang, f"cmd_{c}")} for c in COMMANDS
             ],

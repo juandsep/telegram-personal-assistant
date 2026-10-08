@@ -42,8 +42,8 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
    create the Pub/Sub push subscriptions.
 
 4. Set the bot's profile: the command menu, the description shown in an empty
-   chat and the about text, in Spanish (default for any other language),
-   English and Chinese, plus Juani's photo
+   chat and the about text, in English (default for any other language),
+   Spanish, Chinese, French and German, plus Juani's photo
    ([`docs/assets/juani-avatar.jpg`](assets/juani-avatar.jpg), the square crop
    of [`juani.png`](assets/juani.png)). Run it again after changing the texts
    in `src/assistant/i18n.py` or the avatar:

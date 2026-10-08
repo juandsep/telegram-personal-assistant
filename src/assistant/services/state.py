@@ -9,7 +9,7 @@ Collections (Firestore native):
 - ``users/{chat_id}``: nombre, rol (owner|beta), moneda (display currency:
   USD|EUR|COP|CNY, /moneda; the ledger stays in USD), zona_horaria (unset until
   /moneda guesses it, the Mini App sends the phone's or /zona sets it; readers
-  fall back to the default zone), idioma (es|en|zh, from the Telegram app), fun
+  fall back to the default zone), idioma (es|en|zh|fr|de, from the Telegram app), fun
   (GIF replies, /fun), last_batch.
 - ``processed/{update_id}``: dedup marker; ``expire_at`` drives a 7-day TTL.
 - ``invites/{code}``: nombre, used, ``expire_at`` (24 h, single use).

@@ -77,6 +77,25 @@ metrics, the alert policies (mailed to `alert_email` in `terraform.tfvars`) and
 the read-only `assistant-grafana` account. To explore the metrics, run the local
 Grafana described in [monitoring/README.md](../monitoring/README.md).
 
+### Weekly cost email
+
+Grafana sees usage, not the GCP invoice, and the budget only mails when spend
+crosses 50/90/100 %. A weekly cost summary comes from the billing export plus a
+scheduled Looker Studio report, set up once by hand (Terraform cannot create a
+billing export):
+
+1. **Billing → Billing export → BigQuery export → Detailed usage cost**: pick
+   project `jd-botjonh` and a new dataset `billing_export` (US). Data lands
+   with about a day of delay; queries stay inside the BigQuery free tier.
+2. In [Looker Studio](https://lookerstudio.google.com), create a report with
+   the BigQuery connector on the export table
+   (`billing_export.gcp_billing_export_resource_v1_*`): a time series of
+   `cost` by day and a table of `cost` by `service.description`, filtered to
+   the last 7 days.
+3. In the report: **Share → Schedule delivery** → recipient your address,
+   repeat **Weekly**, Monday morning. Each email links the report and attaches
+   a PDF with cost by service and SKU.
+
 ### Google Calendar sign-in
 
 `calendario` → Conectar → Google uses an OAuth web client, created by hand in

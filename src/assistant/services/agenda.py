@@ -7,6 +7,8 @@ Spanish; the code maps them at this boundary:
 - ``inicio_utc``/``fin_utc``: start/end as timestamps for range queries;
 - ``ubicacion``: location; ``recordatorio_min``: reminder minutes before;
 - ``tipo``: kind (evento|recordatorio); ``estado``: status (activo|cancelado);
+- ``version``: times the item was moved from Google (absent = 0), part of the
+  reminder task name;
 - ``creado``: server timestamp.
 
 ``event_id`` is the update_id (``{update_id}-{n}`` for another item of the same
@@ -15,7 +17,8 @@ the same. Cancelling sets ``estado`` and never deletes. A reminder is a Cloud
 Task with a deterministic name that POSTs to the worker at the exact time.
 Doc paths and task names derive from chat_ids: never log them. When the user
 linked a Google Calendar (``services/gcal.py``) each create/cancel is mirrored
-there too, best effort.
+there too, best effort, and the hourly tick brings back moves, renames and
+deletes made in Google to those mirrored items (``sync_gcal``).
 """
 
 from __future__ import annotations
@@ -46,6 +49,10 @@ TASKS_MAX = timedelta(days=30)  # Cloud Tasks schedules at most 30 days ahead
 # ponytail: range queries look back one day, so an item longer than a day that
 # started earlier is missed; add an end-time query if multi-day events appear.
 LOOKBACK = timedelta(days=1)
+# ponytail: the tick reads Google changes of the last 3 h each hour; applying
+# one twice is a no-op. A tick gap longer than that loses the changes in it.
+SYNC_WINDOW = timedelta(hours=3)
+SYNC_HORIZON = timedelta(days=366)
 WORKDAY = (time(8), time(20))
 _ID = re.compile(r"\d{1,20}(-\d{1,2})?")
 
@@ -116,8 +123,10 @@ def _queue(s: WorkerSettings) -> str:
     )
 
 
-def task_name(s: WorkerSettings, chat_id: str, event_id: str) -> str:
-    digest = hashlib.sha256(f"{chat_id}:{event_id}".encode()).hexdigest()[:32]
+def task_name(s: WorkerSettings, chat_id: str, event_id: str, version: int = 0) -> str:
+    """A moved item gets a new name: Cloud Tasks refuses a deleted one for days."""
+    key = f"{chat_id}:{event_id}" + (f":{version}" if version else "")
+    digest = hashlib.sha256(key.encode()).hexdigest()[:32]
     return f"{_queue(s)}/tasks/r-{digest}"
 
 
@@ -132,9 +141,12 @@ def _schedule(chat_id: str, event_id: str, d: dict, now: datetime) -> None:
     if not (s.worker_url and s.worker_sa):
         log.info("reminder_skipped reason=no_worker_url")
         return
-    body = {"chat_id": chat_id, "evento_id": event_id}
+    version = d.get("version", 0)
+    body: dict[str, Any] = {"chat_id": chat_id, "evento_id": event_id}
+    if version:
+        body["version"] = version
     task = tasks_v2.Task(
-        name=task_name(s, chat_id, event_id),
+        name=task_name(s, chat_id, event_id, version),
         schedule_time=when,
         http_request={
             "http_method": tasks_v2.HttpMethod.POST,
@@ -159,12 +171,12 @@ def _schedule(chat_id: str, event_id: str, d: dict, now: datetime) -> None:
     log.info("reminder_enqueued")
 
 
-def _delete_task(chat_id: str, event_id: str) -> None:
+def _delete_task(chat_id: str, event_id: str, version: int = 0) -> None:
     s = get_worker_settings()
     if not (s.worker_url and s.worker_sa):
         return
     try:
-        _tasks().delete_task(name=task_name(s, chat_id, event_id))
+        _tasks().delete_task(name=task_name(s, chat_id, event_id, version))
     except NotFound:
         pass  # never enqueued, or already ran
     except Exception as e:  # the worker skips cancelled items anyway
@@ -179,13 +191,14 @@ def enqueue_reminders(ctx: ToolContext) -> None:
         _schedule(ctx.chat_id, d["id"], d, ctx.now)
 
 
-def reminder_text(chat_id: str, event_id: str) -> str | None:
-    """The reminder text for an active item; None if cancelled or missing."""
+def reminder_text(chat_id: str, event_id: str, version: int = 0) -> str | None:
+    """The reminder text for an active item; None if cancelled, missing or
+    moved since the task was enqueued (a stale ``version``)."""
     if not _ID.fullmatch(event_id):
         return None
     snap = _col(chat_id).document(event_id).get()
     d = snap.to_dict() if snap.exists else None
-    if not d or d["estado"] != "activo":
+    if not d or d["estado"] != "activo" or d.get("version", 0) != version:
         return None
     return f"🛎️ {d['titulo']} {datetime.fromisoformat(d['inicio']):%H:%M}"
 
@@ -258,10 +271,53 @@ def cancel_event(ctx: ToolContext, event_id: str) -> str:
     if not snap.exists or (snap.to_dict() or {}).get("estado") != "activo":
         return t(ctx.lang, "event_not_found")
     ref.update({"estado": "cancelado"})
-    _delete_task(ctx.chat_id, event_id)
+    _delete_task(ctx.chat_id, event_id, (snap.to_dict() or {}).get("version", 0))
     _mirror("mirror_cancel", ctx, event_id)
     log.info("agenda_cancel")
     return t(ctx.lang, "event_cancelled")
+
+
+def sync_gcal(ctx: ToolContext) -> None:
+    """Hourly: upcoming items moved, renamed or deleted in the linked Google
+    Calendar follow there. Google wins for those fields; never raises."""
+    try:
+        gcal = importlib.import_module("assistant.services.gcal")
+        upcoming = {
+            gcal.event_gid(ctx.chat_id, d["id"]): d
+            for d in _items(ctx.chat_id, ctx.now, ctx.now + SYNC_HORIZON)
+        }
+        if not upcoming:
+            return
+        zone = ZoneInfo(ctx.timezone)
+        since = ctx.now - SYNC_WINDOW
+        for gid, deleted, start, end, title in gcal.changes(ctx.chat_id, since, zone):
+            d = upcoming.get(gid)
+            if d is None:
+                continue
+            ref, version = _col(ctx.chat_id).document(d["id"]), d.get("version", 0)
+            if deleted:
+                ref.update({"estado": "cancelado"})
+                _delete_task(ctx.chat_id, d["id"], version)
+                log.info("gcal_sync_cancel")
+                continue
+            if (start, end) != (d["inicio_utc"], d["fin_utc"]):
+                _delete_task(ctx.chat_id, d["id"], version)
+                moved = {
+                    "inicio": start.astimezone(zone).isoformat(),
+                    "fin": end.astimezone(zone).isoformat(),
+                    "inicio_utc": start,
+                    "fin_utc": end,
+                    "version": version + 1,
+                    "titulo": title or d["titulo"],
+                }
+                ref.update(moved)
+                _schedule(ctx.chat_id, d["id"], {**d, **moved}, ctx.now)
+                log.info("gcal_sync_move")
+            elif title and title != d["titulo"]:
+                ref.update({"titulo": title})
+                log.info("gcal_sync_rename")
+    except Exception as e:  # one chat's calendar never breaks the tick
+        log.error("gcal_sync_failed error=%s", type(e).__name__)
 
 
 def agenda_range(ctx: ToolContext, period: str) -> tuple[datetime, datetime]:

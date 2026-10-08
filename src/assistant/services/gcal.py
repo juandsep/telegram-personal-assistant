@@ -11,6 +11,10 @@ Firestore stays the source of truth; every mirror call is best effort and never
 raises into the turn. Google event ids derive from ``chat_id:event_id`` so a
 retry is idempotent (409 on insert and 404/410 on delete count as done).
 
+Back from Google: the hourly tick reads the recently changed events
+(``changes``) so a mirrored item moved, renamed or deleted in Google follows in
+Firestore (``agenda.sync_gcal``).
+
 Busy times come from ``events.list`` (freeBusy needs a broader scope), skipping
 our own mirrored events. Tokens, calendar ids, titles and chat_ids are secrets
 or PII: log status codes and error classes only.
@@ -303,4 +307,43 @@ def busy_blocks(
         )
     except Exception as exc:  # never raise into the conversation
         log.error("gcal_busy_failed code=%s", type(exc).__name__)
+    return []
+
+
+def changes(
+    chat_id: str, since: datetime, zone: ZoneInfo
+) -> list[tuple[str, bool, datetime, datetime, str]]:
+    """Our mirrored events changed in Google after ``since``, as (google id,
+    deleted, start UTC, end UTC, title); [] when unlinked or on failure."""
+    try:
+        linked = _linked(chat_id)
+        if not linked:
+            return []
+        cal, token = linked
+        params: dict[str, Any] = {
+            "updatedMin": since.astimezone(UTC).isoformat(),
+            "showDeleted": "true",
+            "maxResults": 2500,
+            "fields": "items(id,status,summary,start,end),nextPageToken",
+        }
+        out = []
+        while True:
+            resp = _call("GET", _events(cal), token, params=params)
+            if resp.status_code != 200:
+                log.error("gcal_changes_failed code=%s", resp.status_code)
+                return []
+            body = resp.json()
+            for ev in body.get("items", []):
+                if not _OURS.fullmatch(ev.get("id", "")):
+                    continue
+                if ev.get("status") == "cancelled":  # deleted: no start/end left
+                    out.append((ev["id"], True, since, since, ""))
+                else:
+                    start, end = _as_dt(ev["start"], zone), _as_dt(ev["end"], zone)
+                    out.append((ev["id"], False, start, end, ev.get("summary", "")))
+            if not body.get("nextPageToken"):
+                return out
+            params["pageToken"] = body["nextPageToken"]
+    except Exception as exc:  # never raise into the tick
+        log.error("gcal_changes_failed code=%s", type(exc).__name__)
     return []

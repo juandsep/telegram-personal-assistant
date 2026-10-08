@@ -175,8 +175,10 @@ replaces the other; **✂️ Desconectar** or `/calendario off` removes it):
 - **Google:** a button opens Google's sign-in (valid 10 minutes); allow access
   to your calendar's events. The bot says when it is done and copies your
   upcoming items. From then on every create and cancel is mirrored to your main
-  Google Calendar within seconds, and conflicts read it directly. Firestore
-  stays the source of truth; the mirror is best effort. Google shows an
+  Google Calendar within seconds, and conflicts read it directly. It works
+  both ways: move, rename or delete one of those items in Google and the bot
+  follows within the hour (the reminder moves with it). Events you create in
+  Google itself show as busy time. The mirror is best effort. Google shows an
   "unverified app" notice: Advanced → Go to Juani.
 - **iPhone / Outlook:** **🗓️ Suscribirme** opens your calendar app on your
   private feed (`$API_URL/ics/<token>.ics`, as `webcal://`). Anyone with that

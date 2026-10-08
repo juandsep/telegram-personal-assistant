@@ -27,7 +27,7 @@ plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
   conflict checks, a Google Calendar mirror and a private ICS feed.
 - **Reads photos.** A meal gives estimated calories and macros; a receipt is
   split between people, and `cuentas` shows who still owes you.
-- **Speaks your language.** Spanish, English or Chinese, following your phone.
+- **Speaks your language.** Spanish, English, Chinese, French or German, following your phone (English for any other language).
 - **Has fun if you want.** `/fun` turns on reaction GIFs.
 
 The full guide, with every command and example, is in the documentation below.

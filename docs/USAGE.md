@@ -5,11 +5,13 @@ Everything a user can do with Juani, in detail. Back to the
 
 ## Languages
 
-Juani speaks Spanish, English and Chinese. The language comes from the
+Juani speaks Spanish, English, Chinese, French and German. The language comes from the
 `language_code` of the user's Telegram app (it follows the phone unless changed
 in Telegram) and is saved as `users.idioma` whenever it changes, so the
-scheduled messages use it too. Anything other than English or Chinese falls back
-to Spanish.
+scheduled messages use it too. Any other language falls back to English.
+French and German get every reply, report and the dashboard; the quick
+category keywords stay in Spanish, English and Chinese, so a French or German
+entry without one goes to the LLM, which picks the category.
 
 `src/assistant/i18n.py` holds every reply, the reports, the dashboard and the
 category names (stored keys stay Spanish, so no data changes with the

@@ -24,7 +24,7 @@
       "id": "assistant",
       "type": "backend",
       "label": "assistant",
-      "sublabel": "Cloud Run · public",
+      "sublabel": "Cloud Run \u00b7 public",
       "pos": [
         210,
         200
@@ -134,7 +134,7 @@
       "id": "gcs",
       "type": "database",
       "label": "GCS",
-      "sublabel": "CSV",
+      "sublabel": "CSV \u00b7 media",
       "pos": [
         890,
         400
@@ -161,13 +161,41 @@
       "id": "monitoring",
       "type": "cloud",
       "label": "Cloud Monitoring",
-      "sublabel": "metrics · alerts · Grafana",
+      "sublabel": "metrics \u00b7 alerts \u00b7 Grafana",
       "pos": [
         650,
         570
       ],
       "size": [
         200,
+        64
+      ]
+    },
+    {
+      "id": "gemini",
+      "type": "external",
+      "label": "Gemini",
+      "sublabel": "photos",
+      "pos": [
+        20,
+        40
+      ],
+      "size": [
+        120,
+        64
+      ]
+    },
+    {
+      "id": "gcal",
+      "type": "external",
+      "label": "Google Calendar",
+      "sublabel": "OAuth",
+      "pos": [
+        20,
+        400
+      ],
+      "size": [
+        150,
         64
       ]
     }
@@ -243,7 +271,8 @@
       "from": "assistant",
       "to": "kms",
       "label": "decrypt",
-      "variant": "security"
+      "variant": "security",
+      "labelDx": 40
     },
     {
       "id": "cron",
@@ -274,6 +303,22 @@
       "to": "monitoring",
       "label": "logs + metrics",
       "labelDy": 63
+    },
+    {
+      "id": "photos",
+      "from": "assistant",
+      "to": "gemini",
+      "label": "read photo",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "right"
+    },
+    {
+      "id": "calendar",
+      "from": "assistant",
+      "to": "gcal",
+      "label": "mirror + sync",
+      "variant": "dashed"
     }
   ]
 }

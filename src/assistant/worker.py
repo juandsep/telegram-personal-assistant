@@ -39,15 +39,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_google_oidc)])
 
 ACK = 204
-GIF_USAGE = (
-    "Envía un GIF con el texto gasto, gasto restaurantes, ingreso o ingreso "
-    "salario (sin clave va a general), o responde a uno con /gif gasto "
-    "restaurantes. /gif borrar respondiendo a un GIF lo quita."
-)
-GIF_OWNER_ONLY = "Solo el owner cura los GIFs."
 OWNER_COMMANDS = ("/invitar", "/usuarios")
 INVITE_USAGE = "Uso: /invitar <nombre>. Crea un enlace de un uso, válido 24 h."
-LEDGER_COMMANDS = ("/ultimos", "/anular", "/gif")
+LEDGER_COMMANDS = ("/ultimos", "/anular")
 RECORD_TOOLS = {"record_expense": "gasto", "record_income": "ingreso"}
 GUIDE_URL = "https://juandsep.github.io/telegram-personal-assistant/guia/"
 # A whole message of just these words (any case or accents) runs the command.
@@ -82,6 +76,8 @@ RESET_SCAN = 1000
 CURRENCIES = {"USD": "🇺🇸 USD", "EUR": "🇪🇺 EUR", "COP": "🇨🇴 COP", "CNY": "🇨🇳 CNY"}
 CURRENCY_BUTTONS = [[(label, f"mo:{cur}") for cur, label in CURRENCIES.items()]]
 PEOPLE_CHOICES = range(2, 7)
+# Gemini's verdict on a meal photo -> the comida/<key> reaction tag.
+MEAL_REACTION = {"healthy": "sana", "meh": "meh", "unhealthy": "chatarra"}
 
 
 @router.post("/push")
@@ -198,14 +194,12 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
             _clear_dashboard(channel, msg)  # the Visor only on /tablero
             _send(channel, msg, t(ctx.lang, "currency_question"), CURRENCY_BUTTONS)
         return ACK
-    if msg.animation_file_id:
-        _send(channel, msg, _gif_command(ctx, msg, msg.caption, msg.animation_file_id))
-        return ACK
     if msg.photo_file_id:
         if not state.check_rate(msg.chat_id, settings.max_msgs_per_minute):
             _send(channel, msg, t(ctx.lang, "limit"))
         else:
-            _send(channel, msg, *_photo(ctx, msg, channel, settings))
+            if out := _photo(ctx, msg, channel, settings):
+                _send(channel, msg, *out)
         return ACK
     if not msg.text.strip():
         _send(channel, msg, t(ctx.lang, "text_only"))
@@ -222,6 +216,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     if msg.text.startswith("/calendario"):
         _send(channel, msg, *_calendar(ctx, msg, msg.text.partition(" ")[2]))
+        return ACK
+    if msg.text.startswith("/catalogo"):
+        _catalog(ctx, channel, msg, settings)
         return ACK
     if msg.text.startswith(OWNER_COMMANDS):
         _send(channel, msg, *_owner_command(ctx, msg, settings))
@@ -277,7 +274,7 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     recorded = bool(records) and not result.keyboard
     _send(channel, msg, result.reply, result.keyboard)
     if recorded and ctx.fun:
-        _gif(channel, msg, records[-1])
+        _react(channel, msg, records[-1])
     state.add_llm_spend(msg.chat_id, result.cost_usd)
     state.append_history(msg.chat_id, result.messages)
     from assistant.observability import trace
@@ -410,9 +407,9 @@ def _send_record(
     ctx: ToolContext, channel: Telegram, msg: InboundMessage, reply: str
 ) -> None:
     """A registration answers with the entry as stored; with /fun on, with the
-    reaction GIF only (the text is the fallback when no GIF is stored)."""
+    reaction image only (the text is the fallback when the catalog has none)."""
     kind = {"−": "gasto", "+": "ingreso"}.get(reply[:1])
-    if kind and ctx.fun and _gif(channel, msg, kind):
+    if kind and ctx.fun and _react(channel, msg, kind):
         return
     _send(channel, msg, reply)
 
@@ -422,9 +419,10 @@ Keyboard = list[list[tuple[str, str]]] | None
 
 def _photo(
     ctx: ToolContext, msg: InboundMessage, channel: Telegram, settings: WorkerSettings
-) -> tuple[str, Keyboard]:
-    """A meal (kcal, saved) or a receipt (split, saved when the people count is
-    known, else asked with buttons). The photo is not kept."""
+) -> tuple[str, Keyboard] | None:
+    """A meal (kcal, saved; sent here with its tip, then the reaction image) or a
+    receipt (split, saved when the people count is known, else asked with
+    buttons). None when already sent. The photo is not kept."""
     photos = importlib.import_module("assistant.services.photos")
     try:
         image = channel.download(str(msg.photo_file_id))
@@ -444,7 +442,15 @@ def _photo(
                 fat=int(data.get("fat_g") or 0),
                 today=photos.kcal_today(ctx),
             )
-            return reply, [[(t(ctx.lang, "meal_remove"), f"ml:{meal_id}")]]
+            if tip := str(data.get("tip") or "").strip():
+                reply += f"\n💡 {tip[:200]}"
+            _send(
+                channel, msg, reply, [[(t(ctx.lang, "meal_remove"), f"ml:{meal_id}")]]
+            )
+            tag = MEAL_REACTION.get(str(data.get("health")))
+            if ctx.fun and tag:  # after the text, like a registration's reaction
+                _react(channel, msg, "comida", tag)
+            return None
         if data.get("kind") == "receipt" and Decimal(str(data.get("total") or 0)) > 0:
             receipt: dict[str, Any] = {
                 "title": str(data.get("name") or "🧾"),
@@ -669,12 +675,10 @@ def _owner_command(
 def _ledger_command(
     ctx: ToolContext, msg: InboundMessage
 ) -> tuple[str, list[list[tuple[str, str]]] | None]:
-    """/ultimos, /anular n (buttons), /gif: no LLM."""
+    """/ultimos, /anular n (buttons): no LLM."""
 
     cmd, _, arg = msg.text.strip().partition(" ")
     cmd, arg = cmd.split("@")[0], arg.strip()
-    if cmd == "/gif":
-        return _gif_command(ctx, msg, arg, msg.reply_animation_file_id), None
     n, _, rest = arg.partition(" ")
     usage = t(ctx.lang, "void_usage")
     args: dict[str, Any] = {"index": int(n)} if n.isdecimal() else {}
@@ -727,52 +731,48 @@ def _dashboard(
         _send(channel, msg, t(ctx.lang, "failed"))
 
 
-def gif_target(text: str) -> tuple[str, str] | None:
-    """``gasto`` -> (gasto, general); ``ingreso salario`` -> (ingreso, salario)."""
-    words = text.strip().lower().split()
-    if not 1 <= len(words) <= 2 or quick.norm(words[0]) not in state.GIF_KINDS:
-        return None
-    key = words[1] if len(words) == 2 else state.GIF_GENERAL
-    return (quick.norm(words[0]), key) if state.valid_key(key) else None
-
-
-def _gif_command(
-    ctx: ToolContext, msg: InboundMessage, arg: str, file_id: str | None
-) -> str:
-    """Owner-only curation of the shared catalog: add, borrar, list counts."""
+def _catalog(
+    ctx: ToolContext, channel: Telegram, msg: InboundMessage, settings: WorkerSettings
+) -> None:
+    """/catalogo (owner): the Mini App that uploads reaction images."""
     if ctx.role != "owner":
-        return GIF_OWNER_ONLY
-    if file_id and arg.strip().lower() == "borrar":
-        removed = state.remove_gif(file_id)
-        logger.info("gif_removed update_id=%s", msg.update_id)
-        return "✓ GIF borrado." if removed else "Ese GIF no está en el catálogo."
-    target = gif_target(arg)
-    if file_id and target:
-        state.add_gif(*target, file_id)
-        logger.info("gif_saved update_id=%s", msg.update_id)
-        return f"✓ GIF guardado para {target[0]} {target[1]}."
-    lines = [GIF_USAGE]
-    for kind in state.GIF_KINDS:
-        counts = ", ".join(
-            f"{k} {len(v)}" for k, v in sorted(state.gif_catalog(kind).items())
-        )
-        lines.append(f"{kind}: {counts or 'vacío'}")
-    return "\n".join(lines)
-
-
-def _gif(channel: Telegram, msg: InboundMessage, kind: str) -> bool:
-    """Best effort reaction GIF after a registration; False when none was sent.
-    The movement's categoria/fuente picks the GIFs, else ``general``."""
+        _send(channel, msg, state.OWNER_ONLY)
+        return
+    if not settings.api_url:
+        _send(channel, msg, t(ctx.lang, "dashboard_not_configured"))
+        return
     try:
-        ledger = importlib.import_module("assistant.services.ledger")
-        key = ledger.reaction_key(msg.chat_id, msg.update_id, kind)
-        file_id = state.random_gif(kind, key)
-        if file_id:
-            channel.send_animation(msg.chat_id, file_id)
+        channel.send_webapp(
+            msg.chat_id,
+            "Sube imágenes y GIFs y elige su etiqueta 🖼️",
+            "Catálogo",
+            f"{settings.api_url}/catalogo",
+        )
+    except httpx.HTTPError:
+        logger.warning("send_failed update_id=%s", msg.update_id)
+
+
+def _react(
+    channel: Telegram, msg: InboundMessage, kind: str, key: str | None = None
+) -> bool:
+    """Best effort reaction image from the catalog; False when none was sent.
+    A registration's categoria/fuente picks the tag, else ``<kind>/general``."""
+    try:
+        if key is None:
+            ledger = importlib.import_module("assistant.services.ledger")
+            key = ledger.reaction_key(msg.chat_id, msg.update_id, kind)
+        media = importlib.import_module("assistant.services.media")
+        item = media.pick(kind, key)
+        if item:
+            url, tipo = item
+            if tipo == "gif":
+                channel.send_animation(msg.chat_id, url)
+            else:
+                channel.send_photo(msg.chat_id, url)
             return True
     except Exception as exc:
         logger.warning(
-            "gif_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+            "react_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
     return False
 

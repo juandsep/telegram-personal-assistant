@@ -466,3 +466,71 @@ def test_viewer_takes_the_phone_time_zone(dash_db, monkeypatch, caplog) -> None:
     set_timezone.side_effect = RuntimeError("firestore down")  # best effort
     assert data(dash_db, tz="Europe/Madrid").status_code == 200
     assert "X-Tz" in api.VIEWER_JS
+
+
+# --- reaction catalog (owner Mini App) -------------------------------------------
+
+
+@pytest.fixture
+def catalog(monkeypatch, dash_db) -> MagicMock:
+    monkeypatch.setattr(
+        state, "get_user", {"42": {"rol": "owner"}, "7": {"rol": "beta"}}.get
+    )
+    fake = MagicMock()
+    fake.catalog.return_value = [
+        {
+            "id": "a" * 32,
+            "etiqueta": "comida/sana",
+            "url": "https://storage.googleapis.com/b/media/a.jpg",
+        }
+    ]
+    for name in ("catalog", "add", "remove"):
+        monkeypatch.setattr(api.media, name, getattr(fake, name))
+    return fake
+
+
+def owner(key, user_id=42) -> dict[str, str]:
+    return {"Authorization": "tma " + init_data(key, user_id=user_id)}
+
+
+def test_catalog_shell_and_page(dash_db, catalog) -> None:
+    resp = client.get("/catalogo")
+    assert resp.status_code == 200 and "tg.initData" in resp.text
+    csp = resp.headers["content-security-policy"]
+    assert f"'sha256-{api._CATALOG_HASH}'" in csp
+    assert "img-src https://storage.googleapis.com" in csp
+    page = client.post("/catalogo/datos", headers=owner(dash_db))
+    assert page.status_code == 200
+    assert "<h2>comida/sana (1)</h2>" in page.text
+    assert f'data-id="{"a" * 32}"' in page.text
+    assert '<option value="gasto/restaurantes">' in page.text  # a category tag
+    assert '<option value="comida/chatarra">' in page.text
+
+
+def test_catalog_is_owner_only(dash_db, catalog) -> None:
+    for headers in ({}, owner(dash_db, user_id=7), owner(dash_db, user_id=99)):
+        assert client.post("/catalogo/datos", headers=headers).status_code == 403
+        up = client.post("/catalogo/subir?etiqueta=gasto/x", headers=headers)
+        assert up.status_code == 403
+        assert client.post("/catalogo/borrar?id=x", headers=headers).status_code == 403
+    catalog.add.assert_not_called()
+    catalog.remove.assert_not_called()
+
+
+def test_catalog_upload_and_delete(dash_db, catalog) -> None:
+    url = "/catalogo/subir?etiqueta=comida/sana"
+    resp = client.post(url, headers=owner(dash_db), content=b"\xff\xd8\xffjpg")
+    assert resp.status_code == 204
+    catalog.add.assert_called_once_with("comida/sana", b"\xff\xd8\xffjpg")
+    catalog.add.side_effect = api.media.MediaRejected("bad")
+    assert client.post(url, headers=owner(dash_db), content=b"<svg>").status_code == 400
+    big = {**owner(dash_db), "Content-Length": str(api.media.MAX_BYTES + 1)}
+    assert client.post(url, headers=big, content=b"x").status_code == 413
+    catalog.remove.return_value = True
+    assert (
+        client.post("/catalogo/borrar?id=a", headers=owner(dash_db)).status_code == 204
+    )
+    catalog.remove.return_value = False
+    assert (
+        client.post("/catalogo/borrar?id=a", headers=owner(dash_db)).status_code == 404
+    )

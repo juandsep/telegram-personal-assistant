@@ -48,6 +48,8 @@ SCHEMA = {
         "protein_g": _INT,
         "carbs_g": _INT,
         "fat_g": _INT,
+        "health": {"type": "STRING", "enum": ["healthy", "meh", "unhealthy"]},
+        "tip": _STR,
         "total": _NUM,
         "currency": _STR,
         "people": _INT,
@@ -68,6 +70,8 @@ SCHEMA = {
         "protein_g",
         "carbs_g",
         "fat_g",
+        "health",
+        "tip",
         "total",
         "currency",
         "people",
@@ -77,7 +81,10 @@ SCHEMA = {
 PROMPT = """\
 Read this photo. The user's note: "{caption}". Answer in language "{lang}".
 - Food or drink about to be eaten: kind=meal; name = a short dish name; kcal \
-and macros (grams) for the portion shown, adjusted by the note (e.g. "half").
+and macros (grams) for the portion shown, adjusted by the note (e.g. "half"); \
+health = healthy, meh or unhealthy for this dish; tip = one short sentence \
+that balances the day, given what the user already ate today ({today}): what \
+to eat more or less of next (e.g. "Add vegetables and protein at dinner").
 - A receipt or bill: kind=receipt; total = the final amount to pay as printed \
 (tax and tip included); currency = ISO 4217 code ("{currency}" if unclear); \
 name = a short title from the note (else the place); people = how many people \
@@ -100,7 +107,13 @@ def analyze(
     """One Gemini call; the parsed JSON (see SCHEMA)."""
     if not api_key:
         raise PhotoUnavailable("no key")
-    prompt = PROMPT.format(caption=caption[:300], lang=ctx.lang, currency=ctx.currency)
+    totals = day_totals(ctx)
+    today = (
+        "{kcal} kcal, protein {proteina} g, carbs {carbohidratos} g, fat {grasa} g"
+    ).format(**totals)
+    prompt = PROMPT.format(
+        caption=caption[:300], lang=ctx.lang, currency=ctx.currency, today=today
+    )
     body = {
         "contents": [
             {
@@ -258,10 +271,19 @@ def add_meal(ctx: ToolContext, meal: dict) -> str:
     return str(ref.id)
 
 
-def kcal_today(ctx: ToolContext) -> int:
+MACROS = ("kcal", "proteina", "carbohidratos", "grasa")
+
+
+def day_totals(ctx: ToolContext) -> dict[str, int]:
+    """Today's kcal and macros (grams) of the saved meals."""
     day = ledger.today(ctx).isoformat()
     query = _meals(ctx.chat_id).where(filter=firestore.FieldFilter("fecha", "==", day))
-    return sum(int(s.to_dict().get("kcal", 0)) for s in query.stream())
+    meals = [s.to_dict() or {} for s in query.stream()]
+    return {k: sum(int(m.get(k, 0)) for m in meals) for k in MACROS}
+
+
+def kcal_today(ctx: ToolContext) -> int:
+    return day_totals(ctx)["kcal"]
 
 
 def delete_meal(chat_id: str, meal_id: str) -> None:

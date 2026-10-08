@@ -68,11 +68,6 @@ def st(monkeypatch):
     m.check_rate.return_value = True
     m.llm_spend_today.return_value = Decimal("0")
     m.get_history.return_value = []
-    m.random_gif.return_value = None
-    m.gif_catalog.side_effect = lambda kind: (
-        {"general": ["a"], "restaurantes": ["b", "c"]} if kind == "gasto" else {}
-    )
-    m.remove_gif.return_value = 1
     m.create_pending.return_value = "t" * 22
     m.get_preferences.return_value = {}
     for name in (
@@ -83,15 +78,23 @@ def st(monkeypatch):
         "add_llm_spend",
         "append_history",
         "pop_pending",
-        "random_gif",
-        "add_gif",
-        "remove_gif",
-        "gif_catalog",
         "create_pending",
         "get_preferences",
     ):
         monkeypatch.setattr(state, name, getattr(m, name))
     return m
+
+
+@pytest.fixture(autouse=True)
+def pick(monkeypatch):
+    """The reaction catalog: empty unless a test sets a return value."""
+    media = importlib.import_module("assistant.services.media")
+    fake = MagicMock(return_value=None)
+    monkeypatch.setattr(media, "pick", fake)
+    return fake
+
+
+GIF = ("https://storage.googleapis.com/b/media/g.gif", "gif")
 
 
 @pytest.fixture
@@ -126,9 +129,10 @@ def tg():
         router.post(f"{TG}/answerCallbackQuery").mock(
             return_value=httpx.Response(200, json={"ok": True})
         )
-        router.post(f"{TG}/sendAnimation").mock(
-            return_value=httpx.Response(200, json={"ok": True})
-        )
+        for method in ("sendAnimation", "sendPhoto"):
+            router.post(f"{TG}/{method}").mock(
+                return_value=httpx.Response(200, json={"ok": True})
+            )
         router.post(f"{TG}/deleteMessage").mock(
             return_value=httpx.Response(200, json={"ok": True})
         )
@@ -465,17 +469,17 @@ def ledger(monkeypatch):
     )
 
 
-def animations(tg) -> list[dict]:
+def animations(tg, method: str = "sendAnimation") -> list[dict]:
     return [
         json.loads(c.request.read())
         for c in tg.calls
-        if c.request.url.path.endswith("sendAnimation")
+        if c.request.url.path.endswith(method)
     ]
 
 
-def test_quick_expense_skips_llm_and_sends_gif(st, llm, tg, ledger) -> None:
+def test_quick_expense_skips_llm_and_sends_gif(st, llm, tg, ledger, pick) -> None:
     st.get_user.return_value = {"fun": True}
-    st.random_gif.return_value = "gif1"
+    pick.return_value = GIF
     ledger.reaction_key.return_value = "restaurantes"
     assert (
         client.post("/push", json=envelope(message("2000 cop cafe"))).status_code == 204
@@ -489,16 +493,16 @@ def test_quick_expense_skips_llm_and_sends_gif(st, llm, tg, ledger) -> None:
         "day": ctx.now.date(),
     }
     assert sent_texts(tg) == []  # the GIF is the whole answer
-    assert animations(tg) == [{"chat_id": "42", "animation": "gif1"}]
+    assert animations(tg) == [{"chat_id": "42", "animation": GIF[0]}]
     ledger.reaction_key.assert_called_once_with("42", 9, "gasto")
-    st.random_gif.assert_called_once_with("gasto", "restaurantes")
+    pick.assert_called_once_with("gasto", "restaurantes")
     llm.run_turn.assert_not_called()
     st.check_rate.assert_not_called()
     st.add_llm_spend.assert_not_called()
     st.append_history.assert_not_called()
 
 
-def test_quick_income_without_gif_stored(st, llm, tg, ledger) -> None:
+def test_quick_income_without_gif_stored(st, llm, tg, ledger, pick) -> None:
     client.post("/push", json=envelope(message("ingreso 1000 salario")))
     kwargs = ledger.record_income.call_args.kwargs
     assert (kwargs["amount"], kwargs["currency"], kwargs["source"]) == (
@@ -508,7 +512,7 @@ def test_quick_income_without_gif_stored(st, llm, tg, ledger) -> None:
     )
     fixed = "+1000.00 USD · salario"
     assert sent_texts(tg) == [fixed] and animations(tg) == []
-    st.random_gif.assert_not_called()  # /fun off: no GIF lookup
+    pick.assert_not_called()  # /fun off: no catalog lookup
     llm.run_turn.assert_not_called()
 
 
@@ -523,14 +527,14 @@ def test_quick_without_currency_uses_the_user_one(st, llm, tg, ledger) -> None:
     llm.run_turn.assert_not_called()
 
 
-def test_quick_errors_never_5xx(st, llm, tg, ledger, caplog) -> None:
+def test_quick_errors_never_5xx(st, llm, tg, ledger, caplog, pick) -> None:
     client.post("/push", json=envelope(message("0 cafe")))
     ledger.record_expense.assert_not_called()
     ledger.record_expense.side_effect = RuntimeError("down")
     assert client.post("/push", json=envelope(message("cafe 5"))).status_code == 204
     ledger.record_expense.side_effect = None
     st.get_user.return_value = {"fun": True}
-    st.random_gif.return_value = "gif1"
+    pick.return_value = GIF
     tg.post(f"{TG}/sendAnimation").mock(return_value=httpx.Response(400))
     assert client.post("/push", json=envelope(message("cafe 7"))).status_code == 204
     assert sent_texts(tg) == [
@@ -538,24 +542,26 @@ def test_quick_errors_never_5xx(st, llm, tg, ledger, caplog) -> None:
         t("es", "failed"),
         "−2.00 USD · cafe",  # GIF failed: text fallback
     ]
-    assert "gif_failed" in caplog.text and "gif1" not in caplog.text
+    assert "react_failed" in caplog.text and "g.gif" not in caplog.text
     assert "cafe" not in caplog.text
     llm.run_turn.assert_not_called()
 
 
-def test_llm_registration_sends_gif(st, llm, tg, ledger) -> None:
+def test_llm_registration_sends_photo(st, llm, tg, ledger, pick) -> None:
     st.get_user.return_value = {"fun": True}
-    st.random_gif.return_value = "gif1"
+    pick.return_value = ("https://storage.googleapis.com/b/media/p.jpg", "foto")
     ledger.reaction_key.return_value = "salario"
     llm.result.keyboard = None
     llm.result.tools = ["record_income"]
     client.post("/push", json=envelope(message("me pagaron el freelance")))
-    st.random_gif.assert_called_once_with("ingreso", "salario")
-    assert animations(tg) == [{"chat_id": "42", "animation": "gif1"}]
+    pick.assert_called_once_with("ingreso", "salario")
+    assert animations(tg, "sendPhoto") == [
+        {"chat_id": "42", "photo": "https://storage.googleapis.com/b/media/p.jpg"}
+    ]
     llm.result.keyboard = [[("Sí", "ok:t")]]  # pending confirmation: no GIF yet
     llm.result.tools = ["record_expense"]
     client.post("/push", json=envelope(message("vuelo de 900 ayer")))
-    assert len(animations(tg)) == 1
+    assert len(animations(tg, "sendPhoto")) == 1
 
 
 def test_void_asks_then_runs_on_ok(monkeypatch, st, llm, tg, ledger) -> None:
@@ -579,80 +585,27 @@ def test_void_asks_then_runs_on_ok(monkeypatch, st, llm, tg, ledger) -> None:
     assert sent_texts(tg)[1:] == [t("es", "void_usage"), "✓ anulado"]
 
 
-def gif_update(caption: str | None = None) -> dict:
+def test_a_gif_from_the_user_is_not_understood(st, llm, tg) -> None:
     gif = {"update_id": 11, "message": {"chat": {"id": 42}}}
     gif["message"]["animation"] = {"file_id": "g1"}
-    if caption is not None:
-        gif["message"]["caption"] = caption
-    return gif
-
-
-def test_gif_saved_from_caption_and_reply(st, llm, tg) -> None:
-    client.post("/push", json=envelope(gif_update("Gasto")))
-    client.post("/push", json=envelope(gif_update("gasto Restaurantes")))
-    reply = message("/gif ingreso salario")
-    reply["message"]["reply_to_message"] = {"animation": {"file_id": "g2"}}
-    client.post("/push", json=envelope(reply))
-    for bad in ("gasto comida extra", "regalo", "gasto a-b"):
-        client.post("/push", json=envelope(gif_update(bad)))
-    client.post("/push", json=envelope(gif_update()))
-    client.post("/push", json=envelope(message("/gif")))
-    assert [c.args for c in st.add_gif.call_args_list] == [
-        ("gasto", "general", "g1"),
-        ("gasto", "restaurantes", "g1"),
-        ("ingreso", "salario", "g2"),
-    ]
-    listing = f"{worker.GIF_USAGE}\ngasto: general 1, restaurantes 2\ningreso: vacío"
-    assert sent_texts(tg) == [
-        "✓ GIF guardado para gasto general.",
-        "✓ GIF guardado para gasto restaurantes.",
-        "✓ GIF guardado para ingreso salario.",
-        *[listing] * 5,
-    ]
+    client.post("/push", json=envelope(gif))
+    assert sent_texts(tg) == [t("es", "text_only")]
     llm.run_turn.assert_not_called()
 
 
-def test_gif_delete(st, llm, tg, caplog) -> None:
-    reply = message("/gif borrar")
-    reply["message"]["reply_to_message"] = {"animation": {"file_id": "g9"}}
-    client.post("/push", json=envelope(reply))
-    st.remove_gif.return_value = 0
-    client.post("/push", json=envelope(reply))
-    st.remove_gif.assert_called_with("g9")
-    assert sent_texts(tg) == ["✓ GIF borrado.", "Ese GIF no está en el catálogo."]
-    assert "gif_removed" in caplog.text and "g9" not in caplog.text
-    st.add_gif.assert_not_called()
-
-
-def test_gif_curation_is_owner_only(st, llm, tg) -> None:
+def test_catalogo_opens_the_mini_app_for_the_owner_only(
+    monkeypatch, st, llm, tg
+) -> None:
+    s = dataclasses.replace(get_worker_settings(), api_url="https://api.example")
+    monkeypatch.setattr(worker, "get_worker_settings", lambda: s)
+    client.post("/push", json=envelope(message("/catalogo")))
+    body = json.loads(tg.calls[0].request.read())
+    button = body["reply_markup"]["inline_keyboard"][0][0]
+    assert button["web_app"]["url"].endswith("/catalogo")
     st.get_user.return_value = {**st.get_user.return_value, "rol": "beta"}
-    client.post("/push", json=envelope(gif_update("gasto")))
-    reply = message("/gif borrar")
-    reply["message"]["reply_to_message"] = {"animation": {"file_id": "g1"}}
-    client.post("/push", json=envelope(reply))
-    client.post("/push", json=envelope(message("/gif")))
-    assert sent_texts(tg) == [worker.GIF_OWNER_ONLY] * 3
-    st.add_gif.assert_not_called()
-    st.remove_gif.assert_not_called()
-    st.gif_catalog.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("gasto", ("gasto", "general")),
-        (" Ingreso  Salario ", ("ingreso", "salario")),
-        ("gasto inversión", ("gasto", "inversión")),
-        ("gasto año_2", ("gasto", "año_2")),
-        ("", None),
-        ("regalo", None),
-        ("gasto a-b", None),
-        ("gasto " + "x" * 25, None),
-        ("gasto comida extra", None),
-    ],
-)
-def test_gif_target(text, expected) -> None:
-    assert worker.gif_target(text) == expected
+    client.post("/push", json=envelope(message("/catalogo")))
+    assert sent_texts(tg)[-1] == state.OWNER_ONLY
+    llm.run_turn.assert_not_called()
 
 
 # --- reminders from Cloud Tasks --------------------------------------------------
@@ -983,6 +936,26 @@ def test_meal_photo_is_saved_with_todays_total(st, llm, tg, photo) -> None:
     assert "~900 kcal" in sent_texts(tg)[0]
     assert keyboards(tg) == [[("🗑️ Quitar", "ml:m1")]]
     llm.run_turn.assert_not_called()
+
+
+def test_meal_tip_then_reaction_by_health(st, llm, tg, photo, pick) -> None:
+    st.get_user.return_value = {"fun": True}
+    pick.return_value = GIF
+    photo.analyze.return_value = {
+        "kind": "meal",
+        "name": "Hamburguesa",
+        "kcal": 900,
+        "health": "unhealthy",
+        "tip": "Cena verduras y proteína.",
+    }
+    client.post("/push", json=envelope(photo_update()))
+    assert sent_texts(tg)[0].endswith("\n💡 Cena verduras y proteína.")
+    pick.assert_called_once_with("comida", "chatarra")
+    paths = [c.request.url.path.rsplit("/", 1)[1] for c in tg.calls]
+    assert paths[-2:] == ["sendMessage", "sendAnimation"]  # text first
+    st.get_user.return_value = {}  # /fun off: tip only
+    client.post("/push", json=envelope(photo_update()))
+    assert pick.call_count == 1
 
 
 def test_receipt_with_people_is_split(st, llm, tg, photo) -> None:

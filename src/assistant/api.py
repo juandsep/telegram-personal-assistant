@@ -13,7 +13,9 @@ Google sign-in that connects a chat's Google Calendar (``/oauth/google``, with a
 single-use state from the chat; codes and tokens are never logged), and a
 month's ledger as a Telegram Mini App at ``/visor``: the page posts Telegram's
 signed initData to ``/visor/datos``, checked with Telegram's Ed25519 public key
-(no bot token here, no secret in the URL).
+(no bot token here, no secret in the URL). ``/catalogo`` is the owner's Mini App
+for the reaction catalog (``services/media.py``), checked the same way plus
+``rol == owner``.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import html
 import json
 import logging
 import re
@@ -38,9 +41,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import get_api_settings, get_worker_settings
-from assistant.context import ToolContext
+from assistant.context import CATEGORIES, ToolContext
 from assistant.i18n import t
-from assistant.services import agenda, dashboard, gcal, pubsub, state
+from assistant.services import agenda, dashboard, gcal, media, pubsub, state
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -80,6 +83,63 @@ DASH_HEADERS = {
     "Content-Security-Policy": (
         f"default-src 'none'; script-src https://telegram.org 'sha256-{_JS_HASH}'; "
         "connect-src 'self'; style-src 'unsafe-inline'"
+    ),
+}
+
+
+CATALOG_JS = """const tg = window.Telegram.WebApp;
+const auth = () => ({Authorization: "tma " + tg.initData});
+async function load() {
+  const r = await fetch("/catalogo/datos", {method: "POST", headers: auth()});
+  document.getElementById("app").innerHTML = r.ok ? await r.text() : "Solo el owner.";
+}
+document.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, tag = f.etiqueta.value.trim().toLowerCase(), bad = [];
+  f.querySelector("button").disabled = true;
+  for (const file of f.archivo.files) {
+    const r = await fetch("/catalogo/subir?etiqueta=" + encodeURIComponent(tag),
+      {method: "POST", headers: auth(), body: file});
+    if (!r.ok) bad.push(file.name);
+  }
+  if (bad.length) tg.showAlert("No subí: " + bad.join(", "));
+  load();
+});
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-id]");
+  if (b) tg.showConfirm("¿Borrar esta imagen?", async (ok) => {
+    if (!ok) return;
+    await fetch("/catalogo/borrar?id=" + b.dataset.id,
+      {method: "POST", headers: auth()});
+    load();
+  });
+});
+tg.ready();
+load();
+"""
+CATALOG_HTML = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catálogo</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head><body><div id="app">…</div><script>{CATALOG_JS}</script></body></html>
+"""
+CATALOG_STYLE = """<style>
+body{font-family:system-ui,sans-serif;margin:16px;color:var(--tg-theme-text-color,#222);
+background:var(--tg-theme-bg-color,#fff)}
+form{display:grid;gap:8px;margin-bottom:16px}input,button{font:inherit;padding:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+figure{margin:0;position:relative}img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px}
+figure button{position:absolute;top:4px;right:4px;padding:2px 6px}
+</style>"""
+_CATALOG_HASH = base64.b64encode(hashlib.sha256(CATALOG_JS.encode()).digest()).decode()
+CATALOG_HEADERS = {
+    **DASH_HEADERS,
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        f"script-src https://telegram.org 'sha256-{_CATALOG_HASH}'; "
+        "connect-src 'self'; style-src 'unsafe-inline'; "
+        "img-src https://storage.googleapis.com"
     ),
 }
 
@@ -311,3 +371,87 @@ def _accept(update: Any, topic: str) -> Response:
         }
         return JSONResponse(typing)
     return Response(status_code=200)
+
+
+# --- reaction catalog (owner) ----------------------------------------------------
+
+
+def _owner(request: Request) -> str | None:
+    """The owner's chat_id from signed initData; None for anyone else."""
+    init_data = request.headers.get("Authorization", "").removeprefix("tma ")
+    bot_id = get_api_settings().telegram_bot_id
+    chat_id = init_data_chat(init_data, bot_id, time.time()) if bot_id else None
+    user = state.get_user(chat_id) if chat_id else None
+    return chat_id if user and user.get("rol") == "owner" else None
+
+
+def catalog_page(items: list[dict]) -> str:
+    """The upload form (tag picker plus files) and every item grouped by tag."""
+    tags = sorted(
+        {*media.SUGGESTED, *(f"gasto/{c}" for c in CATEGORIES)}
+        | {d["etiqueta"] for d in items}
+    )
+    options = "".join(f'<option value="{html.escape(tag)}">' for tag in tags)
+    groups: dict[str, list[str]] = {}
+    for d in items:
+        groups.setdefault(d["etiqueta"], []).append(
+            f'<figure><img src="{html.escape(d["url"])}" loading="lazy" alt="">'
+            f'<button data-id="{html.escape(d["id"])}">🗑️</button></figure>'
+        )
+    sections = "".join(
+        f"<h2>{html.escape(tag)} ({len(figs)})</h2>"
+        f"<div class=grid>{''.join(figs)}</div>"
+        for tag, figs in groups.items()
+    )
+    return (
+        f"{CATALOG_STYLE}<h1>Catálogo</h1><form>"
+        '<input name="etiqueta" list="tags" required placeholder="gasto/restaurantes" '
+        r'pattern="(gasto|ingreso|comida)/\w{1,24}" autocomplete="off">'
+        f'<datalist id="tags">{options}</datalist>'
+        '<input type="file" name="archivo" multiple required '
+        'accept="image/jpeg,image/png,image/webp,image/gif">'
+        "<button>Subir</button></form>"
+        "<p><small>gasto/&lt;categoría&gt;, ingreso/&lt;fuente&gt;, "
+        "comida/sana|meh|chatarra; …/general si no hay de la clave.</small></p>"
+        f"{sections or '<p>Vacío.</p>'}"
+    )
+
+
+@router.get("/catalogo")
+def catalog_shell() -> Response:
+    return HTMLResponse(CATALOG_HTML, headers=CATALOG_HEADERS)
+
+
+@router.post("/catalogo/datos")
+def catalog_data(request: Request) -> Response:
+    if _owner(request) is None:
+        logger.info("catalogo status=403")
+        return Response(status_code=403, headers=CATALOG_HEADERS)
+    return HTMLResponse(catalog_page(media.catalog()), headers=CATALOG_HEADERS)
+
+
+@router.post("/catalogo/subir")
+async def catalog_upload(
+    request: Request, tag: str = Query(alias="etiqueta")
+) -> Response:
+    if await run_in_threadpool(_owner, request) is None:
+        logger.info("catalogo_subir status=403")
+        return Response(status_code=403)
+    if int(request.headers.get("content-length") or 0) > media.MAX_BYTES:
+        logger.info("catalogo_subir status=413")
+        return Response(status_code=413)
+    data = await request.body()
+    try:
+        await run_in_threadpool(media.add, tag, data)
+    except media.MediaRejected:
+        logger.info("catalogo_subir status=400")
+        return Response(status_code=400)
+    return Response(status_code=204)
+
+
+@router.post("/catalogo/borrar")
+def catalog_delete(request: Request, media_id: str = Query(alias="id")) -> Response:
+    if _owner(request) is None:
+        logger.info("catalogo_borrar status=403")
+        return Response(status_code=403)
+    return Response(status_code=204 if media.remove(media_id) else 404)

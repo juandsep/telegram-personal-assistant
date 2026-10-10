@@ -126,6 +126,11 @@ class Telegram(Channel):
             language_code=language_code,
         )
 
+    def set_chat_commands(self, chat_id: str, commands: list[dict]) -> None:
+        """A menu for one chat only, in every language."""
+        scope = {"type": "chat", "chat_id": chat_id}
+        self._post("setMyCommands", commands=commands, scope=scope)
+
     def set_photo(self, jpg: bytes) -> None:
         resp = self._client.post(
             f"{API_BASE}/bot{self._token}/setMyProfilePhoto",

@@ -282,4 +282,4 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |
-| `/invitar <name>`, `/usuarios`, `/catalogo` | Owner only, not in the menu |
+| `/invitar <name>`, `/usuarios`, `/catalogo` | Owner only, in the owner's menu alone |

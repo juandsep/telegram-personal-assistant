@@ -107,6 +107,11 @@ class ListAgenda(_Args):
     period: Literal["hoy", "manana", "semana"]
 
 
+class CalendarStatus(_Args):
+    """Estado de la conexión del calendario: Google, enlace iCal importado y
+    la suscripción iPhone/Outlook (si el calendario ya la leyó)."""
+
+
 class CancelEvent(_Args):
     """Cancela un evento por id (el usuario confirma con un botón)."""
 
@@ -174,6 +179,7 @@ TOOLS: dict[str, tuple[type[_Args], str]] = {
     ),
     "create_event": (CreateEvent, "assistant.services.agenda:create_event"),
     "list_agenda": (ListAgenda, "assistant.services.agenda:list_agenda"),
+    "calendar_status": (CalendarStatus, "assistant.services.state:calendar_status"),
     "cancel_event": (CancelEvent, "assistant.services.agenda:cancel_event"),
     "create_reminder": (CreateReminder, "assistant.services.agenda:create_reminder"),
     "free_slots": (FreeSlots, "assistant.services.agenda:free_slots"),

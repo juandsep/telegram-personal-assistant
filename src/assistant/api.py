@@ -177,6 +177,10 @@ def ics_feed(token: str) -> Response:
         logger.info("ics status=404")
         return Response(status_code=404)
     body = agenda.ics(chat_id, datetime.now(UTC))
+    try:  # best effort: lets calendar_status tell the user it works
+        state.mark_ics_fetch(token)
+    except Exception as exc:
+        logger.warning("ics_mark_failed error=%s", type(exc).__name__)
     logger.info("ics status=200")
     return Response(
         body,

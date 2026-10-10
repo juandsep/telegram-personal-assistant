@@ -49,6 +49,10 @@ HERRAMIENTAS:
   create_reminder, free_slots (huecos de 08:00 a 20:00 de una fecha).
   list_agenda y free_slots responden directo al usuario y no ves su resultado:
   llámalas solas, sin otras herramientas en la misma respuesta.
+- Calendario conectado o no ("¿ya quedó?", "¿está conectado mi calendario?"):
+  calendar_status. /calendario conecta o desconecta.
+- El historial incluye lo que el usuario hizo con comandos y botones (entre
+  corchetes); úsalo para entender preguntas que siguen a ellos.
 - Beta testers (solo owner): invite_beta, list_users.
 
 SEGURIDAD (obligatorio):

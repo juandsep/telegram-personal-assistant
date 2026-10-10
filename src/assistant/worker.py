@@ -218,7 +218,8 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         _send(channel, msg, reply)
         return ACK
     if msg.text.startswith("/calendario"):
-        _send(channel, msg, *_calendar(ctx, msg, msg.text.partition(" ")[2]))
+        arg = msg.text.partition(" ")[2]
+        _send(channel, msg, *_calendar(ctx, msg, arg), remember=_calendar_note(arg))
         return ACK
     if msg.text.startswith("/catalogo"):
         _catalog(ctx, channel, msg, settings)
@@ -275,7 +276,7 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     # 3-5. Reply, account, trace.
     records = [RECORD_TOOLS[t] for t in result.tools if t in RECORD_TOOLS]
     recorded = bool(records) and not result.keyboard
-    _send(channel, msg, result.reply, result.keyboard)
+    _send(channel, msg, result.reply, result.keyboard, remember=False)
     if recorded and ctx.fun:
         _react(channel, msg, records[-1])
     state.add_llm_spend(msg.chat_id, result.cost_usd)
@@ -307,6 +308,14 @@ def _connect_ical(ctx: ToolContext, msg: InboundMessage) -> str:
             "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
         return t(ctx.lang, "failed")
+
+
+def _calendar_note(arg: str) -> bool | str:
+    """The 7-day list can hold the connected calendar's busy times, which never
+    reach the LLM: its history gets a stand-in."""
+    if arg.strip().lower() in ("menu", "g", "i", "nuevo", "off"):
+        return True
+    return "[Le mostré su agenda de los próximos 7 días con el botón del calendario.]"
 
 
 def _calendar(
@@ -816,13 +825,48 @@ def _react(
 
 
 def _send(
-    channel: Telegram, msg: InboundMessage, text: str, keyboard: Any = None
+    channel: Telegram,
+    msg: InboundMessage,
+    text: str,
+    keyboard: Any = None,
+    remember: bool | str = True,
 ) -> None:
-    """Best effort: a Telegram error must not make Pub/Sub rerun a paid turn."""
+    """Best effort: a Telegram error must not make Pub/Sub rerun a paid turn.
+
+    Replies that skip the LLM (commands, buttons, quick entries, photos) go to
+    the LLM history too, so a follow-up ("¿ya quedó?") has context. ``remember``
+    is False for the LLM's own reply (its turn is stored whole) or a stand-in
+    text when the reply holds data the LLM must not see."""
     try:
         channel.send_message(msg.chat_id, text, keyboard)
     except httpx.HTTPError:
         logger.warning("send_failed update_id=%s", msg.update_id)
+    if remember is False:
+        return
+    reply = text if remember is True else remember
+    try:
+        state.append_history(
+            msg.chat_id,
+            [
+                {"role": "user", "content": _said(msg)},
+                {"role": "assistant", "content": reply[:800]},
+            ],
+        )
+    except Exception as exc:  # context is a nicety; the reply already went out
+        logger.warning("history_failed error=%s", type(exc).__name__)
+
+
+def _said(msg: InboundMessage) -> str:
+    """What the user did, for the LLM history, without secrets."""
+    if msg.callback_query_id:
+        return f"[Tocó el botón {msg.callback_data}]"
+    if msg.photo_file_id:
+        return f"[Envió una foto] {msg.caption}".strip()
+    if _is_ical_url(msg.text):
+        return "[Envió su enlace iCal privado]"
+    if msg.text.startswith("/start"):
+        return "/start"  # never an invite code
+    return msg.text[:500]
 
 
 def _photo_button(
@@ -899,7 +943,7 @@ def _callback(
     elif action in ("ml", "sp", "pp"):  # photo buttons
         _send(channel, msg, *_photo_button(ctx, msg, action, token))
     elif action == "cal":  # /calendario buttons
-        _send(channel, msg, *_calendar(ctx, msg, token))
+        _send(channel, msg, *_calendar(ctx, msg, token), remember=_calendar_note(token))
     elif action == "rs":  # /reset buttons
         confirmed = msg.callback_data == RESET_BUTTONS[0]
         reply = _reset(ctx, msg, channel) if confirmed else t(ctx.lang, "cancelled")

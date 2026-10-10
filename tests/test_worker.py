@@ -393,6 +393,10 @@ def test_calendar_lists_week_without_llm(monkeypatch, st, llm, tg) -> None:
     ]
     assert week.call_args.args[0].chat_id == "42"
     llm.run_turn.assert_not_called()
+    # the list may hold busy times from Google: the LLM history gets a stand-in
+    stored = [c.args[1] for c in st.append_history.call_args_list]
+    assert stored[0][0] == {"role": "user", "content": "/calendario"}
+    assert all("Dentista" not in m["content"] for turn in stored for m in turn)
     st.check_rate.assert_not_called()
 
 
@@ -1073,3 +1077,19 @@ def test_betas_cannot_answer_access_requests(st, tg, monkeypatch) -> None:
     monkeypatch.setattr(state, "accept_request", accept)
     client.post("/push", json=envelope(callback("ap:7")))
     accept.assert_not_called()
+
+
+def test_commands_and_buttons_go_to_the_llm_history(st, tg) -> None:
+    client.post("/push", json=envelope(callback("cal:i")))
+    client.post("/push", json=envelope(message("/start abcdefabcdefabcdefabcd")))
+    user, bot = st.append_history.call_args_list[0].args[1]
+    assert user == {"role": "user", "content": "[Tocó el botón cal:i]"}
+    assert bot["role"] == "assistant" and bot["content"]
+    said = [c.args[1][0]["content"] for c in st.append_history.call_args_list]
+    assert "/start" in said and not any("abcdef" in s for s in said)
+
+
+def test_said_hides_the_ical_link() -> None:
+    url = "https://p01-caldav.icloud.com/published/2/secret"
+    msg = worker.InboundMessage(chat_id="1", text=url, update_id=1)
+    assert worker._said(msg) == "[Envió su enlace iCal privado]"

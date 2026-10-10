@@ -24,6 +24,7 @@ from assistant.config import get_worker_settings
 from assistant.context import ToolContext
 from assistant.i18n import LANG_NAMES
 from assistant.llm.tools import (
+    ANSWER,
     CLASH,
     DIRECT,
     TOOL_SPECS,
@@ -186,10 +187,10 @@ def _run_calls(
             result.reply, result.keyboard = content, buttons(token)
             result.private = name in CLASH
             return True
-        if name in DIRECT and name in result.tools:
+        if name in DIRECT | ANSWER and name in result.tools:
             # ponytail: later calls of the same round are dropped; the prompt
             # asks for these tools alone.
-            result.reply, result.private = content, True
+            result.reply, result.private = content, name in DIRECT
             return True
         messages.append(
             {"role": "tool", "tool_call_id": call.get("id", ""), "content": content}

@@ -16,8 +16,8 @@ SERVICE = ("pinned_message", "new_chat_members", "left_chat_member", "new_chat_t
 
 
 def parse_update(update: object) -> InboundMessage | None:
-    """A ``message`` (text or photo) or ``callback_query``; None for anything else,
-    service messages included."""
+    """A ``message`` (text or photo), ``edited_message`` or ``callback_query``;
+    None for anything else, service messages included."""
     if not isinstance(update, dict):
         return None
     try:
@@ -32,7 +32,8 @@ def parse_update(update: object) -> InboundMessage | None:
                 callback_query_id=str(cq["id"]),
                 language_code=(cq.get("from") or {}).get("language_code"),
             )
-        msg = update["message"]
+        edited = "edited_message" in update
+        msg = update["edited_message" if edited else "message"]
         if any(k in msg for k in SERVICE):
             return None
         return InboundMessage(
@@ -43,6 +44,7 @@ def parse_update(update: object) -> InboundMessage | None:
             caption=str(msg.get("caption", "")),
             language_code=(msg.get("from") or {}).get("language_code"),
             photo_file_id=(msg.get("photo") or [{}])[-1].get("file_id"),
+            edited=edited,
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         return None

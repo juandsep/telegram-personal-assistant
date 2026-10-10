@@ -41,7 +41,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import get_api_settings, get_worker_settings
-from assistant.context import CATEGORIES, ToolContext
+from assistant.context import CATEGORIES, CURRENCIES, ToolContext
 from assistant.i18n import lang_of, t
 from assistant.services import agenda, dashboard, gcal, media, pubsub, state
 
@@ -82,6 +82,56 @@ DASH_HEADERS = {
     "X-Robots-Tag": "noindex",
     "Content-Security-Policy": (
         f"default-src 'none'; script-src https://telegram.org 'sha256-{_JS_HASH}'; "
+        "connect-src 'self'; style-src 'unsafe-inline'"
+    ),
+}
+
+
+CURRENCY_JS = """const tg = window.Telegram.WebApp;
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+const auth = () => ({Authorization: "tma " + tg.initData, "X-Tz": tz});
+async function load() {
+  const r = await fetch("/moneda/datos", {method: "POST", headers: auth()});
+  if (!r.ok) { document.body.textContent = "Telegram → moneda / currency"; return; }
+  document.getElementById("app").innerHTML = await r.text();
+  const f = document.querySelector("form");
+  const names = new Intl.DisplayNames([f.dataset.lang], {type: "currency"});
+  for (const o of f.moneda.options) o.textContent += " · " + names.of(o.value);
+  const now = new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  document.getElementById("hora").textContent = now + " · " + tz;
+}
+document.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  e.target.querySelector("button").disabled = true;
+  const cur = e.target.moneda.value;
+  const r = await fetch("/moneda/guardar?moneda=" + cur,
+    {method: "POST", headers: auth()});
+  if (r.ok) tg.close(); else e.target.querySelector("button").disabled = false;
+});
+tg.ready();
+load();
+"""
+CURRENCY_HTML = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Moneda</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head><body><div id="app">…</div><script>{CURRENCY_JS}</script></body></html>
+"""
+CURRENCY_STYLE = """<style>
+body{font-family:system-ui,sans-serif;margin:16px;color:var(--tg-theme-text-color,#222);
+background:var(--tg-theme-bg-color,#fff)}
+form{display:grid;gap:12px}select,button{font:inherit;padding:10px;border-radius:8px}
+button{background:var(--tg-theme-button-color,#2a7);color:var(--tg-theme-button-text-color,#fff);border:0}
+</style>"""
+_CURRENCY_HASH = base64.b64encode(
+    hashlib.sha256(CURRENCY_JS.encode()).digest()
+).decode()
+CURRENCY_HEADERS = {
+    **DASH_HEADERS,
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        f"script-src https://telegram.org 'sha256-{_CURRENCY_HASH}'; "
         "connect-src 'self'; style-src 'unsafe-inline'"
     ),
 }
@@ -273,13 +323,10 @@ def viewer() -> Response:
 def viewer_data(
     request: Request, month: str | None = Query(None, alias="mes")
 ) -> Response:
-    init_data = request.headers.get("Authorization", "").removeprefix("tma ")
-    bot_id = get_api_settings().telegram_bot_id
-    chat_id = init_data_chat(init_data, bot_id, time.time()) if bot_id else None
-    user = state.get_user(chat_id) if chat_id else None
-    if user is None:  # unsigned, stale, or not (any longer) a user
+    if (found := _mini_app_user(request)) is None:  # unsigned, stale, or gone
         logger.info("visor status=403")
         return Response(status_code=403, headers=DASH_HEADERS)
+    chat_id, user = found
     tz = _auto_timezone(str(chat_id), user, request.headers.get("X-Tz", ""))
     if month is None:
         day = datetime.now(ZoneInfo(tz)).date()
@@ -295,15 +342,28 @@ def viewer_data(
     return HTMLResponse(body, headers=DASH_HEADERS)
 
 
+def _valid_tz(tz: str) -> bool:
+    """An IANA zone name ("America/Panama"), as a phone reports it."""
+    try:
+        return "/" in tz and len(tz) <= 64 and ZoneInfo(tz) is not None
+    except (ValueError, KeyError):  # ZoneInfoNotFoundError is a KeyError
+        return False
+
+
+def _mini_app_user(request: Request) -> tuple[str, dict] | None:
+    """The chat and user behind fresh, Telegram-signed Mini App initData."""
+    init_data = request.headers.get("Authorization", "").removeprefix("tma ")
+    bot_id = get_api_settings().telegram_bot_id
+    chat_id = init_data_chat(init_data, bot_id, time.time()) if bot_id else None
+    user = state.get_user(chat_id) if chat_id else None
+    return None if user is None else (str(chat_id), user)
+
+
 def _auto_timezone(chat_id: str, user: dict, tz: str) -> str:
     """The phone's IANA zone (sent by the Mini App) when valid, stored if it
     changed; else the stored one or the default."""
     current = user.get("zona_horaria") or "America/Panama"
-    try:
-        if "/" not in tz or len(tz) > 64:
-            return current
-        ZoneInfo(tz)
-    except (ValueError, KeyError):  # ZoneInfoNotFoundError is a KeyError
+    if not _valid_tz(tz):
         return current
     if tz != user.get("zona_horaria"):
         try:  # best effort: the page still renders in the phone's zone
@@ -380,7 +440,9 @@ def _accept(update: Any, topic: str) -> Response:
         if code and state.redeem_invite(code, msg.chat_id):
             logger.info("invite_redeemed update_id=%s", msg.update_id)
         else:
-            if msg.text.strip() == "/start" and not msg.callback_query_id:
+            if msg.text.strip() == "/start" and not (
+                msg.callback_query_id or msg.edited
+            ):
                 _request_access(update, msg)
             else:
                 logger.info("dropped update_id=%s reason=unknown_chat", msg.update_id)
@@ -408,6 +470,62 @@ def _accept(update: Any, topic: str) -> Response:
         }
         return JSONResponse(typing)
     return Response(status_code=200)
+
+
+# --- currency picker (any user) ---------------------------------------------------
+
+
+@router.get("/moneda")
+def currency_shell() -> Response:
+    return HTMLResponse(CURRENCY_HTML, headers=CURRENCY_HEADERS)
+
+
+@router.post("/moneda/datos")
+def currency_form(request: Request) -> Response:
+    """The picker with the current currency selected; opening it is enough to
+    store the phone's time zone."""
+    if (found := _mini_app_user(request)) is None:
+        logger.info("moneda status=403")
+        return Response(status_code=403, headers=CURRENCY_HEADERS)
+    chat_id, user = found
+    _auto_timezone(chat_id, user, request.headers.get("X-Tz", ""))
+    lang, current = user.get("idioma", "es"), user.get("moneda", "USD")
+    options = "".join(
+        f'<option value="{c}"{" selected" if c == current else ""}>{label}</option>'
+        for c, label in CURRENCIES.items()
+    )
+    body = (
+        f'{CURRENCY_STYLE}<form data-lang="{html.escape(lang)}">'
+        f"<label>{t(lang, 'currency_question')}</label>"
+        f'<select name="moneda">{options}</select>'
+        f'<p>🕒 <span id="hora"></span></p>'
+        f"<button>{t(lang, 'save_button')}</button></form>"
+    )
+    return HTMLResponse(body, headers=CURRENCY_HEADERS)
+
+
+@router.post("/moneda/guardar")
+def currency_save(request: Request, currency: str = Query(alias="moneda")) -> Response:
+    """Store the currency and the phone's zone, then confirm in the chat."""
+    if (found := _mini_app_user(request)) is None or currency not in CURRENCIES:
+        logger.info("moneda_guardar status=403")
+        return Response(status_code=403)
+    chat_id, user = found
+    state.set_currency(chat_id, currency)  # may guess a zone; the phone's wins
+    zone = request.headers.get("X-Tz", "")
+    if _valid_tz(zone):
+        state.set_timezone(chat_id, zone)
+    else:
+        zone = (state.get_user(chat_id) or {}).get("zona_horaria") or "America/Panama"
+    lang = user.get("idioma", "es")
+    hour = f"{datetime.now(ZoneInfo(zone)):%H:%M}"
+    text = t(lang, "currency_saved", currency=currency, time=hour, zone=zone)
+    try:  # best effort: the setting is stored either way
+        Telegram(get_worker_settings().telegram_bot_token).send_message(chat_id, text)
+    except Exception as exc:
+        logger.warning("moneda_notify_failed error=%s", type(exc).__name__)
+    logger.info("moneda_guardar status=204")
+    return Response(status_code=204)
 
 
 # --- reaction catalog (owner) ----------------------------------------------------

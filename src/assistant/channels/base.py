@@ -21,6 +21,7 @@ class InboundMessage:
     caption: str = ""
     language_code: str | None = None  # the sender's Telegram app language
     photo_file_id: str | None = None  # the largest size of a photo
+    edited: bool = False  # an edited_message: answered with a hint only
 
 
 class Channel(Protocol):

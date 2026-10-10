@@ -152,3 +152,9 @@ def test_word_glued_to_the_amount_is_split(text, amount, currency, note) -> None
     entry = parse(text)
     assert entry is not None
     assert (entry.amount, entry.currency, entry.note) == (amount, currency, note)
+
+
+def test_pounds() -> None:
+    for text in ("£12 taxi", "12 gbp taxi", "12 libras taxi"):
+        entry = parse(text, default="USD")
+        assert entry is not None and entry.currency == "GBP", text

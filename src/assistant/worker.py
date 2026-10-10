@@ -31,7 +31,7 @@ from assistant.authz import require_google_oidc
 from assistant.channels.base import InboundMessage
 from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import WorkerSettings, get_worker_settings
-from assistant.context import ToolContext
+from assistant.context import CURRENCIES, ToolContext
 from assistant.i18n import lang_of, t
 from assistant.services import agenda, quick, state
 
@@ -73,7 +73,6 @@ RESET_BUTTONS = "rs:ok", "rs:no"
 # Telegram lets a bot delete messages only for 48 h; older ones are skipped.
 RESET_SCAN = 1000
 # Display currencies: /moneda and the onboarding buttons.
-CURRENCIES = {"USD": "🇺🇸 USD", "EUR": "🇪🇺 EUR", "COP": "🇨🇴 COP", "CNY": "🇨🇳 CNY"}
 CURRENCY_BUTTONS = [[(label, f"mo:{cur}") for cur, label in CURRENCIES.items()]]
 PEOPLE_CHOICES = range(2, 7)
 # Gemini's verdict on a meal photo -> the comida/<key> reaction tag.
@@ -183,7 +182,10 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         _send(channel, msg, _timezone_command(ctx, msg))
         return ACK
     if msg.text.startswith("/moneda"):
-        _send(channel, msg, *_currency_command(ctx, msg))
+        if reply := _currency_command(ctx, msg):
+            _send(channel, msg, reply)
+        else:
+            _currency_app(ctx, channel, msg, settings)
         return ACK
     if msg.text.startswith("/reset"):
         ok, no = RESET_BUTTONS
@@ -195,7 +197,7 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         _send(channel, msg, t(ctx.lang, "welcome"), guide)
         if msg.text.startswith("/start"):
             _clear_dashboard(channel, msg)  # the Visor only on /tablero
-            _send(channel, msg, t(ctx.lang, "currency_question"), CURRENCY_BUTTONS)
+            _currency_app(ctx, channel, msg, settings)
         return ACK
     if msg.photo_file_id:
         if not state.check_rate(msg.chat_id, settings.max_msgs_per_minute):
@@ -632,14 +634,29 @@ def _timezone_command(ctx: ToolContext, msg: InboundMessage) -> str:
     return t(ctx.lang, "tz_ok", tz=tz)
 
 
-def _currency_command(
-    ctx: ToolContext, msg: InboundMessage
-) -> tuple[str, list[list[tuple[str, str]]] | None]:
-    """/moneda COP sets it; without a valid code, the question with buttons."""
+def _currency_command(ctx: ToolContext, msg: InboundMessage) -> str | None:
+    """/moneda COP sets it; None without a valid code (the Mini App opens)."""
     cur = msg.text.strip().partition(" ")[2].strip().upper()
-    if cur not in CURRENCIES:
-        return t(ctx.lang, "currency_question"), CURRENCY_BUTTONS
-    return _set_currency(ctx, msg, cur), None
+    return _set_currency(ctx, msg, cur) if cur in CURRENCIES else None
+
+
+def _currency_app(
+    ctx: ToolContext, channel: Telegram, msg: InboundMessage, settings: WorkerSettings
+) -> None:
+    """The currency picker Mini App, which also reads the phone's time zone;
+    plain buttons when the service URL is not set."""
+    if not settings.api_url:
+        _send(channel, msg, t(ctx.lang, "currency_question"), CURRENCY_BUTTONS)
+        return
+    try:
+        channel.send_webapp(
+            msg.chat_id,
+            t(ctx.lang, "currency_question"),
+            t(ctx.lang, "currency_button"),
+            f"{settings.api_url}/moneda",
+        )
+    except httpx.HTTPError:
+        logger.warning("send_failed update_id=%s", msg.update_id)
 
 
 def _set_currency(ctx: ToolContext, msg: InboundMessage, cur: str) -> str:

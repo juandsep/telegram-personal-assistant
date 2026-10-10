@@ -563,3 +563,43 @@ def test_stranger_pending_request_is_quiet(fake, monkeypatch) -> None:
     monkeypatch.setattr(state, "request_access", MagicMock(return_value="pending"))
     client.post(URL, json=update("/start", chat_id=99), headers=HEADERS)
     tg.send_message.assert_not_called()
+
+
+def test_currency_shell_has_a_strict_csp() -> None:
+    resp = client.get("/moneda")
+    assert resp.status_code == 200 and "Intl.DisplayNames" in resp.text
+    assert (
+        "script-src https://telegram.org 'sha256-"
+        in resp.headers["content-security-policy"]
+    )
+
+
+def test_currency_form_preselects_and_stores_the_phone_zone(
+    dash_db, monkeypatch
+) -> None:
+    monkeypatch.setattr(state, "get_user", {"42": {"moneda": "GBP"}}.get)
+    set_tz = MagicMock()
+    monkeypatch.setattr(state, "set_timezone", set_tz)
+    headers = {"Authorization": "tma " + init_data(dash_db), "X-Tz": "America/Panama"}
+    resp = client.post("/moneda/datos", headers=headers)
+    assert resp.status_code == 200
+    assert '<option value="GBP" selected>🇬🇧 GBP</option>' in resp.text
+    set_tz.assert_called_once_with("42", "America/Panama")
+    assert client.post("/moneda/datos").status_code == 403
+
+
+def test_currency_save_sets_both_and_confirms(dash_db, monkeypatch) -> None:
+    monkeypatch.setattr(state, "get_user", {"42": {"idioma": "en"}}.get)
+    set_currency, set_tz, tg = MagicMock(), MagicMock(), MagicMock()
+    monkeypatch.setattr(state, "set_currency", set_currency)
+    monkeypatch.setattr(state, "set_timezone", set_tz)
+    monkeypatch.setattr(api, "Telegram", lambda token: tg)
+    headers = {"Authorization": "tma " + init_data(dash_db), "X-Tz": "America/Panama"}
+    assert client.post("/moneda/guardar?moneda=XYZ", headers=headers).status_code == 403
+    resp = client.post("/moneda/guardar?moneda=GBP", headers=headers)
+    assert resp.status_code == 204
+    set_currency.assert_called_once_with("42", "GBP")
+    set_tz.assert_called_once_with("42", "America/Panama")
+    chat_id, text = tg.send_message.call_args.args
+    assert chat_id == "42" and text.startswith("✓ Currency: GBP. Your time: ")
+    assert text.endswith("(America/Panama).")

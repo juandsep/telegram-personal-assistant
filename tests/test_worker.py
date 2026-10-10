@@ -281,6 +281,7 @@ def test_start_asks_the_currency_with_buttons(st, llm, tg) -> None:
         [
             {"text": "🇺🇸 USD", "callback_data": "mo:USD"},
             {"text": "🇪🇺 EUR", "callback_data": "mo:EUR"},
+            {"text": "🇬🇧 GBP", "callback_data": "mo:GBP"},
             {"text": "🇨🇴 COP", "callback_data": "mo:COP"},
             {"text": "🇨🇳 CNY", "callback_data": "mo:CNY"},
         ]
@@ -1093,3 +1094,23 @@ def test_said_hides_the_ical_link() -> None:
     url = "https://p01-caldav.icloud.com/published/2/secret"
     msg = worker.InboundMessage(chat_id="1", text=url, update_id=1)
     assert worker._said(msg) == "[Envió su enlace iCal privado]"
+
+
+def test_start_and_moneda_open_the_currency_mini_app(monkeypatch, st, llm, tg) -> None:
+    s = dataclasses.replace(get_worker_settings(), api_url="https://api.example")
+    monkeypatch.setattr(worker, "get_worker_settings", lambda: s)
+    client.post("/push", json=envelope(message("/start")))
+    client.post("/push", json=envelope(message("moneda")))
+    bodies = [
+        json.loads(c.request.read())
+        for c in tg.calls
+        if c.request.url.path.endswith("sendMessage")
+    ]
+    apps = [b for b in bodies if b["text"] == t("es", "currency_question")]
+    assert len(apps) == 2
+    for b in apps:
+        button = b["reply_markup"]["inline_keyboard"][0][0]
+        assert button == {
+            "text": t("es", "currency_button"),
+            "web_app": {"url": "https://api.example/moneda"},
+        }

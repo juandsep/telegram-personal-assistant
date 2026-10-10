@@ -37,7 +37,11 @@ Opening the invite link, or `/start` once accepted, sends `/start`,
 which creates the user, shows Juani's short welcome with a **🗺️ Guía completa**
 button (this guide's site) and sets the Visor de gastos as the chat's menu
 button (see [Dashboard](#dashboard-visor-de-gastos)), then asks for the
-currency with buttons (🇺🇸 USD · 🇪🇺 EUR · 🇨🇴 COP · 🇨🇳 CNY). `/ayuda` shows
+currency with a **💱 Elegir moneda** button that opens a small Mini App: a list
+(🇺🇸 USD · 🇪🇺 EUR · 🇬🇧 GBP · 🇨🇴 COP · 🇨🇳 CNY, with the current one selected)
+and the phone's local time. Saving stores the currency and the phone's time
+zone, closes the app and confirms in the chat ("✓ Moneda: USD. Tu hora: 14:55
+(America/Panama)"). `/ayuda` shows
 the welcome again.
 
 `/usuarios` lists everyone with access, how many were active in the last 7
@@ -51,14 +55,20 @@ warns them, and any message restarts the count. The owner is never erased.
 The daily ledger CSV keeps their rows as anonymous history (a random alias, no
 note). Weekly JSON backups age out within 90 days.
 
-**Currency:** `/moneda` (or `moneda` / `currency`) shows the same buttons;
+**Currency:** `/moneda` (or `moneda` / `currency`) opens the same Mini App;
 `/moneda COP` sets it directly. Every amount the bot shows (replies, scheduled
 messages, budgets, the dashboard, the LLM's answers) is in that currency, and an
 amount typed without a currency is taken in it. The ledger itself stays in USD.
+Travelling does not need a currency change: write the amount in the local
+currency (`20 eur cena`, `£12 taxi`, `15 libras`) and it is converted at the
+day's rate.
 
-**Time zone:** picking a currency sets a first guess when none is set yet (COP →
-America/Bogota, EUR → Europe/Madrid, CNY → Asia/Shanghai, USD →
-America/New_York); opening the Visor de gastos then stores the phone's own zone.
+**Time zone:** Telegram never tells a bot the user's zone, so the phone's zone
+is read whenever a Mini App opens: the currency picker and the Visor de gastos
+store it (a trip is picked up the next time either opens). `/moneda COP` typed
+as text only sets a first guess when no zone is set yet (COP →
+America/Bogota, EUR → Europe/Madrid, GBP → Europe/London, CNY → Asia/Shanghai,
+USD → America/New_York).
 `/zona America/Bogota` is a manual override, not in the menu. Without any, the
 default is `America/Panama`.
 

@@ -6,7 +6,9 @@
   A 90-day lifecycle rule on ``backup/`` bounds it.
 - ``export_ledger``: daily CSV of yesterday's ledger writes (all chats) to
   ``ledger/mes=YYYY-MM/YYYY-MM-DD.csv``, kept forever for the BigQuery external
-  table ``botjonh.ledger`` and Looker Studio. ``monto`` is USD; files written
+  table ``botjonh.ledger`` and Looker Studio. Rows carry the user's random
+  ``alias``, never the chat_id, and no free-text note, so they stay as
+  anonymous history once the user is erased. ``monto`` is USD; files written
   before the USD ledger lack the last three columns (jagged rows are allowed).
   The worker may only create objects, so an existing file means the day is
   already exported.
@@ -19,6 +21,7 @@ import importlib
 import io
 import json
 import logging
+import secrets
 from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -34,9 +37,8 @@ log = logging.getLogger(__name__)
 
 COLLECTIONS = ("users", "preferences", "invites", "pending")
 CSV_FIELDS = (
-    "fecha", "chat_id", "tipo_mov", "categoria", "monto",
-    "moneda", "nota", "batch_id", "tipo", "monto_original", "moneda_original",
-    "tasa",
+    "fecha", "alias", "tipo_mov", "categoria", "monto",
+    "moneda", "batch_id", "tipo", "monto_original", "moneda_original", "tasa",
 )  # fmt: skip
 
 
@@ -91,11 +93,14 @@ def export_ledger(settings: WorkerSettings) -> None:
     writer.writeheader()
     rows = 0
     state = importlib.import_module("assistant.services.state")
-    for chat_id in state.list_chat_ids():
+    for chat_id, user in state.all_users():
         docs = ledger.query_entries(chat_id, "creado", since, until)
+        if not docs:
+            continue
+        alias = state.user_alias(chat_id, user)
         for d in sorted(docs, key=lambda d: (d["fecha"], d["batch_id"])):
             category = d.get("categoria") or d.get("fuente", "")
-            writer.writerow({**d, "chat_id": chat_id, "categoria": category})
+            writer.writerow({**d, "alias": alias, "categoria": category})
             rows += 1
     if not rows:
         log.info("ledger_export_skipped reason=no_rows")
@@ -109,3 +114,28 @@ def export_ledger(settings: WorkerSettings) -> None:
         log.info("ledger_export_exists")
         return
     log.info("ledger_export_done rows=%d", rows)
+
+
+def anonymize_exports(bucket: Any) -> int:
+    """One-off for CSVs written before the alias: chat_id becomes the user's
+    alias (a fresh one for chats already gone) and the note is dropped. Needs
+    overwrite rights, so it runs from the admin CLI, not the worker. Returns
+    the number of files rewritten."""
+    state = importlib.import_module("assistant.services.state")
+    aliases = {c: state.user_alias(c, u) for c, u in state.all_users()}
+    done = 0
+    for blob in bucket.list_blobs(prefix="ledger/"):
+        rows = list(csv.DictReader(io.StringIO(blob.download_as_text())))
+        if not rows or "chat_id" not in rows[0]:
+            continue  # the seed header or already anonymous
+        out = io.StringIO()
+        writer = csv.DictWriter(
+            out, CSV_FIELDS, extrasaction="ignore", lineterminator="\n"
+        )
+        writer.writeheader()
+        for row in rows:
+            alias = aliases.setdefault(row["chat_id"], secrets.token_hex(6))
+            writer.writerow({**row, "alias": alias})
+        blob.upload_from_string(out.getvalue(), content_type="text/csv")
+        done += 1
+    return done

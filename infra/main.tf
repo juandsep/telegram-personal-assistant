@@ -268,6 +268,16 @@ resource "google_storage_bucket" "backup" {
       type = "Delete"
     }
   }
+  # Versioning keeps overwritten and deleted objects; drop them after a week
+  # so anonymized CSVs and expired backups are really gone.
+  lifecycle_rule {
+    condition {
+      days_since_noncurrent_time = 7
+    }
+    action {
+      type = "Delete"
+    }
+  }
 }
 
 resource "google_storage_bucket_iam_member" "worker_writes_backup" {
@@ -313,7 +323,7 @@ resource "google_bigquery_dataset" "botjonh" {
 resource "google_storage_bucket_object" "ledger_seed" {
   bucket       = google_storage_bucket.backup.name
   name         = "ledger/mes=2026-09/_header.csv"
-  content      = "fecha,chat_id,tipo_mov,categoria,monto,moneda,nota,batch_id,tipo,monto_original,moneda_original,tasa\n"
+  content      = "fecha,alias,tipo_mov,categoria,monto,moneda,batch_id,tipo,monto_original,moneda_original,tasa\n"
   content_type = "text/csv"
 }
 
@@ -346,12 +356,11 @@ resource "google_bigquery_table" "ledger" {
 
     schema = jsonencode([
       { name = "fecha", type = "DATE" },
-      { name = "chat_id", type = "STRING" },
+      { name = "alias", type = "STRING" },
       { name = "tipo_mov", type = "STRING" },
       { name = "categoria", type = "STRING" },
       { name = "monto", type = "NUMERIC" },
       { name = "moneda", type = "STRING" },
-      { name = "nota", type = "STRING" },
       { name = "batch_id", type = "STRING" },
       { name = "tipo", type = "STRING" },
       { name = "monto_original", type = "NUMERIC" },

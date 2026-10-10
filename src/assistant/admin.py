@@ -1,6 +1,9 @@
 """Admin CLI.
 
 ``python -m assistant.admin add-owner <chat_id> <name>``
+``python -m assistant.admin anonymize-exports``: one-off, rewrites the ledger
+CSVs written before the alias in ``<GCP_PROJECT_ID>-backup`` with your own
+credentials (the worker may only create objects).
 ``python -m assistant.admin bot-profile [--photo]``:
 the bot's commands, description and about text in every language, the owner's
 own menu with the owner commands added (the owner is read from Firestore, so
@@ -71,7 +74,17 @@ def main(argv: list[str] | None = None) -> None:
         "bot-profile", help="set the bot's commands, texts and photo"
     )
     profile.add_argument("--photo", action="store_true", help="also set AVATAR")
+    commands.add_parser("anonymize-exports", help="alias and no note in old CSVs")
     args = parser.parse_args(argv)
+    if args.command == "anonymize-exports":
+        from google.cloud import storage
+
+        from assistant.jobs import backup
+
+        project = os.environ["GCP_PROJECT_ID"]
+        bucket = storage.Client(project=project).bucket(f"{project}-backup")
+        print(f"{backup.anonymize_exports(bucket)} files rewritten")
+        return
     if args.command == "bot-profile":
         bot_profile(Telegram(os.environ["TELEGRAM_BOT_TOKEN"]), args.photo)
         print("bot profile updated")  # the owner's menu too, if there is one

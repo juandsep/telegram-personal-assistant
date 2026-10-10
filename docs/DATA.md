@@ -94,9 +94,11 @@ the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS fee
 
 | Collection | Content | Expiry |
 |---|---|---|
-| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch` | — |
+| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch`, `ultimo_uso` (last active day, ISO date in the user's zone, written once a day) | — |
 | `processed/{update_id}` | Dedup marker | TTL 7 days |
 | `invites/{code}` | Single-use invite | TTL 24 h |
+| `requests/{chat_id}` | Access request: `nombre`, `idioma`, `status` (pending \| rejected) | TTL 7 d pending, 10 d after a rejection |
+| `requests/day-{date}` | Marks that today's single request is taken | TTL 2 d |
 | `rate`, `spend` | Per-chat message and LLM spend counters | TTL |
 | `pending/{token}` | Confirmation waiting for a button | TTL 10 min |
 | `oauth_states/{token}` | `chat_id` of a Google sign-in in progress (single use) | TTL 10 min |

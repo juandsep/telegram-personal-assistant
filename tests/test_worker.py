@@ -4,8 +4,10 @@ import importlib
 import json
 import sys
 import types
+from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -80,6 +82,7 @@ def st(monkeypatch):
         "pop_pending",
         "create_pending",
         "get_preferences",
+        "mark_seen",
     ):
         monkeypatch.setattr(state, name, getattr(m, name))
     return m
@@ -705,10 +708,19 @@ def test_invite_sends_a_deep_link_and_users_revokes(st, tg, monkeypatch) -> None
         return_value=httpx.Response(200, json={"result": {"username": "mi_bot"}})
     )
     create = MagicMock(return_value="c" * 22)
+    today = datetime.now(ZoneInfo("America/Panama")).date()
     all_users = MagicMock(
         return_value=[
-            ("1", {"nombre": "Yo", "rol": "owner"}),
-            ("7", {"nombre": "Ana", "rol": "beta"}),
+            ("1", {"nombre": "Yo", "rol": "owner", "ultimo_uso": today.isoformat()}),
+            (
+                "7",
+                {
+                    "nombre": "Ana",
+                    "rol": "beta",
+                    "ultimo_uso": str(today - timedelta(12)),
+                },
+            ),
+            ("8", {"nombre": "Leo", "rol": "beta"}),
         ]
     )
     revoke = MagicMock(return_value=True)
@@ -726,7 +738,8 @@ def test_invite_sends_a_deep_link_and_users_revokes(st, tg, monkeypatch) -> None
     assert texts[0].endswith("https://t.me/mi_bot?start=" + "c" * 22)
     assert texts[1:] == [
         worker.INVITE_USAGE,
-        "Yo (owner)\nAna (beta)",
+        "3 usuarios · 1 activos en 7 días\n"
+        "Yo (owner) · hoy\nAna (beta) · hace 12 días\nLeo (beta) · sin uso",
         "✓ Acceso revocado.",
     ]
     create.assert_called_once_with("Ana")
@@ -737,7 +750,10 @@ def test_invite_sends_a_deep_link_and_users_revokes(st, tg, monkeypatch) -> None
         if c.request.url.path.endswith("sendMessage")
     ]
     assert keyboards[2] == {
-        "inline_keyboard": [[{"text": "Revocar a Ana", "callback_data": "rv:7"}]]
+        "inline_keyboard": [
+            [{"text": "Revocar a Ana", "callback_data": "rv:7"}],
+            [{"text": "Revocar a Leo", "callback_data": "rv:8"}],
+        ]
     }
 
 
@@ -1020,3 +1036,40 @@ def test_meal_remove_button(st, llm, tg, photo) -> None:
     client.post("/push", json=envelope(callback("ml:m1")))
     photo.delete_meal.assert_called_once_with("42", "m1")
     assert sent_texts(tg) == [t("es", "meal_removed")]
+
+
+def test_marks_the_active_day_once(st) -> None:
+    st.get_user.return_value = {**st.get_user.return_value, "ultimo_uso": "2000-01-01"}
+    client.post("/push", json=envelope(message("/ayuda")))
+    (chat_id, day), _ = st.mark_seen.call_args
+    assert chat_id == "42" and day != "2000-01-01"
+    st.mark_seen.reset_mock()
+    st.get_user.return_value["ultimo_uso"] = day
+    client.post("/push", json=envelope(message("/ayuda")))
+    st.mark_seen.assert_not_called()
+
+
+def test_owner_answers_access_requests(st, tg, monkeypatch) -> None:
+    req = {"nombre": "Ana", "idioma": "en"}
+    accept = MagicMock(side_effect=[req, None])
+    reject = MagicMock(return_value=req)
+    monkeypatch.setattr(state, "accept_request", accept)
+    monkeypatch.setattr(state, "reject_request", reject)
+    for data in ("ap:7", "ap:7", "rj:8"):
+        client.post("/push", json=envelope(callback(data)))
+    assert sent_texts(tg) == [
+        t("en", "access_granted"),
+        "✓ Ana ya tiene acceso.",
+        "Esa solicitud ya no está pendiente.",
+        t("en", "access_rejected", days=10),
+        "✓ Ana rechazado; puede volver a pedir en 10 días.",
+    ]
+    reject.assert_called_once_with("8")
+
+
+def test_betas_cannot_answer_access_requests(st, tg, monkeypatch) -> None:
+    st.get_user.return_value = {**st.get_user.return_value, "rol": "beta"}
+    accept = MagicMock()
+    monkeypatch.setattr(state, "accept_request", accept)
+    client.post("/push", json=envelope(callback("ap:7")))
+    accept.assert_not_called()

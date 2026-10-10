@@ -21,13 +21,28 @@ commands (`/invitar`, `/usuarios`, `/catalogo`) answer in Spanish.
 
 ## Getting started
 
-Only invited people can use the bot. The owner sends `/invitar <name>` and
-forwards the single-use `t.me` link (valid 24 h). Opening it sends `/start`,
+Only people the owner lets in can use the bot, in one of two ways:
+
+- **Access request:** a stranger taps Start (a bare `/start`). The bot tells
+  them it asked, and the owner gets `Nueva solicitud de acceso: <name> @user`
+  with ✅ Aceptar / ❌ Rechazar. Accepting creates the beta and tells them to
+  tap `/start`; rejecting tells them they may ask again in 10 days. At most
+  one new request a day in total ("try tomorrow" after that), none past 100
+  users, and a pending request is not repeated. Anything else from a stranger
+  is dropped without an answer.
+- **Invite:** the owner sends `/invitar <name>` and forwards the single-use
+  `t.me` link (valid 24 h).
+
+Opening the invite link, or `/start` once accepted, sends `/start`,
 which creates the user, shows Juani's short welcome with a **🗺️ Guía completa**
 button (this guide's site) and sets the Visor de gastos as the chat's menu
 button (see [Dashboard](#dashboard-visor-de-gastos)), then asks for the
 currency with buttons (🇺🇸 USD · 🇪🇺 EUR · 🇨🇴 COP · 🇨🇳 CNY). `/ayuda` shows
 the welcome again.
+
+`/usuarios` lists everyone with access, how many were active in the last 7
+days and each one's last active day (`hoy`, `ayer`, `hace N días`, `sin uso`),
+with a button to revoke each beta.
 
 **Currency:** `/moneda` (or `moneda` / `currency`) shows the same buttons;
 `/moneda COP` sets it directly. Every amount the bot shows (replies, scheduled

@@ -346,6 +346,10 @@ Pending, to review later:
 - **Response latency:** some replies feel slow. Measure where a turn spends
   its time (Pub/Sub hop, cold start, LLM call, Firestore reads, Telegram send)
   from the `llm_turn` logs and Grafana, then optimize the slowest step.
+  Measured 2026-10-10 over 14 days of `llm_turn`: turns without a tool p50
+  1.9 s but p90 12 s (DeepSeek API spikes); turns with a tool p50 5 s (two
+  LLM rounds). `calendar_status` now answers in one round. Next: compare the
+  p90 against another provider (e.g. Gemini Flash-Lite, key already in place).
 - **Python 3.14 (consideration):** the image stays on 3.12 and Dependabot
   ignores minor and major `python` bumps (`.github/dependabot.yml`). Before
   moving, check that every dependency ships 3.14 wheels, then update the

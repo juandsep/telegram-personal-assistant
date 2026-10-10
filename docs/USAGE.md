@@ -177,6 +177,10 @@ bucket but each has its own Firestore database, so curate each from its own bot.
 
 ## Agenda
 
+The assistant remembers the last few exchanges, including commands and button
+taps answered without the LLM, so a follow-up like "¿ya quedó?" after
+`/calendario` makes sense to it.
+
 Natural language works in any of the three languages: "reunión con Ana mañana
 3pm", "remind me to pay the power bill Friday 9am", "我周四有空吗？".
 
@@ -206,7 +210,9 @@ replaces the other; **✂️ Desconectar** or `/calendario off` removes it):
   Google itself show as busy time. The mirror is best effort. Google shows an
   "unverified app" notice: Advanced → Go to Juani.
 - **iPhone / Outlook:** **🗓️ Suscribirme** opens your calendar app on your
-  private feed (`$API_URL/ics/<token>.ics`, as `webcal://`). Anyone with that
+  private feed (`$API_URL/ics/<token>.ics`, as `webcal://`). Ask "¿ya quedó?" or "is
+  my calendar connected?" afterwards: the bot knows when your calendar app last
+  read the feed. Anyone with that
   link can read your agenda, so `/calendario nuevo` replaces it and revokes the
   old one. Optionally, paste your calendar's secret iCal link in the chat to
   get clash warnings too (the bot deletes the message): iPhone Calendar →

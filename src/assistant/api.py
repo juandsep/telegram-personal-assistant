@@ -440,7 +440,9 @@ def _accept(update: Any, topic: str) -> Response:
         if code and state.redeem_invite(code, msg.chat_id):
             logger.info("invite_redeemed update_id=%s", msg.update_id)
         else:
-            if msg.text.strip() == "/start" and not msg.callback_query_id:
+            if msg.text.strip() == "/start" and not (
+                msg.callback_query_id or msg.edited
+            ):
                 _request_access(update, msg)
             else:
                 logger.info("dropped update_id=%s reason=unknown_chat", msg.update_id)

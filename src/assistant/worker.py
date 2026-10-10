@@ -170,6 +170,14 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if user is None:  # removed after the api accepted it
         return ACK
     ctx = _context(user, msg, settings)
+    if msg.edited:  # editing is not supported: say so instead of staying silent
+        _send(
+            Telegram(settings.telegram_bot_token),
+            msg,
+            t(ctx.lang, "edited_hint"),
+            remember=False,
+        )
+        return ACK
     today = ctx.now.date().isoformat()
     if user.get("ultimo_uso") != today:  # one write per user and day
         state.mark_seen(msg.chat_id, today)

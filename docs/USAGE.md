@@ -114,7 +114,8 @@ included, and the amount as typed when it was another currency:
 
 ## Correcting
 
-There is no editing: to fix a movement, void it and write it again.
+There is no editing: to fix a movement, void it and write it again. Editing a
+message already sent changes nothing; the bot answers the edit with that hint.
 
 - **`/ultimos`:** the last 5 movements, numbered (1 = the most recent).
 - **`/anular <n>`:** asks with Confirmar / Cancelar buttons, then voids it.

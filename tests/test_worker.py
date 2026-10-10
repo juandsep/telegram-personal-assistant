@@ -1114,3 +1114,12 @@ def test_start_and_moneda_open_the_currency_mini_app(monkeypatch, st, llm, tg) -
             "text": t("es", "currency_button"),
             "web_app": {"url": "https://api.example/moneda"},
         }
+
+
+def test_edited_message_gets_a_hint_only(st, llm, tg) -> None:
+    body = message("-15 almuerzo")
+    body["edited_message"] = body.pop("message")
+    client.post("/push", json=envelope(body))
+    assert sent_texts(tg) == [t("es", "edited_hint")]
+    llm.run_turn.assert_not_called()
+    st.append_history.assert_not_called()

@@ -603,3 +603,12 @@ def test_currency_save_sets_both_and_confirms(dash_db, monkeypatch) -> None:
     chat_id, text = tg.send_message.call_args.args
     assert chat_id == "42" and text.startswith("✓ Currency: GBP. Your time: ")
     assert text.endswith("(America/Panama).")
+
+
+def test_stranger_edit_is_not_an_access_request(fake, monkeypatch) -> None:
+    ask = MagicMock()
+    monkeypatch.setattr(state, "request_access", ask)
+    body = {"update_id": 8, "edited_message": {"chat": {"id": 99}, "text": "/start"}}
+    assert client.post(URL, json=body, headers=HEADERS).status_code == 200
+    ask.assert_not_called()
+    fake.publish.assert_not_called()

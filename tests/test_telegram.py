@@ -167,3 +167,15 @@ def test_bot_profile_in_every_language(monkeypatch) -> None:
         assert len(json.loads(call.request.read())["short_description"]) <= 120
     upload = routes["setMyProfilePhoto"].calls.last.request.read()
     assert b'"attach://foto"' in upload and AVATAR.read_bytes() in upload
+
+
+def test_parse_edited_message() -> None:
+    update = {
+        "update_id": 3,
+        "edited_message": {"message_id": 7, "chat": {"id": 42}, "text": "-15 almuerzo"},
+    }
+    msg = parse_update(update)
+    assert msg is not None and msg.edited and msg.text == "-15 almuerzo"
+    assert not parse_update(
+        {"update_id": 4, "message": update["edited_message"]}
+    ).edited

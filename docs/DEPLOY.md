@@ -72,7 +72,16 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
 6. Register the webhook and start using the bot:
 
    ```bash
-   curl "https://api.telegram.org/bot$TOKEN/setWebhook?url=$API_URL/tg/$PATH&secret_token=$SECRET"
+   curl "https://api.telegram.org/bot$TOKEN/setWebhook" \
+     --data-urlencode "url=$API_URL/tg/$PATH" --data-urlencode "secret_token=$SECRET" \
+     --data-urlencode 'allowed_updates=["message","edited_message","callback_query"]'
+   ```
+
+   `edited_message` only gets a hint (editing is not supported). Run it again
+   whenever the list changes; `getWebhookInfo` shows the current one.
+
+   ```bash
+   curl "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
    ```
 
 Monitoring needs nothing at runtime: `terraform apply` creates the log-based

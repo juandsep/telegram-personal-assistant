@@ -1,7 +1,7 @@
 import dataclasses
 import json
 import sys
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -248,7 +248,8 @@ def export_env(
     monkeypatch: pytest.MonkeyPatch, gcs: FakeBucket
 ) -> list[tuple[object, ...]]:
     state = MagicMock()
-    state.list_chat_ids.return_value = ["42", "7"]
+    state.all_users.return_value = [("42", {"alias": "a1"}), ("7", {})]
+    state.user_alias.side_effect = lambda chat_id, user: user["alias"]
     monkeypatch.setitem(sys.modules, "assistant.services.state", state)
     monkeypatch.setattr(backup, "datetime", FixedNow)
     queries: list[tuple[object, ...]] = []
@@ -296,11 +297,11 @@ def test_export_writes_yesterday_csv_in_panama(
     assert list(gcs.uploads) == ["ledger/mes=2026-09/2026-09-28.csv"]
     lines = gcs.uploads["ledger/mes=2026-09/2026-09-28.csv"].splitlines()
     assert lines == [
-        "fecha,chat_id,tipo_mov,categoria,monto,moneda,nota,batch_id,tipo,"
+        "fecha,alias,tipo_mov,categoria,monto,moneda,batch_id,tipo,"
         "monto_original,moneda_original,tasa",
-        '2026-09-28,42,gasto,supermercado,-2.00,USD,"pan, leche",g100,reverso,,,',
-        "2026-09-28,42,gasto,otros,0.49,USD,café,g6,registro,2000.00,COP,4081.63",
-        "2026-09-28,42,ingreso,salario,900.00,USD,,i5,registro,,,",
+        "2026-09-28,a1,gasto,supermercado,-2.00,USD,g100,reverso,,,",
+        "2026-09-28,a1,gasto,otros,0.49,USD,g6,registro,2000.00,COP,4081.63",
+        "2026-09-28,a1,ingreso,salario,900.00,USD,i5,registro,,,",
     ]
 
 
@@ -316,7 +317,7 @@ def test_export_skipped_without_rows(
     monkeypatch: pytest.MonkeyPatch, gcs: FakeBucket
 ) -> None:
     state = MagicMock()
-    state.list_chat_ids.return_value = ["42"]
+    state.all_users.return_value = [("42", {})]
     monkeypatch.setitem(sys.modules, "assistant.services.state", state)
     monkeypatch.setattr(ledger, "query_entries", lambda *a: [])
     backup.export_ledger(SETTINGS)
@@ -434,3 +435,63 @@ def test_tick_side_effects_once_a_day_from_12_utc(
     order.clear()
     jobs.run_job("tick")
     assert "backup" not in order
+
+
+def test_retention_purges_warns_and_spares_the_owner() -> None:
+    today = date(2026, 10, 10)
+    state = MagicMock()
+    state.INACTIVE_DAYS, state.INACTIVE_WARN_DAYS = 60, 53
+    state.due_purges.return_value = ["5", "6"]
+    state.get_user.side_effect = lambda c: {"rol": "beta"} if c == "5" else None
+    state.all_users.return_value = [
+        ("1", {"rol": "owner", "ultimo_uso": "2020-01-01"}),
+        ("2", {"rol": "beta"}),
+        ("3", {"rol": "beta", "ultimo_uso": str(today - timedelta(60))}),
+        (
+            "4",
+            {"rol": "beta", "ultimo_uso": str(today - timedelta(53)), "idioma": "en"},
+        ),
+        ("7", {"rol": "beta", "ultimo_uso": str(today - timedelta(52))}),
+    ]
+    telegram = MagicMock()
+    jobs._retention(state, telegram, today)
+    state.cancel_purge.assert_called_once_with("5")  # back before the wait ended
+    assert [c.args[0] for c in state.purge_user.call_args_list] == ["6", "3"]
+    state.mark_seen.assert_called_once_with("2", "2026-10-10")
+    telegram.send_message.assert_called_once_with(
+        "4", t("en", "inactive_warning", days=7)
+    )
+
+
+def test_anonymize_exports_rewrites_old_csvs(monkeypatch: pytest.MonkeyPatch) -> None:
+    state = MagicMock()
+    state.all_users.return_value = [("42", {"alias": "a1"})]
+    state.user_alias.side_effect = lambda chat_id, user: user["alias"]
+    monkeypatch.setitem(sys.modules, "assistant.services.state", state)
+    old = (
+        "fecha,chat_id,tipo_mov,categoria,monto,moneda,nota,batch_id,tipo\n"
+        "2026-09-28,42,gasto,otros,1.00,USD,café con Ana,g1,registro\n"
+        "2026-09-28,99,gasto,otros,2.00,USD,,g2,registro\n"
+    )
+    files = {
+        "ledger/mes=2026-09/2026-09-28.csv": old,
+        "ledger/mes=2026-09/_header.csv": "",
+    }
+    blobs = [
+        SimpleNamespace(
+            download_as_text=lambda n=n: files[n],
+            upload_from_string=lambda data, content_type, n=n: files.__setitem__(
+                n, data
+            ),
+        )
+        for n in list(files)
+    ]
+    bucket = SimpleNamespace(list_blobs=lambda prefix: blobs)
+    assert backup.anonymize_exports(bucket) == 1
+    header, mine, gone = files["ledger/mes=2026-09/2026-09-28.csv"].splitlines()
+    assert header.startswith("fecha,alias,")
+    assert mine == "2026-09-28,a1,gasto,otros,1.00,USD,g1,registro,,,"
+    assert (
+        ",99," not in gone and "Ana" not in files["ledger/mes=2026-09/2026-09-28.csv"]
+    )
+    assert backup.anonymize_exports(bucket) == 0  # already anonymous

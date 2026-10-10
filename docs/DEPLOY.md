@@ -61,7 +61,7 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
 
    ```bash
    GCP_PROJECT_ID="$PROJECT_ID" uv run python -m assistant.admin add-owner <chat_id> <nombre>
-   for c in processed invites requests rate spend pending cron; do
+   for c in processed invites requests purge rate spend pending cron; do
      gcloud firestore fields ttls update expire_at --collection-group="$c" --enable-ttl --async
    done
    ```
@@ -242,4 +242,5 @@ Local runs read the same variables from a git-ignored `.env`.
 ```bash
 uv run python -m assistant.admin add-owner <chat_id> <nombre>   # create or promote the owner
 uv run python -m assistant.admin bot-profile [--photo]          # menu, texts and photo
+GCP_PROJECT_ID=jd-botjonh uv run python -m assistant.admin anonymize-exports  # one-off: alias in old ledger CSVs
 ```

@@ -2,7 +2,8 @@
 their own time zone, the digest at 07:00 (reminders, agenda, yesterday's spend),
 the checkin at 22:00 (the day's list) and on Sunday at 22:00 the checkin plus
 the weekly summary in one message. Once a day, at 12:00 UTC, the tick exports
-the ledger CSV, and on Sunday also runs the backup. ``digest``, ``checkin`` and
+the ledger CSV, applies the retention rules (``_retention``) and on Sunday also
+runs the backup. ``digest``, ``checkin`` and
 ``weekly`` stay runnable by name for manual use.
 
 The assistant is concise: a job messages a chat only when there is something to
@@ -16,7 +17,7 @@ import calendar as cal
 import importlib
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -168,16 +169,52 @@ def _once(state: Any, key: str, fn: Callable[[], object]) -> None:
     state.mark_cron(key)
 
 
+def _retention(state: Any, telegram: Telegram, today: date) -> None:
+    """Erase revoked chats once their wait is over, and betas silent for
+    INACTIVE_DAYS (warned INACTIVE_WARN_DAYS in). A user without ``ultimo_uso``
+    starts counting today. The owner is never touched."""
+    for chat_id in state.due_purges():
+        if state.get_user(chat_id):  # let in again before the wait ended
+            state.cancel_purge(chat_id)
+        else:
+            state.purge_user(chat_id)
+            log.info("purged reason=revoked")
+    for chat_id, user in state.all_users():
+        if user.get("rol") == "owner":
+            continue
+        try:
+            if not (seen := user.get("ultimo_uso")):
+                state.mark_seen(chat_id, today.isoformat())
+                continue
+            idle = (today - date.fromisoformat(seen)).days
+            if idle >= state.INACTIVE_DAYS:
+                state.purge_user(chat_id)
+                log.info("purged reason=inactive")
+            elif idle == state.INACTIVE_WARN_DAYS:
+                days = state.INACTIVE_DAYS - idle
+                lang = user.get("idioma", "es")
+                telegram.send_message(chat_id, t(lang, "inactive_warning", days=days))
+        except Exception as e:  # one chat never blocks the rest
+            log.warning("retention_failed error=%s", type(e).__name__)
+
+
 def run_job(name: str) -> None:
     if name != "tick" and name not in JOBS:
         raise ValueError(f"unknown job: {name}")
     settings = get_worker_settings()
     now = datetime.now(UTC)
     state = importlib.import_module("assistant.services.state")
+    telegram = Telegram(settings.telegram_bot_token)
     if name == "tick" and now.hour >= 12:
-        # From 12:00 UTC on, until each one succeeds once (export daily, backup
-        # on Sundays): a failure or a missed tick is retried an hour later.
+        # From 12:00 UTC on, until each one succeeds once (export and retention
+        # daily, backup on Sundays): a failure or a missed tick is retried an
+        # hour later. Export first, so a purged chat's last day is exported.
         _once(state, f"export:{now:%Y-%m-%d}", lambda: backup.export_ledger(settings))
+        _once(
+            state,
+            f"retention:{now:%Y-%m-%d}",
+            lambda: _retention(state, telegram, now.date()),
+        )
         if now.weekday() == 6:
             week = now.isocalendar()
             _once(
@@ -189,7 +226,6 @@ def run_job(name: str) -> None:
         backup.run(settings)  # manual run: a failure raises
     if name == "digest":
         _once(state, f"export:{now:%Y-%m-%d}", lambda: backup.export_ledger(settings))
-    telegram = Telegram(settings.telegram_bot_token)
     sent = failed = 0
     for chat_id in state.list_chat_ids():
         try:

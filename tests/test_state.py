@@ -286,3 +286,22 @@ def test_access_request_full(db, monkeypatch) -> None:
     state.upsert_user("1", "Yo", role="owner")
     assert state.request_access("7", "Ana", "es") == "full"
     assert state.accept_request("7") is None
+
+
+def test_revoke_schedules_the_purge(db) -> None:
+    db.store[("users", "2")] = {"nombre": "Ana", "rol": "beta", "alias": "a2"}
+    db.store[("ledger", "2")] = {}
+    assert state.revoke("2") is True
+    assert state.due_purges() == []  # 30 days to go
+    db.store[("purge", "2")]["due"] = datetime.now(UTC) - timedelta(seconds=1)
+    assert state.due_purges() == ["2"]
+    state.purge_user("2")
+    assert ("ledger", "2") not in db.store
+    assert ("purge", "2") not in db.store and state.get_user("2") is None
+
+
+def test_user_alias_is_created_once(db) -> None:
+    state.upsert_user("2", "Ana", role="beta")
+    alias = state.user_alias("2", state.get_user("2"))
+    assert len(alias) == 12
+    assert state.user_alias("2", state.get_user("2")) == alias

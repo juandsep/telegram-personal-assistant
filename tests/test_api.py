@@ -172,7 +172,9 @@ def test_ics_unknown_token_404(ics_db) -> None:
     ics_db.collection.assert_called_with("ics_tokens")
 
 
-def test_ics_feed(ics_db, caplog) -> None:
+def test_ics_feed(ics_db, caplog, monkeypatch) -> None:
+    mark = MagicMock()
+    monkeypatch.setattr(state, "mark_ics_fetch", mark)
     caplog.set_level("INFO")
     resp = client.get(f"/ics/{'t' * 32}.ics")
     assert resp.status_code == 200
@@ -186,6 +188,7 @@ def test_ics_feed(ics_db, caplog) -> None:
     assert agenda._items.call_args.args[0] == "42"
     ours = [r.getMessage() for r in caplog.records if r.name.startswith("assistant")]
     assert ours == ["ics status=200"]  # the token never reaches our logs
+    mark.assert_called_once_with("t" * 32)
 
 
 def test_ics_subscribe_redirects_to_webcal(ics_db) -> None:

@@ -656,6 +656,23 @@ def _seen(days: int | None) -> str:
     return "hoy" if days <= 0 else "ayer" if days == 1 else f"hace {days} días"
 
 
+def _answer_request(channel: Telegram, action: str, chat_id: str) -> str:
+    """The owner's ✅/❌ on an access request; the requester is told either way."""
+    if action == "ap":
+        data = state.accept_request(chat_id)
+        key, reply = "access_granted", "✓ {} ya tiene acceso."
+    else:
+        data = state.reject_request(chat_id)
+        key = "access_rejected"
+        reply = (
+            f"✓ {{}} rechazado; puede volver a pedir en {state.REJECT_WAIT_DAYS} días."
+        )
+    if data is None:
+        return "Esa solicitud ya no está pendiente."
+    channel.send_message(chat_id, t(data["idioma"], key, days=state.REJECT_WAIT_DAYS))
+    return reply.format(data["nombre"])
+
+
 def _owner_command(
     ctx: ToolContext, msg: InboundMessage, settings: WorkerSettings
 ) -> tuple[str, list[list[tuple[str, str]]] | None]:
@@ -887,6 +904,8 @@ def _callback(
         confirmed = msg.callback_data == RESET_BUTTONS[0]
         reply = _reset(ctx, msg, channel) if confirmed else t(ctx.lang, "cancelled")
         _send(channel, msg, reply)
+    elif action in ("ap", "rj") and ctx.role == "owner":  # access request buttons
+        _send(channel, msg, _answer_request(channel, action, token))
     elif action == "rv":  # /usuarios revoke button
         ok = ctx.role == "owner" and state.revoke(token)
         logger.info("user_revoked update_id=%s ok=%s", msg.update_id, ok)

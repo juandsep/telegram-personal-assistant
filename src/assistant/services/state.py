@@ -52,6 +52,9 @@ PROCESSED_TTL = timedelta(days=7)
 REQUEST_TTL = timedelta(days=7)  # a pending access request
 REJECT_WAIT_DAYS = 10  # a rejected chat may ask again after this
 MAX_USERS = 100
+REVOKED_PURGE_DAYS = 30  # a revoked user's data is erased after this
+INACTIVE_DAYS = 60  # a beta silent this long loses data and access
+INACTIVE_WARN_DAYS = 53  # ...and is warned on this day
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{22}")  # secrets.token_urlsafe(16)
 _ICS_TOKEN = re.compile(r"[A-Za-z0-9_-]{32}")  # secrets.token_urlsafe(24)
 
@@ -432,12 +435,46 @@ def all_users() -> list[tuple[str, dict]]:
 
 def revoke(chat_id: str) -> bool:
     """Remove a beta from the allowlist; the owner cannot be revoked. Their
-    data stays (ledger, agenda), so a new invite restores access."""
+    data is erased REVOKED_PURGE_DAYS later, unless they are let in again
+    before that."""
     ref = _doc("users", chat_id)
     if (_data(ref.get()) or {}).get("rol") != "beta":
         return False
     ref.delete()
+    due = _now() + timedelta(days=REVOKED_PURGE_DAYS)
+    _doc("purge", chat_id).set({"due": due, "expire_at": due + timedelta(days=30)})
     return True
+
+
+def due_purges() -> list[str]:
+    """Revoked chats whose wait is over."""
+    now = _now()
+    return [
+        s.id
+        for s in _db().collection("purge").stream()
+        if (s.to_dict() or {})["due"] <= now
+    ]
+
+
+def cancel_purge(chat_id: str) -> None:
+    _doc("purge", chat_id).delete()
+
+
+def purge_user(chat_id: str) -> None:
+    """Erase the chat's data and its access. The ledger CSV export keeps its
+    rows under the alias, which nothing links to the chat any more."""
+    reset_user(chat_id)
+    for name in ("users", "requests", "purge"):
+        _doc(name, chat_id).delete()
+
+
+def user_alias(chat_id: str, user: dict) -> str:
+    """The random id that stands for the user in the ledger CSV export."""
+    if alias := user.get("alias"):
+        return str(alias)
+    alias = secrets.token_hex(6)
+    _doc("users", chat_id).set({"alias": alias}, merge=True)
+    return alias
 
 
 def reset_user(chat_id: str) -> None:

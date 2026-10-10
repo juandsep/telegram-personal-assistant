@@ -134,8 +134,11 @@ def test_every_text_in_every_language_with_the_same_placeholders() -> None:
 
 
 @respx.mock
-def test_bot_profile_in_every_language() -> None:
+def test_bot_profile_in_every_language(monkeypatch) -> None:
     from assistant.admin import AVATAR, COMMANDS, bot_profile
+    from assistant.services import state
+
+    monkeypatch.setattr(state, "owner_chat_id", lambda: "42")
 
     routes = {
         m: respx.post(f"{API_BASE}/bot1:x/{m}").mock(
@@ -150,6 +153,9 @@ def test_bot_profile_in_every_language() -> None:
     }
     bot_profile(Telegram("1:x"), photo=True)
     bodies = [json.loads(c.request.read()) for c in routes["setMyCommands"].calls]
+    owner = bodies.pop()
+    assert owner["scope"] == {"type": "chat", "chat_id": "42"}
+    assert "language_code" not in owner and len(owner["commands"]) == len(COMMANDS) + 3
     assert [b["language_code"] for b in bodies] == ["es", "", "zh", "fr", "de"]
     assert [c["command"] for c in bodies[1]["commands"]] == list(COMMANDS)
     for b in bodies:

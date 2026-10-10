@@ -44,6 +44,13 @@ the welcome again.
 days and each one's last active day (`hoy`, `ayer`, `hace N días`, `sin uso`),
 with a button to revoke each beta.
 
+**Data retention:** revoking removes access at once and erases the person's
+data 30 days later (letting them in again before that keeps it). A beta who
+does not use the bot for 60 days loses data and access; on day 53 the bot
+warns them, and any message restarts the count. The owner is never erased.
+The daily ledger CSV keeps their rows as anonymous history (a random alias, no
+note). Weekly JSON backups age out within 90 days.
+
 **Currency:** `/moneda` (or `moneda` / `currency`) shows the same buttons;
 `/moneda COP` sets it directly. Every amount the bot shows (replies, scheduled
 messages, budgets, the dashboard, the LLM's answers) is in that currency, and an
@@ -275,4 +282,4 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |
-| `/invitar <name>`, `/usuarios`, `/catalogo` | Owner only, not in the menu |
+| `/invitar <name>`, `/usuarios`, `/catalogo` | Owner only, in the owner's menu alone |

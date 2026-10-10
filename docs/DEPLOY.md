@@ -49,11 +49,14 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
    in `src/assistant/i18n.py` or the avatar:
 
    ```bash
-   TELEGRAM_BOT_TOKEN="$(gcloud secrets versions access latest --secret=assistant-bot-token)" \
+   GCP_PROJECT_ID="$PROJECT_ID" TELEGRAM_BOT_TOKEN="$(gcloud secrets versions access latest --secret=assistant-bot-token)" \
      uv run python -m assistant.admin bot-profile --photo
    ```
 
-   Owner commands (`/invitar`, `/usuarios`, `/catalogo`) work but are not listed.
+   It also gives the owner's chat its own menu with `/usuarios`, `/invitar` and
+   `/catalogo` added (the owner is read from Firestore, so set `GCP_PROJECT_ID`,
+   plus `FIRESTORE_DATABASE=staging` for the staging bot); other users never
+   see them.
 
 5. Add yourself as the owner (your chat id from @userinfobot), with ADC pointed
    at the project, and enable the TTL cleanup of the dedup markers, invites,
@@ -61,7 +64,7 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
 
    ```bash
    GCP_PROJECT_ID="$PROJECT_ID" uv run python -m assistant.admin add-owner <chat_id> <nombre>
-   for c in processed invites requests rate spend pending cron; do
+   for c in processed invites requests purge rate spend pending cron; do
      gcloud firestore fields ttls update expire_at --collection-group="$c" --enable-ttl --async
    done
    ```
@@ -242,4 +245,5 @@ Local runs read the same variables from a git-ignored `.env`.
 ```bash
 uv run python -m assistant.admin add-owner <chat_id> <nombre>   # create or promote the owner
 uv run python -m assistant.admin bot-profile [--photo]          # menu, texts and photo
+GCP_PROJECT_ID=jd-botjonh uv run python -m assistant.admin anonymize-exports  # one-off: alias in old ledger CSVs
 ```

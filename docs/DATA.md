@@ -94,7 +94,7 @@ the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS fee
 
 | Collection | Content | Expiry |
 |---|---|---|
-| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch` | — |
+| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch`, `ultimo_uso` (last active day, ISO date in the user's zone, written once a day) | — |
 | `processed/{update_id}` | Dedup marker | TTL 7 days |
 | `invites/{code}` | Single-use invite | TTL 24 h |
 | `rate`, `spend` | Per-chat message and LLM spend counters | TTL |

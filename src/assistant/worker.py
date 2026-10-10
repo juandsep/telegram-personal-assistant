@@ -17,7 +17,7 @@ import importlib
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from functools import cache
 from typing import Any
@@ -171,6 +171,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if user is None:  # removed after the api accepted it
         return ACK
     ctx = _context(user, msg, settings)
+    today = ctx.now.date().isoformat()
+    if user.get("ultimo_uso") != today:  # one write per user and day
+        state.mark_seen(msg.chat_id, today)
     channel = Telegram(settings.telegram_bot_token)
     if msg.callback_query_id:
         return _callback(ctx, msg, msg.callback_query_id, channel)
@@ -647,6 +650,12 @@ def _bot_username(bot_token: str) -> str:
     return Telegram(bot_token).username()
 
 
+def _seen(days: int | None) -> str:
+    if days is None:
+        return "sin uso"
+    return "hoy" if days <= 0 else "ayer" if days == 1 else f"hace {days} días"
+
+
 def _owner_command(
     ctx: ToolContext, msg: InboundMessage, settings: WorkerSettings
 ) -> tuple[str, list[list[tuple[str, str]]] | None]:
@@ -663,7 +672,19 @@ def _owner_command(
         link = f"https://t.me/{_bot_username(settings.telegram_bot_token)}?start={code}"
         return f"Invitación para {name} (un uso, 24 h). Reenvíale:\n{link}", None
     rows = state.all_users()
-    text = "\n".join(f"{u.get('nombre', '?')} ({u.get('rol', '?')})" for _, u in rows)
+    today = ctx.now.date()
+    ages = [
+        (today - date.fromisoformat(u["ultimo_uso"])).days
+        if u.get("ultimo_uso")
+        else None
+        for _, u in rows
+    ]
+    active = sum(1 for a in ages if a is not None and a < 7)
+    lines = [f"{len(rows)} usuarios · {active} activos en 7 días"] + [
+        f"{u.get('nombre', '?')} ({u.get('rol', '?')}) · {_seen(a)}"
+        for (_, u), a in zip(rows, ages, strict=True)
+    ]
+    text = "\n".join(lines) if rows else ""
     buttons = [
         [(f"Revocar a {u.get('nombre', '?')}", f"rv:{chat_id}")]
         for chat_id, u in rows

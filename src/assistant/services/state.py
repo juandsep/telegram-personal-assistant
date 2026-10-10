@@ -139,6 +139,11 @@ def set_last_batch(chat_id: str, batch_id: str) -> None:
     _doc("users", chat_id).set({"last_batch": batch_id}, merge=True)
 
 
+def mark_seen(chat_id: str, day: str) -> None:
+    """The user's last active day (ISO date in their zone), for /usuarios."""
+    _doc("users", chat_id).set({"ultimo_uso": day}, merge=True)
+
+
 def last_batch(chat_id: str) -> str | None:
     user = get_user(chat_id) or {}
     return user.get("last_batch")

@@ -1047,3 +1047,29 @@ def test_marks_the_active_day_once(st) -> None:
     st.get_user.return_value["ultimo_uso"] = day
     client.post("/push", json=envelope(message("/ayuda")))
     st.mark_seen.assert_not_called()
+
+
+def test_owner_answers_access_requests(st, tg, monkeypatch) -> None:
+    req = {"nombre": "Ana", "idioma": "en"}
+    accept = MagicMock(side_effect=[req, None])
+    reject = MagicMock(return_value=req)
+    monkeypatch.setattr(state, "accept_request", accept)
+    monkeypatch.setattr(state, "reject_request", reject)
+    for data in ("ap:7", "ap:7", "rj:8"):
+        client.post("/push", json=envelope(callback(data)))
+    assert sent_texts(tg) == [
+        t("en", "access_granted"),
+        "✓ Ana ya tiene acceso.",
+        "Esa solicitud ya no está pendiente.",
+        t("en", "access_rejected", days=10),
+        "✓ Ana rechazado; puede volver a pedir en 10 días.",
+    ]
+    reject.assert_called_once_with("8")
+
+
+def test_betas_cannot_answer_access_requests(st, tg, monkeypatch) -> None:
+    st.get_user.return_value = {**st.get_user.return_value, "rol": "beta"}
+    accept = MagicMock()
+    monkeypatch.setattr(state, "accept_request", accept)
+    client.post("/push", json=envelope(callback("ap:7")))
+    accept.assert_not_called()

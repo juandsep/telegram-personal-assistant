@@ -49,6 +49,9 @@ HISTORY_TURNS = 6
 PENDING_TTL = timedelta(minutes=10)
 INVITE_TTL = timedelta(hours=24)
 PROCESSED_TTL = timedelta(days=7)
+REQUEST_TTL = timedelta(days=7)  # a pending access request
+REJECT_WAIT_DAYS = 10  # a rejected chat may ask again after this
+MAX_USERS = 100
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{22}")  # secrets.token_urlsafe(16)
 _ICS_TOKEN = re.compile(r"[A-Za-z0-9_-]{32}")  # secrets.token_urlsafe(24)
 
@@ -197,6 +200,76 @@ def redeem_invite(code: str, chat_id: str) -> bool:
     if not _TOKEN.fullmatch(code):
         return False
     return _redeem(_db().transaction(), _doc("invites", code), _doc("users", chat_id))
+
+
+# --- access requests ---------------------------------------------------------
+
+
+@firestore.transactional
+def _request(tx: Any, req: Any, day: Any, name: str, lang: str) -> str:
+    data = _data(req.get(transaction=tx))
+    if data and data["expire_at"] > _now():
+        return "pending" if data["status"] == "pending" else "wait"
+    if day.get(transaction=tx).exists:
+        return "today"
+    tx.set(
+        req,
+        {
+            "nombre": name,
+            "idioma": lang,
+            "status": "pending",
+            "expire_at": _now() + REQUEST_TTL,
+        },
+    )
+    tx.set(day, {"expire_at": _now() + timedelta(days=2)})
+    return "sent"
+
+
+def request_access(chat_id: str, name: str, lang: str) -> str:
+    """A stranger's /start: sent | pending | wait (rejected lately) | today
+    (the one request a day is taken) | full (MAX_USERS reached)."""
+    if len(list_chat_ids()) >= MAX_USERS:
+        return "full"
+    day = _doc("requests", f"day-{_now().date().isoformat()}")
+    return _request(_db().transaction(), _doc("requests", chat_id), day, name, lang)
+
+
+def _pending_request(chat_id: str) -> dict | None:
+    data = _data(_doc("requests", chat_id).get())
+    if not data or data["status"] != "pending" or data["expire_at"] <= _now():
+        return None
+    return data
+
+
+def accept_request(chat_id: str) -> dict | None:
+    """Create the beta from a pending request; None if there is none."""
+    if (data := _pending_request(chat_id)) is None:
+        return None
+    _doc("users", chat_id).set(
+        {
+            "nombre": data["nombre"],
+            "rol": "beta",
+            "moneda": "USD",
+            "idioma": data["idioma"],
+        }
+    )
+    _doc("requests", chat_id).delete()
+    return data
+
+
+def reject_request(chat_id: str) -> dict | None:
+    """Block the chat from asking again for REJECT_WAIT_DAYS."""
+    if (data := _pending_request(chat_id)) is None:
+        return None
+    _doc("requests", chat_id).set(
+        {"status": "rejected", "expire_at": _now() + timedelta(days=REJECT_WAIT_DAYS)},
+        merge=True,
+    )
+    return data
+
+
+def owner_chat_id() -> str | None:
+    return next((i for i, u in all_users() if u.get("rol") == "owner"), None)
 
 
 # --- counters ------------------------------------------------------------------

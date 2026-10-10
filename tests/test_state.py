@@ -263,3 +263,26 @@ def test_mark_seen(db) -> None:
     state.upsert_user("1", "Ana", role="beta")
     state.mark_seen("1", "2026-10-09")
     assert state.get_user("1")["ultimo_uso"] == "2026-10-09"
+
+
+def test_access_request_one_a_day_and_reject_wait(db) -> None:
+    state.upsert_user("1", "Yo", role="owner")
+    assert state.owner_chat_id() == "1"
+    assert state.request_access("7", "Ana", "es") == "sent"
+    assert state.request_access("7", "Ana", "es") == "pending"
+    assert state.request_access("8", "Leo", "en") == "today"
+    assert state.reject_request("7")["nombre"] == "Ana"
+    assert state.reject_request("7") is None  # no longer pending
+    assert state.request_access("7", "Ana", "es") == "wait"
+    db.store.pop(("requests", f"day-{datetime.now(UTC).date()}"))
+    assert state.request_access("8", "Leo", "en") == "sent"
+    assert state.accept_request("8")["idioma"] == "en"
+    assert state.get_user("8")["rol"] == "beta"
+    assert ("requests", "8") not in db.store
+
+
+def test_access_request_full(db, monkeypatch) -> None:
+    monkeypatch.setattr(state, "MAX_USERS", 1)
+    state.upsert_user("1", "Yo", role="owner")
+    assert state.request_access("7", "Ana", "es") == "full"
+    assert state.accept_request("7") is None

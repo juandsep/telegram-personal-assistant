@@ -42,7 +42,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import get_api_settings, get_worker_settings
 from assistant.context import CATEGORIES, ToolContext
-from assistant.i18n import t
+from assistant.i18n import lang_of, t
 from assistant.services import agenda, dashboard, gcal, media, pubsub, state
 
 logger = logging.getLogger(__name__)
@@ -335,19 +335,52 @@ def _start_code(text: str) -> str:
     return code.strip() if cmd == "/start" else ""
 
 
+def _request_access(update: Any, msg: Any) -> None:
+    """Store the request (one a day in total) and, if new, ask the owner."""
+    sender = (update.get("message") or {}).get("from") or {}
+    name = sender.get("first_name") or "?"
+    if username := sender.get("username"):
+        name = f"{name} @{username}"
+    lang = lang_of(msg.language_code)
+    try:
+        status = state.request_access(msg.chat_id, name[:60], lang)
+        logger.info("access_request update_id=%s status=%s", msg.update_id, status)
+        if status == "pending":  # already told
+            return
+        tg = Telegram(get_worker_settings().telegram_bot_token)
+        tg.send_message(
+            msg.chat_id, t(lang, f"access_{status}", days=state.REJECT_WAIT_DAYS)
+        )
+        if status == "sent" and (owner := state.owner_chat_id()):
+            buttons = [
+                [
+                    ("✅ Aceptar", f"ap:{msg.chat_id}"),
+                    ("❌ Rechazar", f"rj:{msg.chat_id}"),
+                ]
+            ]
+            tg.send_message(owner, f"Nueva solicitud de acceso: {name[:60]}", buttons)
+    except Exception as exc:  # the stranger just gets no answer
+        logger.error("access_request_failed error=%s", type(exc).__name__)
+
+
 def _accept(update: Any, topic: str) -> Response:
     msg = parse_update(update)
     if msg is None:
         return Response(status_code=200)
 
-    # 3. Allowlist. The one exception: /start <code> redeems an invite. A
-    #    stranger is dropped here without spending tokens.
+    # 3. Allowlist. Exceptions: /start <code> redeems an invite and a bare
+    #    /start asks the owner for access. Anything else from a stranger is
+    #    dropped here without spending tokens.
     if state.get_user(msg.chat_id) is None:
         code = _start_code(msg.text)
-        if not code or not state.redeem_invite(code, msg.chat_id):
-            logger.info("dropped update_id=%s reason=unknown_chat", msg.update_id)
+        if code and state.redeem_invite(code, msg.chat_id):
+            logger.info("invite_redeemed update_id=%s", msg.update_id)
+        else:
+            if msg.text.strip() == "/start" and not msg.callback_query_id:
+                _request_access(update, msg)
+            else:
+                logger.info("dropped update_id=%s reason=unknown_chat", msg.update_id)
             return Response(status_code=200)
-        logger.info("invite_redeemed update_id=%s", msg.update_id)
 
     # 4. Dedup (Telegram retries on non-2xx), then hand off to the worker.
     if not state.mark_processed(msg.update_id):

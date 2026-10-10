@@ -534,3 +534,29 @@ def test_catalog_upload_and_delete(dash_db, catalog) -> None:
     assert (
         client.post("/catalogo/borrar?id=a", headers=owner(dash_db)).status_code == 404
     )
+
+
+def test_stranger_start_asks_the_owner(fake, monkeypatch) -> None:
+    tg = MagicMock()
+    monkeypatch.setattr(api, "Telegram", lambda token: tg)
+    monkeypatch.setattr(state, "request_access", MagicMock(return_value="sent"))
+    monkeypatch.setattr(state, "owner_chat_id", lambda: "42")
+    body = update("/start", chat_id=99)
+    body["message"]["from"] = {"first_name": "Ana", "username": "ana_m"}
+    assert client.post(URL, json=body, headers=HEADERS).status_code == 200
+    fake.publish.assert_not_called()
+    state.request_access.assert_called_once_with("99", "Ana @ana_m", "en")
+    (to_user, _), (to_owner, owner_text, buttons) = [
+        c.args for c in tg.send_message.call_args_list
+    ]
+    assert (to_user, to_owner) == ("99", "42")
+    assert "Ana @ana_m" in owner_text
+    assert buttons == [[("✅ Aceptar", "ap:99"), ("❌ Rechazar", "rj:99")]]
+
+
+def test_stranger_pending_request_is_quiet(fake, monkeypatch) -> None:
+    tg = MagicMock()
+    monkeypatch.setattr(api, "Telegram", lambda token: tg)
+    monkeypatch.setattr(state, "request_access", MagicMock(return_value="pending"))
+    client.post(URL, json=update("/start", chat_id=99), headers=HEADERS)
+    tg.send_message.assert_not_called()

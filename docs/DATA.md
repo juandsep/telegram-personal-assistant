@@ -48,8 +48,11 @@ the LLM only phrases the result.
 Every day from 12:00 UTC the `tick` job exports the previous day's writes
 (America/Panama) to
 `gs://$BACKUP_BUCKET/ledger/mes=YYYY-MM/YYYY-MM-DD.csv` with the header
-`fecha,chat_id,tipo_mov,categoria,monto,moneda,nota,batch_id,tipo`. Files are
-create-only and kept forever. The weekly JSON backup of the Firestore
+`fecha,alias,tipo_mov,categoria,monto,moneda,batch_id,tipo,monto_original,moneda_original,tasa`.
+`alias` is the user's random `users.alias`, never the chat_id, and the free-text
+note is left out, so once a user is erased their rows remain as anonymous
+history. Files are create-only and kept forever; CSVs written before the alias
+were rewritten once with `python -m assistant.admin anonymize-exports`. The weekly JSON backup of the Firestore
 collections lives under `backup/` with a 90-day lifecycle. A `cron/{key}`
 marker records each success; a failure is retried at the next hourly tick
 without holding back anyone's message.
@@ -94,10 +97,11 @@ the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS fee
 
 | Collection | Content | Expiry |
 |---|---|---|
-| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch`, `ultimo_uso` (last active day, ISO date in the user's zone, written once a day) | — |
+| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch`, `ultimo_uso` (last active day, ISO date in the user's zone, written once a day), `alias` (random id in the CSV export) | — |
 | `processed/{update_id}` | Dedup marker | TTL 7 days |
 | `invites/{code}` | Single-use invite | TTL 24 h |
 | `requests/{chat_id}` | Access request: `nombre`, `idioma`, `status` (pending \| rejected) | TTL 7 d pending, 10 d after a rejection |
+| `purge/{chat_id}` | A revoked user's erase date (`due`, 30 days after revoking) | Deleted by the daily retention run |
 | `requests/day-{date}` | Marks that today's single request is taken | TTL 2 d |
 | `rate`, `spend` | Per-chat message and LLM spend counters | TTL |
 | `pending/{token}` | Confirmation waiting for a button | TTL 10 min |
@@ -107,3 +111,13 @@ the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS fee
 | `cron/{key}` | Export and backup success markers | TTL 30 days |
 
 Doc ids contain chat_ids, so they are never logged.
+
+## Retention
+
+Every day after 12:00 UTC the `tick` runs the retention rules once, after the
+CSV export: revoked chats past their `purge.due` are erased (unless let in
+again), and betas whose `ultimo_uso` is 60 days old are erased with their
+access, after a warning on day 53. A user without `ultimo_uso` starts counting
+that day. Erasing deletes the ledger, agenda, meals, split checks, history,
+preferences, feed link, request and user documents. The backup bucket deletes
+overwritten or removed object versions after 7 days.

@@ -522,7 +522,7 @@ def currency_save(request: Request, currency: str = Query(alias="moneda")) -> Re
         Telegram(get_worker_settings().telegram_bot_token).send_message(chat_id, text)
     except Exception as exc:
         logger.warning("moneda_notify_failed error=%s", type(exc).__name__)
-    logger.info("moneda_guardar status=204 moneda=%s", currency)
+    logger.info("moneda_guardar status=204")
     return Response(status_code=204)
 
 

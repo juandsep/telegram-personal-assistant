@@ -91,7 +91,8 @@ with Cloud KMS (the chat id as associated data), never in clear:
 `gcal_token_enc` (the Google OAuth refresh token, `calendario` → Google) or
 `ics_url_enc` (a secret iCal link pasted in the chat). Connecting one removes
 the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS feed token lives in
-`ics_tokens/{token}` with a pointer in `users.ics_token`.
+`ics_tokens/{token}` (`chat_id`, `last_fetch`: when a calendar app last read the
+feed) with a pointer in `users.ics_token`.
 
 ## Other collections
 
@@ -106,7 +107,7 @@ the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS fee
 | `rate`, `spend` | Per-chat message and LLM spend counters | TTL |
 | `pending/{token}` | Confirmation waiting for a button | TTL 10 min |
 | `oauth_states/{token}` | `chat_id` of a Google sign-in in progress (single use) | TTL 10 min |
-| `history/{chat_id}` | Last 6 LLM turns | — |
+| `history/{chat_id}` | Last 6 turns for the LLM: its own turns plus commands, buttons, quick entries and photos answered without it (the 7-day calendar list as a stand-in, never the iCal link or an invite code) | — |
 | `media/{id}` | Reaction catalog: tag, public URL, type (files in `<project>-media`) | — |
 | `cron/{key}` | Export and backup success markers | TTL 30 days |
 

@@ -305,3 +305,14 @@ def test_user_alias_is_created_once(db) -> None:
     alias = state.user_alias("2", state.get_user("2"))
     assert len(alias) == 12
     assert state.user_alias("2", state.get_user("2")) == alias
+
+
+def test_calendar_status(db) -> None:
+    state.upsert_user("1", "Ana", role="beta")
+    assert state.calendar_status(ctx()).startswith("Ningún calendario")
+    token = state.ics_token("1")
+    assert "ningún calendario lo ha leído" in state.calendar_status(ctx())
+    state.mark_ics_fetch(token)
+    db.store[("preferences", "1")] = {"gcal_token_enc": "x"}
+    status = state.calendar_status(ctx())
+    assert "Google Calendar: conectado" in status and "hace 0 min" in status

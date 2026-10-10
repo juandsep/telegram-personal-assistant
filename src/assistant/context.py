@@ -12,6 +12,15 @@ from typing import Literal
 
 Role = Literal["owner", "beta"]
 
+# Display currencies a user can pick (the ledger stays in USD).
+CURRENCIES = {
+    "USD": "🇺🇸 USD",
+    "EUR": "🇪🇺 EUR",
+    "GBP": "🇬🇧 GBP",
+    "COP": "🇨🇴 COP",
+    "CNY": "🇨🇳 CNY",
+}
+
 # Fixed category enum mapped to the 50/30/20 rule.
 BUCKETS: dict[str, tuple[str, ...]] = {
     "necesidades": (

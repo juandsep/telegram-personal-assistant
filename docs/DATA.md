@@ -98,7 +98,7 @@ feed) with a pointer in `users.ics_token`.
 
 | Collection | Content | Expiry |
 |---|---|---|
-| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| COP \| CNY), `zona_horaria` (unset until guessed from the currency, the phone or `/zona`), `idioma`, `fun`, `last_batch`, `ultimo_uso` (last active day, ISO date in the user's zone, written once a day), `alias` (random id in the CSV export) | — |
+| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| GBP \| COP \| CNY), `zona_horaria` (the phone's zone from a Mini App, else a guess from the currency or `/zona`), `idioma`, `fun`, `last_batch`, `ultimo_uso` (last active day, ISO date in the user's zone, written once a day), `alias` (random id in the CSV export) | — |
 | `processed/{update_id}` | Dedup marker | TTL 7 days |
 | `invites/{code}` | Single-use invite | TTL 24 h |
 | `requests/{chat_id}` | Access request: `nombre`, `idioma`, `status` (pending \| rejected) | TTL 7 d pending, 10 d after a rejection |

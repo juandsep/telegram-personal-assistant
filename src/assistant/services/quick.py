@@ -28,6 +28,11 @@ CODES = frozenset(
 _CUR = {c.lower(): c for c in CODES} | {
     "$": "USD",
     "€": "EUR",
+    "£": "GBP",
+    "libra": "GBP",
+    "libras": "GBP",
+    "pound": "GBP",
+    "pounds": "GBP",
     "dolar": "USD",
     "dolares": "USD",
     "dollar": "USD",
@@ -42,11 +47,11 @@ _CUR = {c.lower(): c for c in CODES} | {
     "块": "CNY",
 }
 # "5元": Chinese currency glued to the number like a symbol.
-_TOKEN = re.compile(r"([$€])?([-+]?\d[\d.,]*)([$€元块]|[a-z]{3})?")
+_TOKEN = re.compile(r"([$€£])?([-+]?\d[\d.,]*)([$€£元块]|[a-z]{3})?")
 _DASH = str.maketrans("\u2212\u2013\u2014", "---")  # minus, en and em dash
 # "-5cafe", "3euros": a word glued to the amount is split off unless the
 # token already reads as an amount with its currency ("5usd").
-_GLUED = re.compile(r"(?<!\w)([$€]?[-+]?\d[\d.,]*)([^\W\d_]{2,})")
+_GLUED = re.compile(r"(?<!\w)([$€£]?[-+]?\d[\d.,]*)([^\W\d_]{2,})")
 # "- 5": a lone sign before the amount joins it.
 _SIGN = re.compile(r"(?<!\S)([+-])\s+(?=\d)")
 _TIME = re.compile(r"\d{1,2}:\d{2}|\b\d{1,2}\s*(am|pm|a\.m|p\.m)\b|\ba las\b")

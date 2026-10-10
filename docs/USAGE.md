@@ -29,6 +29,10 @@ button (see [Dashboard](#dashboard-visor-de-gastos)), then asks for the
 currency with buttons (🇺🇸 USD · 🇪🇺 EUR · 🇨🇴 COP · 🇨🇳 CNY). `/ayuda` shows
 the welcome again.
 
+`/usuarios` lists everyone with access, how many were active in the last 7
+days and each one's last active day (`hoy`, `ayer`, `hace N días`, `sin uso`),
+with a button to revoke each beta.
+
 **Currency:** `/moneda` (or `moneda` / `currency`) shows the same buttons;
 `/moneda COP` sets it directly. Every amount the bot shows (replies, scheduled
 messages, budgets, the dashboard, the LLM's answers) is in that currency, and an

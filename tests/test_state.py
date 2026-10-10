@@ -257,3 +257,9 @@ def test_reset_user_keeps_access_only(db) -> None:
     assert state.get_history("1") == []
     assert state.get_preferences("1") == {}
     assert set(db.store) == {("users", "1"), ("ledger", "2/movimientos/b")}
+
+
+def test_mark_seen(db) -> None:
+    state.upsert_user("1", "Ana", role="beta")
+    state.mark_seen("1", "2026-10-09")
+    assert state.get_user("1")["ultimo_uso"] == "2026-10-09"

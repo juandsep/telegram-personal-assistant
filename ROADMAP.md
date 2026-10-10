@@ -40,6 +40,7 @@ and income in Google Sheets, recommends budgets to save, schedules appointments
 | Calendar | **Dedicated Google Calendar** | Does not touch your main calendar. |
 | Proactive | **Cloud Scheduler → Pub/Sub → worker** | Cloud Scheduler publishes straight to Pub/Sub: no `/cron/*` endpoints with OIDC needed. |
 | Google access | **Service account** + share ONE sheet and ONE calendar | No personal OAuth refresh token. The SA only sees what you share with it. |
+| Google OAuth verification (2026-10) | **Not now**: the consent screen stays published but unverified | Verification only removes the "unverified app" notice and the 100-user cap. It needs an owned domain verified in Search Console for the home, privacy and terms pages (today on `github.io`, with no root `index.html`). Revisit before opening the bot beyond invited users. Apple and Outlook use the ICS feed, which needs neither. |
 
 Data model: **Firestore** = operational state (users, idempotency,
 confirmations, preferences, budgets, LLM counters). **Sheets** = ledger
@@ -325,6 +326,32 @@ latency, cost, tool) + logging without PII.
 retention, IAM review, home-made test (missing header, wrong route, unknown
 `chat_id`, injection attempt).
 *AC:* the four attempts fail closed and are logged.
+
+### Backlog (2026-10)
+
+Next, with photos read by Gemini (project `gen-lang-client-0241526918`,
+named `botjonh-gemini`):
+
+- **Meal tracking:** a photo of a plate gives estimated kcal and macros, with a
+  daily total. The photo is not stored.
+- **Split the check:** a photo of a receipt is split between people, and the
+  bot tracks who still owes the owner money.
+
+Pending, to review later:
+
+- **Habits and goals:** a daily yes/no check-in in the `tick`, with streaks.
+- **Savings goals:** "save 500 by December", with progress in the weekly
+  summary.
+- **Recurring expenses:** detect monthly charges and warn before they repeat.
+- **Response latency:** some replies feel slow. Measure where a turn spends
+  its time (Pub/Sub hop, cold start, LLM call, Firestore reads, Telegram send)
+  from the `llm_turn` logs and Grafana, then optimize the slowest step.
+- **Python 3.14 (consideration):** the image stays on 3.12 and Dependabot
+  ignores minor and major `python` bumps (`.github/dependabot.yml`). Before
+  moving, check that every dependency ships 3.14 wheels, then update the
+  Dockerfile, `.python-version` and `pyproject.toml` together.
+
+Ruled out: voice notes, and receipt photos as a way to log expenses.
 
 ---
 

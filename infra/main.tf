@@ -167,6 +167,7 @@ locals {
     "assistant-deepseek-key",               # DeepSeek API key
     "assistant-google-oauth-client-id",     # OAuth web client: Conectar → Google
     "assistant-google-oauth-client-secret", # its secret
+    "assistant-gemini-key",                 # Gemini API key: reads photos
   ]
 }
 
@@ -238,6 +239,7 @@ resource "google_secret_manager_secret_iam_member" "worker_reads_secrets" {
     "assistant-bot-token", "assistant-bot-token-staging", "assistant-deepseek-key",
     "assistant-webhook-secret", "assistant-webhook-path",
     "assistant-google-oauth-client-id", "assistant-google-oauth-client-secret",
+    "assistant-gemini-key",
   ])
   secret_id = google_secret_manager_secret.secret[each.value].id
   role      = "roles/secretmanager.secretAccessor"
@@ -271,6 +273,29 @@ resource "google_storage_bucket" "backup" {
 resource "google_storage_bucket_iam_member" "worker_writes_backup" {
   bucket = google_storage_bucket.backup.name
   role   = "roles/storage.objectCreator"
+  member = google_service_account.sa["worker"].member
+}
+
+# Reaction catalog (services/media.py): images and GIFs the owner uploads from
+# the /catalogo Mini App. Telegram fetches them by URL, so objects are public to
+# read; legacyObjectReader grants get only, never listing the bucket.
+resource "google_storage_bucket" "media" {
+  name                        = "${var.project_id}-media"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "inherited"
+  depends_on                  = [google_project_service.apis]
+}
+
+resource "google_storage_bucket_iam_member" "media_public_read" {
+  bucket = google_storage_bucket.media.name
+  role   = "roles/storage.legacyObjectReader"
+  member = "allUsers"
+}
+
+resource "google_storage_bucket_iam_member" "worker_manages_media" {
+  bucket = google_storage_bucket.media.name
+  role   = "roles/storage.objectUser"
   member = google_service_account.sa["worker"].member
 }
 

@@ -87,6 +87,11 @@ class WorkerSettings:
     google_client_id: str = ""
     google_client_secret: str = ""
     backup_bucket: str = ""
+    # Public-read bucket of the reaction catalog (services/media.py).
+    media_bucket: str = ""
+    # Gemini reads photos (meals, receipts). Empty key: photos are refused.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"
     llm_model: str = "deepseek-flash"
     llm_base_url: str = "https://api.deepseek.com"
     # USD per 1M tokens (DeepSeek peak rate, September 2026).
@@ -119,6 +124,9 @@ class WorkerSettings:
             google_client_id=get("GOOGLE_OAUTH_CLIENT_ID", ""),
             google_client_secret=get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
             backup_bucket=get("BACKUP_BUCKET", ""),
+            media_bucket=get("MEDIA_BUCKET", ""),
+            gemini_api_key=get("GEMINI_API_KEY", ""),
+            gemini_model=get("GEMINI_MODEL", "gemini-3.5-flash-lite"),
             llm_model=get("LLM_MODEL", "deepseek-flash"),
             llm_base_url=get("LLM_BASE_URL", "https://api.deepseek.com"),
             price_in_hit=Decimal(get("PRICE_IN_HIT", "0.006")),

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Expense message: café 2000cop",
+    "title": "Expense message: caf\u00e9 2000cop",
     "output": "expense-turn.html",
     "viewBox": [
       1080,
@@ -92,7 +92,7 @@
       "from": "assistant",
       "to": "telegram",
       "y": 402,
-      "label": "entry + editar: hint",
+      "label": "entry (or /fun image)",
       "variant": "emphasis"
     },
     {

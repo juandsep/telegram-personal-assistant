@@ -1,8 +1,6 @@
 """Admin CLI.
 
 ``python -m assistant.admin add-owner <chat_id> <name>``
-``python -m assistant.admin migrate-gifs <owner_chat_id>``: copies the owner's
-old per-user ``gifs/{chat_id}`` lists into the shared catalog's ``general``.
 ``python -m assistant.admin bot-profile [--photo]``:
 the bot's commands, description and about text in es (default), en and zh, and
 optionally its profile photo (``AVATAR``). Needs TELEGRAM_BOT_TOKEN.
@@ -19,7 +17,7 @@ from assistant.i18n import LANGS, t
 from assistant.services import state
 
 AVATAR = Path(__file__).resolve().parents[2] / "docs" / "assets" / "juani-avatar.jpg"
-# The menu users see; owner commands (/invitar, /usuarios, /gif) and the manual
+# The menu users see; owner commands (/invitar, /usuarios, /catalogo) and the manual
 # /zona override stay unlisted.
 COMMANDS = (
     "tablero",
@@ -37,7 +35,7 @@ COMMANDS = (
 def bot_profile(telegram: Telegram, photo: bool) -> None:
     for lang in LANGS:
         telegram.set_profile(
-            "" if lang == "es" else lang,  # Spanish for every other language
+            "" if lang == "en" else lang,  # English for every other language
             commands=[
                 {"command": c, "description": t(lang, f"cmd_{c}")} for c in COMMANDS
             ],
@@ -54,10 +52,6 @@ def main(argv: list[str] | None = None) -> None:
     add_owner = commands.add_parser("add-owner", help="create or promote the owner")
     add_owner.add_argument("chat_id")
     add_owner.add_argument("name")
-    migrate = commands.add_parser(
-        "migrate-gifs", help="copy the owner's GIFs into the shared catalog"
-    )
-    migrate.add_argument("chat_id")
     profile = commands.add_parser(
         "bot-profile", help="set the bot's commands, texts and photo"
     )
@@ -66,9 +60,6 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "bot-profile":
         bot_profile(Telegram(os.environ["TELEGRAM_BOT_TOKEN"]), args.photo)
         print("bot profile updated")
-        return
-    if args.command == "migrate-gifs":
-        print(f"{state.migrate_gifs(args.chat_id)} gifs migrated")
         return
     state.upsert_user(args.chat_id, args.name, role="owner")
     print("owner saved")

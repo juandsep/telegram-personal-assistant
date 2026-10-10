@@ -233,47 +233,6 @@ def test_ics_token_format_checked_before_lookup(monkeypatch) -> None:
         assert state.chat_for_ics_token(bad) is None
 
 
-def test_gif_catalog_dedupe_cap_and_fallback(db) -> None:
-    assert state.random_gif("gasto", "restaurantes") is None
-    for i in range(25):
-        state.add_gif("gasto", "restaurantes", f"f{i}")
-    state.add_gif("gasto", "restaurantes", "f10")  # repeated: moves to the end
-    state.add_gif("gasto", "general", "g0")
-    state.add_gif("ingreso", "general", "i0")
-    ids = state.gif_catalog("gasto")["restaurantes"]
-    assert len(ids) == 20 and ids[-1] == "f10" and ids.count("f10") == 1
-    assert state.gif_catalog("gasto")["general"] == ["g0"]
-    assert state.random_gif("gasto", "restaurantes") in ids
-    assert state.random_gif("gasto", "salud") == "g0"  # no GIFs: general
-    assert state.random_gif("gasto", "") == "g0"
-    assert state.random_gif("ingreso", "salario") == "i0"
-
-
-def test_remove_gif_everywhere(db) -> None:
-    state.add_gif("gasto", "general", "x")
-    state.add_gif("gasto", "salud", "x")
-    state.add_gif("gasto", "salud", "y")
-    state.add_gif("ingreso", "salario", "x")
-    assert state.remove_gif("x") == 3
-    assert state.gif_catalog("gasto") == {"salud": ["y"]}
-    assert state.gif_catalog("ingreso") == {}
-    assert state.remove_gif("x") == 0
-
-
-def test_migrate_gifs_into_general(db) -> None:
-    db.store[("gifs", "1")] = {"gasto": ["a", "b"], "ingreso": ["c"]}
-    state.add_gif("gasto", "general", "a")
-    assert state.migrate_gifs("1") == 3
-    assert state.gif_catalog("gasto") == {"general": ["a", "b"]}
-    assert state.gif_catalog("ingreso") == {"general": ["c"]}
-    assert state.migrate_gifs("2") == 0
-
-
-def test_valid_key() -> None:
-    assert state.valid_key("ñandú") and state.valid_key("x_1")
-    assert not state.valid_key("Comida") and not state.valid_key("a b")
-
-
 def test_revoke_only_betas(db) -> None:
     db.store[("users", "1")] = {"nombre": "Yo", "rol": "owner"}
     db.store[("users", "2")] = {"nombre": "Ana", "rol": "beta"}

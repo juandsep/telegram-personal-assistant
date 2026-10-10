@@ -18,10 +18,9 @@ class InboundMessage:
     callback_data: str | None = None
     callback_query_id: str | None = None
     message_id: int | None = None
-    animation_file_id: str | None = None  # a GIF sent by the user
     caption: str = ""
-    reply_animation_file_id: str | None = None  # the GIF a message replies to
     language_code: str | None = None  # the sender's Telegram app language
+    photo_file_id: str | None = None  # the largest size of a photo
 
 
 class Channel(Protocol):
@@ -36,7 +35,9 @@ class Channel(Protocol):
 
     def delete_message(self, chat_id: str, message_id: int) -> None: ...
 
-    def send_animation(self, chat_id: str, file_id: str) -> None: ...
+    def send_animation(self, chat_id: str, url: str) -> None: ...
+
+    def send_photo(self, chat_id: str, url: str) -> None: ...
 
     def send_webapp(self, chat_id: str, text: str, label: str, url: str) -> int: ...
 

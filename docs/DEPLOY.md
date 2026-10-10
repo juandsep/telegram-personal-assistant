@@ -42,8 +42,8 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
    create the Pub/Sub push subscriptions.
 
 4. Set the bot's profile: the command menu, the description shown in an empty
-   chat and the about text, in Spanish (default for any other language),
-   English and Chinese, plus Juani's photo
+   chat and the about text, in English (default for any other language),
+   Spanish, Chinese, French and German, plus Juani's photo
    ([`docs/assets/juani-avatar.jpg`](assets/juani-avatar.jpg), the square crop
    of [`juani.png`](assets/juani.png)). Run it again after changing the texts
    in `src/assistant/i18n.py` or the avatar:
@@ -53,7 +53,7 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
      uv run python -m assistant.admin bot-profile --photo
    ```
 
-   Owner commands (`/invitar`, `/usuarios`, `/gif`) work but are not listed.
+   Owner commands (`/invitar`, `/usuarios`, `/catalogo`) work but are not listed.
 
 5. Add yourself as the owner (your chat id from @userinfobot), with ADC pointed
    at the project, and enable the TTL cleanup of the dedup markers, invites,
@@ -76,6 +76,25 @@ Monitoring needs nothing at runtime: `terraform apply` creates the log-based
 metrics, the alert policies (mailed to `alert_email` in `terraform.tfvars`) and
 the read-only `assistant-grafana` account. To explore the metrics, run the local
 Grafana described in [monitoring/README.md](../monitoring/README.md).
+
+### Weekly cost email
+
+Grafana sees usage, not the GCP invoice, and the budget only mails when spend
+crosses 50/90/100 %. A weekly cost summary comes from the billing export plus a
+scheduled Looker Studio report, set up once by hand (Terraform cannot create a
+billing export):
+
+1. **Billing → Billing export → BigQuery export → Detailed usage cost**: pick
+   project `jd-botjonh` and a new dataset `billing_export` (US). Data lands
+   with about a day of delay; queries stay inside the BigQuery free tier.
+2. In [Looker Studio](https://lookerstudio.google.com), create a report with
+   the BigQuery connector on the export table
+   (`billing_export.gcp_billing_export_resource_v1_*`): a time series of
+   `cost` by day and a table of `cost` by `service.description`, filtered to
+   the last 7 days.
+3. In the report: **Share → Schedule delivery** → recipient your address,
+   repeat **Weekly**, Monday morning. Each email links the report and attaches
+   a PDF with cost by service and SKU.
 
 ### Google Calendar sign-in
 
@@ -104,6 +123,34 @@ the console (Terraform cannot create it). Terraform enables the Calendar API
 
 The refresh tokens are encrypted with the `KMS_KEY` key, so both must be set;
 without either, the Google button answers "Aún no disponible".
+
+### Reaction catalog
+
+Terraform creates the `<project>-media` bucket: objects readable by anyone
+(`roles/storage.legacyObjectReader` for `allUsers`, which allows reading a
+known object but never listing the bucket) so Telegram can fetch them by URL,
+and `roles/storage.objectUser` for the service account. The deploy sets
+`MEDIA_BUCKET=<GCP_PROJECT_ID>-media`; no repository variable is needed. The
+owner fills it from `/catalogo` in the chat (see docs/USAGE.md).
+
+### Photos (Gemini)
+
+Photos of meals and receipts are read by Gemini through an API key from a
+separate AI Studio project (`gen-lang-client-0241526918`, named
+`botjonh-gemini`; free tier, no billing). Terraform creates the empty
+`assistant-gemini-key` secret; store the key once (the deploy mounts it, so it
+fails while the secret has no version):
+
+```bash
+KEY_ID=$(gcloud services api-keys list --project gen-lang-client-0241526918 \
+  --filter="displayName=botjonh" --format="value(uid)")
+gcloud services api-keys get-key-string "$KEY_ID" --project gen-lang-client-0241526918 \
+  --format="value(keyString)" | tr -d '\n' \
+  | gcloud secrets versions add assistant-gemini-key --data-file=-
+```
+
+The key is restricted to `generativelanguage.googleapis.com`. Without it,
+photos answer "No pude leer la foto ahora".
 
 Every merge into `dev` deploys the `assistant-staging` service (its own bot and
 Firestore database); merging `dev` into `main` deploys `assistant` to
@@ -181,6 +228,8 @@ Local runs read the same variables from a git-ignored `.env`.
 | `KMS_KEY` | Cloud KMS key that encrypts iCal URLs and Google refresh tokens (empty = both refused) |
 | `GOOGLE_OAUTH_CLIENT_ID` | Secret `assistant-google-oauth-client-id` (empty = Google sign-in refused) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Secret `assistant-google-oauth-client-secret` |
+| `GEMINI_API_KEY` | Secret `assistant-gemini-key` (empty = photos refused) |
+| `GEMINI_MODEL` | Gemini model that reads photos (default `gemini-3.5-flash-lite`) |
 | `BACKUP_BUCKET` | Daily ledger CSV and weekly JSON backup |
 | `LLM_MODEL` / `LLM_BASE_URL` | Default `deepseek-flash` / `https://api.deepseek.com` |
 | `MAX_MSGS_PER_MINUTE` | Per-chat rate limit (default 10) |
@@ -193,5 +242,4 @@ Local runs read the same variables from a git-ignored `.env`.
 ```bash
 uv run python -m assistant.admin add-owner <chat_id> <nombre>   # create or promote the owner
 uv run python -m assistant.admin bot-profile [--photo]          # menu, texts and photo
-uv run python -m assistant.admin migrate-gifs <owner_chat_id>   # old per-user GIFs → shared catalog
 ```

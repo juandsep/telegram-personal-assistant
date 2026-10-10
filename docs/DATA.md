@@ -101,7 +101,7 @@ the other; `gcal_id` is the legacy shared-calendar id, still served. The ICS fee
 | `pending/{token}` | Confirmation waiting for a button | TTL 10 min |
 | `oauth_states/{token}` | `chat_id` of a Google sign-in in progress (single use) | TTL 10 min |
 | `history/{chat_id}` | Last 6 LLM turns | — |
-| `gif_catalog/{tipo}` | Shared reaction GIFs | — |
+| `media/{id}` | Reaction catalog: tag, public URL, type (files in `<project>-media`) | — |
 | `cron/{key}` | Export and backup success markers | TTL 30 days |
 
 Doc ids contain chat_ids, so they are never logged.

@@ -30,8 +30,15 @@ class Ref:
     def get(self) -> Snap:
         return Snap(self.path, self.db.store.get(self.path))
 
+    @property
+    def id(self) -> str:
+        return self.path.rsplit("/", 1)[-1]
+
     def set(self, data: dict) -> None:
         self.db.store[self.path] = copy.deepcopy(data)
+
+    def delete(self) -> None:
+        self.db.store.pop(self.path, None)
 
 
 class Query:
@@ -46,7 +53,10 @@ class Query:
         self.db, self.path, self.filters = db, path, filters
         self.order, self.n = order, n
 
-    def document(self, doc_id: str) -> Ref:
+    def document(self, doc_id: str | None = None) -> Ref:
+        if doc_id is None:  # Firestore's auto id
+            self.db.ids += 1
+            doc_id = f"auto{self.db.ids}"
         return Ref(self.db, f"{self.path}/{doc_id}")
 
     def where(self, *, filter: firestore.FieldFilter) -> "Query":
@@ -93,6 +103,7 @@ class FakeDB:
     def __init__(self) -> None:
         self.store: dict[str, dict] = {}
         self.commits = 0
+        self.ids = 0
         self.now = datetime(2026, 9, 29, 17, tzinfo=UTC)
 
     def collection(self, name: str) -> Query:

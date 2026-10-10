@@ -5159,18 +5159,20 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="GCP jd-botjonh" x="180" y="10" width="1120" height="644" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="telegram" data-edge-to="assistant" data-edge-label="webhook" data-edge-key="0" data-edge-id="webhook" data-composition-points="140,232;210,232" d="M 140 232 L 210 232" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="telegram" data-edge-to="assistant" data-edge-label="webhook" data-edge-key="0" data-edge-id="webhook" data-composition-points="140,225;210,225" d="M 140 225 L 210 225" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="assistant" data-edge-to="updates" data-edge-label="publish" data-edge-key="1" data-edge-id="publish" data-composition-points="293,264;293,400" d="M 293 264 L 293 400" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="updates" data-edge-to="assistant" data-edge-label="push (OIDC)" data-edge-key="2" data-edge-id="push" data-composition-points="307,400;307,264" d="M 307 400 L 307 264" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="assistant" data-edge-to="firestore" data-edge-label="write" data-edge-key="3" data-edge-id="state" data-composition-points="390,226.66666666666666;650,226.66666666666666" d="M 390 226.66666666666666 L 650 226.66666666666666" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="assistant" data-edge-to="deepseek" data-edge-label="tool calls" data-edge-key="4" data-edge-id="llm" data-composition-points="390,216;540,216;540,104" d="M 390 216 L 532 216 Q 540 216 540 208 L 540 104" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         <path data-edge-from="firestore" data-edge-to="fx" data-edge-label="rates" data-edge-key="5" data-edge-id="rates" data-composition-points="730,200;730,104" d="M 730 200 L 730 104" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="assistant" data-edge-to="kms" data-edge-label="decrypt" data-edge-key="6" data-edge-id="decrypt" data-composition-points="300,200;300,104" d="M 300 200 L 300 104" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="assistant" data-edge-to="kms" data-edge-label="decrypt" data-edge-key="6" data-edge-id="decrypt" data-composition-points="307,200;307,104" d="M 307 200 L 307 104" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
         <path data-edge-from="scheduler" data-edge-to="updates" data-edge-label="jobs" data-edge-key="7" data-edge-id="cron" data-composition-points="300,570;300,464" d="M 300 570 L 300 464" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="assistant" data-edge-to="tasks" data-edge-label="enqueue" data-edge-key="8" data-edge-id="remind" data-composition-points="390,237.33333333333334;425,237.33333333333334;425,432;460,432" d="M 390 237.33333333333334 L 417 237.33333333333334 Q 425 237.33333333333334 425 245.33333333333334 L 425 424 Q 425 432 433 432 L 460 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="firestore" data-edge-to="gcs" data-edge-label="daily export" data-edge-key="9" data-edge-id="export" data-composition-points="810,232;850,232;850,432;890,432" d="M 810 232 L 842 232 Q 850 232 850 240 L 850 424 Q 850 432 858 432 L 890 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="gcs" data-edge-to="bigquery" data-edge-key="10" data-edge-id="external-table" data-composition-points="1050,432;1120,432" d="M 1050 432 L 1120 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="assistant" data-edge-to="monitoring" data-edge-label="logs + metrics" data-edge-key="11" data-edge-id="observe" data-composition-points="390,248;626,248;626,602;650,602" d="M 390 248 L 618 248 Q 626 248 626 256 L 626 594 Q 626 602 634 602 L 650 602" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="assistant" data-edge-to="gemini" data-edge-label="read photo" data-edge-key="12" data-edge-id="photos" data-composition-points="293,200;293,176;164,176;164,72;140,72" d="M 293 200 L 293 184 Q 293 176 285 176 L 172 176 Q 164 176 164 168 L 164 80 Q 164 72 156 72 L 140 72" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="assistant" data-edge-to="gcal" data-edge-label="mirror + sync" data-edge-key="13" data-edge-id="calendar" data-composition-points="210,239;190,239;190,432;170,432" d="M 210 239 L 198 239 Q 190 239 190 247 L 190 424 Q 190 432 182 432 L 170 432" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
 
         <!-- Components -->
         <g id="node-telegram" data-node-id="telegram" data-node-label="Telegram" tabindex="0" role="button" aria-label="Focus Telegram, Architecture component" aria-pressed="false" data-node-kind="external" data-node-context="Architecture component">
@@ -5280,8 +5282,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="540" y="446" class="t-muted" font-size="9" text-anchor="middle">reminders</text>
         </g>
 
-        <g id="node-gcs" data-node-id="gcs" data-node-label="GCS" tabindex="0" role="button" aria-label="Focus GCS, CSV, GCP jd-botjonh" aria-pressed="false" data-node-kind="database" data-node-sublabel="CSV" data-node-context="GCP jd-botjonh">
-          <title>GCS · CSV · GCP jd-botjonh</title>
+        <g id="node-gcs" data-node-id="gcs" data-node-label="GCS" tabindex="0" role="button" aria-label="Focus GCS, CSV · media, GCP jd-botjonh" aria-pressed="false" data-node-kind="database" data-node-sublabel="CSV · media" data-node-context="GCP jd-botjonh">
+          <title>GCS · CSV · media · GCP jd-botjonh</title>
           <rect x="890" y="400" width="160" height="64" rx="6" class="c-mask"/>
           <rect x="890" y="400" width="160" height="64" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(896 406) scale(0.6875)">
@@ -5289,7 +5291,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="970" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">GCS</text>
-        <text data-detail="context" x="970" y="446" class="t-muted" font-size="9" text-anchor="middle">CSV</text>
+        <text data-detail="context" x="970" y="446" class="t-muted" font-size="9" text-anchor="middle">CSV · media</text>
         </g>
 
         <g id="node-bigquery" data-node-id="bigquery" data-node-label="BigQuery" tabindex="0" role="button" aria-label="Focus BigQuery, GCP jd-botjonh" aria-pressed="false" data-node-kind="database" data-node-context="GCP jd-botjonh">
@@ -5314,10 +5316,34 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="750" y="616" class="t-muted" font-size="9" text-anchor="middle">metrics · alerts · Grafana</text>
         </g>
 
+        <g id="node-gemini" data-node-id="gemini" data-node-label="Gemini" tabindex="0" role="button" aria-label="Focus Gemini, photos, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="photos" data-node-context="Architecture component">
+          <title>Gemini · photos · Architecture component</title>
+          <rect x="20" y="40" width="120" height="64" rx="6" class="c-mask"/>
+          <rect x="20" y="40" width="120" height="64" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(26 46) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="80" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Gemini</text>
+        <text data-detail="context" x="80" y="86" class="t-muted" font-size="9" text-anchor="middle">photos</text>
+        </g>
+
+        <g id="node-gcal" data-node-id="gcal" data-node-label="Google Calendar" tabindex="0" role="button" aria-label="Focus Google Calendar, OAuth, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="OAuth" data-node-context="Architecture component">
+          <title>Google Calendar · OAuth · Architecture component</title>
+          <rect x="20" y="400" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="20" y="400" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(26 406) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="95" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Google Calendar</text>
+        <text data-detail="context" x="95" y="446" class="t-muted" font-size="9" text-anchor="middle">OAuth</text>
+        </g>
+
         <!-- Connection labels -->
         <g data-detail="context" data-edge-from="telegram" data-edge-to="assistant" data-edge-label="webhook" data-edge-key="0" data-edge-id="webhook">
-          <rect x="153.2" y="212" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="175" y="222" class="t-backend" font-size="8" text-anchor="middle">webhook</text>
+          <rect x="153.2" y="205" width="43.6" height="14" rx="3" class="c-mask"/>
+          <text x="175" y="215" class="t-backend" font-size="8" text-anchor="middle">webhook</text>
         </g>
         <g data-detail="context" data-edge-from="assistant" data-edge-to="updates" data-edge-label="publish" data-edge-key="1" data-edge-id="publish">
           <rect x="219.2" y="268" width="43.6" height="14" rx="3" class="c-mask"/>
@@ -5340,8 +5366,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="730" y="190" class="t-messagebus" font-size="8" text-anchor="middle">rates</text>
         </g>
         <g data-detail="context" data-edge-from="assistant" data-edge-to="kms" data-edge-label="decrypt" data-edge-key="6" data-edge-id="decrypt">
-          <rect x="278.2" y="180" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="300" y="190" class="t-security" font-size="8" text-anchor="middle">decrypt</text>
+          <rect x="325.2" y="180" width="43.6" height="14" rx="3" class="c-mask"/>
+          <text x="347" y="190" class="t-security" font-size="8" text-anchor="middle">decrypt</text>
         </g>
         <g data-detail="context" data-edge-from="scheduler" data-edge-to="updates" data-edge-label="jobs" data-edge-key="7" data-edge-id="cron">
           <rect x="285" y="550" width="30" height="14" rx="3" class="c-mask"/>
@@ -5359,6 +5385,14 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <g data-detail="context" data-edge-from="assistant" data-edge-to="monitoring" data-edge-label="logs + metrics" data-edge-key="11" data-edge-id="observe">
           <rect x="587.4" y="468" width="77.2" height="14" rx="3" class="c-mask"/>
           <text x="626" y="478" class="t-muted" font-size="8" text-anchor="middle">logs + metrics</text>
+        </g>
+        <g data-detail="context" data-edge-from="assistant" data-edge-to="gemini" data-edge-label="read photo" data-edge-key="12" data-edge-id="photos">
+          <rect x="199.5" y="156" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="228.5" y="166" class="t-messagebus" font-size="8" text-anchor="middle">read photo</text>
+        </g>
+        <g data-detail="context" data-edge-from="assistant" data-edge-to="gcal" data-edge-label="mirror + sync" data-edge-key="13" data-edge-id="calendar">
+          <rect x="153.8" y="315.5" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="190" y="325.5" class="t-messagebus" font-size="8" text-anchor="middle">mirror + sync</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->

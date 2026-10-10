@@ -9,8 +9,8 @@ Collections (Firestore native):
 - ``users/{chat_id}``: nombre, rol (owner|beta), moneda (display currency:
   USD|EUR|COP|CNY, /moneda; the ledger stays in USD), zona_horaria (unset until
   /moneda guesses it, the Mini App sends the phone's or /zona sets it; readers
-  fall back to the default zone), idioma (es|en|zh, from the Telegram app), fun
-  (GIF replies, /fun), last_batch.
+  fall back to the default zone), idioma (es|en|zh|fr|de, from the Telegram
+  app), fun (reaction images, /fun), last_batch.
 - ``processed/{update_id}``: dedup marker; ``expire_at`` drives a 7-day TTL.
 - ``invites/{code}``: nombre, used, ``expire_at`` (24 h, single use).
 - ``rate/{chat_id}_{minute}``: messages in that minute.
@@ -23,11 +23,9 @@ Collections (Firestore native):
   ``state`` of a Google sign-in started from Telegram.
 - ``ics_tokens/{token}``: chat_id of a private ICS feed; ``users.ics_token``
   points back so the link can be shown again or rotated. Never log tokens.
-- ``gif_catalog/{tipo}`` (gasto|ingreso): one shared, owner-curated map
-  ``{key: [file_id, ...]}`` (max 20 each, newest last). ``key`` is a gasto
-  categoria, an ingreso fuente or ``general`` (the fallback). A random one is
-  sent as a reaction after a registration. File ids are per bot, so staging and
-  production keep separate catalogs. Never log file_ids.
+- ``comidas/{chat_id}/registros`` and ``cuentas/{chat_id}/divisiones``: meals
+  and split checks read from photos (see ``assistant.services.photos``).
+- ``media/{id}``: the reaction catalog (see ``assistant.services.media``).
 
 Set a Firestore TTL policy on ``expire_at`` for processed, invites, rate, spend,
 pending and oauth_states. Doc ids contain chat_ids: never log them.
@@ -52,7 +50,6 @@ PENDING_TTL = timedelta(minutes=10)
 INVITE_TTL = timedelta(hours=24)
 PROCESSED_TTL = timedelta(days=7)
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{22}")  # secrets.token_urlsafe(16)
-GIF_MAX = 20
 _ICS_TOKEN = re.compile(r"[A-Za-z0-9_-]{32}")  # secrets.token_urlsafe(24)
 
 
@@ -330,61 +327,6 @@ def chat_for_ics_token(token: str) -> str | None:
     return (_data(_doc("ics_tokens", token).get()) or {}).get("chat_id")
 
 
-# --- reaction GIF catalog -------------------------------------------------------
-
-GIF_KINDS = ("gasto", "ingreso")
-GIF_GENERAL = "general"
-_KEY = re.compile(r"\w{1,24}")  # letters (ñ, accents), digits and _
-
-
-def valid_key(key: str) -> bool:
-    return bool(_KEY.fullmatch(key)) and key == key.lower()
-
-
-def gif_catalog(kind: str) -> dict[str, list[str]]:
-    data = _data(_doc("gif_catalog", kind).get()) or {}
-    return {k: list(v) for k, v in data.items()}
-
-
-def add_gif(kind: str, key: str, file_id: str) -> None:
-    """Newest last; a repeated file_id moves to the end; keeps the last 20."""
-    catalog = gif_catalog(kind)
-    ids = [f for f in catalog.get(key, []) if f != file_id] + [file_id]
-    # ponytail: read-modify-write without a transaction; one curator (the owner).
-    _doc("gif_catalog", kind).set({**catalog, key: ids[-GIF_MAX:]})
-
-
-def remove_gif(file_id: str) -> int:
-    """Drop a file_id from every kind and key; returns how many were removed."""
-    removed = 0
-    for kind in GIF_KINDS:
-        catalog = gif_catalog(kind)
-        kept = {k: [f for f in v if f != file_id] for k, v in catalog.items()}
-        n = sum(map(len, catalog.values())) - sum(map(len, kept.values()))
-        if n:
-            _doc("gif_catalog", kind).set({k: v for k, v in kept.items() if v})
-            removed += n
-    return removed
-
-
-def random_gif(kind: str, key: str) -> str | None:
-    """A GIF of the entry's key, else of ``general``; None when both empty."""
-    catalog = gif_catalog(kind)
-    ids = catalog.get(key) or catalog.get(GIF_GENERAL) or []
-    return secrets.choice(ids) if ids else None
-
-
-def migrate_gifs(chat_id: str) -> int:
-    """Copy a chat's old ``gifs/{chat_id}`` lists into ``general``."""
-    old = _data(_doc("gifs", chat_id).get()) or {}
-    n = 0
-    for kind in GIF_KINDS:
-        for file_id in old.get(kind, []):
-            add_gif(kind, GIF_GENERAL, file_id)
-            n += 1
-    return n
-
-
 # --- owner tools -----------------------------------------------------------------
 
 OWNER_ONLY = "Solo el owner puede hacer eso."
@@ -422,14 +364,16 @@ def revoke(chat_id: str) -> bool:
 
 def reset_user(chat_id: str) -> None:
     """Erase everything stored for the chat except its access (nombre, rol):
-    ledger, agenda, LLM history, preferences, settings and the feed link. The
-    rate and spend counters stay, so a reset never lifts the daily LLM cap."""
+    ledger, agenda, meals, split checks, LLM history, preferences, settings and
+    the feed link. The rate and spend counters stay, so a reset never lifts the
+    daily LLM cap."""
     db = _db()
     user = _doc("users", chat_id)
     data = _data(user.get()) or {}
     if token := data.get("ics_token"):
         _doc("ics_tokens", token).delete()
-    for name in ("ledger", "agenda"):  # the doc plus movimientos / eventos
+    # the doc plus movimientos / eventos / registros / divisiones
+    for name in ("ledger", "agenda", "comidas", "cuentas"):
         db.recursive_delete(db.collection(name).document(chat_id))
     for name in ("history", "preferences"):
         _doc(name, chat_id).delete()

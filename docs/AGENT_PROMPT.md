@@ -152,9 +152,11 @@ what is missing. Where this prompt and `ROADMAP.md` differ, this prompt wins.
      write on Telegram at an exact time.`
    - `cancelar_evento` and `deshacer` require a confirmation turn (`pending` +
      inline button). Same for expenses above `confirm_above`.
-8. **`observability/trace.py`** — MLflow per turn: `prompt_version`, model,
-   tool, latency, tokens (cache hit, cache miss, output), USD cost, validation
-   result. Message text **hashed (sha256)**, never in clear.
+8. **`observability/trace.py`** — one `llm_turn` JSON log line per turn:
+   `prompt_version`, model, tool, latency, tokens (cache hit, cache miss,
+   output), USD cost, validation result. Log-based metrics in
+   `infra/monitoring.tf` turn it into Cloud Monitoring series. Message text
+   **hashed (sha256)**, never in clear.
 9. **`jobs/`** — `digest` (07:30), `checkin` (21:00), `weekly` (Sunday 19:00).
    - `weekly` also runs the backup: Firestore collections to JSON in GCS, and
      the values of the `Gastos`/`Ingresos` sheets (through the Sheets API) to

@@ -32,6 +32,8 @@ def env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(agenda, "agenda_lines", lambda ctx, period: [])
     enqueue = MagicMock()
     monkeypatch.setattr(agenda, "enqueue_reminders", enqueue)
+    sync = MagicMock()
+    monkeypatch.setattr(agenda, "sync_gcal", sync)
     monkeypatch.setattr(ledger, "spend_by_category", lambda *a: {})
     monkeypatch.setattr(ledger, "total_income", lambda *a: Decimal("0.00"))
     monkeypatch.setattr(ledger, "of_day", lambda *a: [])
@@ -356,6 +358,10 @@ def test_tick_sends_per_local_time(
     _at(monkeypatch, 2026, 9, 30, 5)
     jobs.run_job("tick")
     assert _sent(tick) == {"es": "agenda"}
+    assert sorted(c.args[0].chat_id for c in agenda.sync_gcal.call_args_list) == [
+        "es",
+        "pa",
+    ]  # every chat, every hour
     # 20:00 UTC: Madrid 22:00 daily list.
     tick.telegram.reset_mock()
     _at(monkeypatch, 2026, 9, 30, 20)

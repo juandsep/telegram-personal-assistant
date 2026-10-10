@@ -196,6 +196,8 @@ OWNER_ONLY = frozenset({"invite_beta", "list_users"})
 # Their output can hold the connected calendar's busy times: it goes to the user
 # as is and never back to the LLM (Google user data stays out of the model).
 DIRECT = frozenset({"list_agenda", "free_slots"})
+# Their output is the reply as is: one LLM round instead of two (latency).
+ANSWER = frozenset({"calendar_status"})
 # Their confirmation question can name those busy times (a clash).
 CLASH = frozenset({"create_event", "create_reminder"})
 

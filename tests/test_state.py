@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 
 from assistant.context import ToolContext
+from assistant.i18n import t
 from assistant.services import state
 
 
@@ -309,10 +310,11 @@ def test_user_alias_is_created_once(db) -> None:
 
 def test_calendar_status(db) -> None:
     state.upsert_user("1", "Ana", role="beta")
-    assert state.calendar_status(ctx()).startswith("Ningún calendario")
+    assert state.calendar_status(ctx()) == t("es", "cal_status_none")
     token = state.ics_token("1")
-    assert "ningún calendario lo ha leído" in state.calendar_status(ctx())
+    assert state.calendar_status(ctx()) == t("es", "cal_status_feed_wait")
     state.mark_ics_fetch(token)
     db.store[("preferences", "1")] = {"gcal_token_enc": "x"}
-    status = state.calendar_status(ctx())
-    assert "Google Calendar: conectado" in status and "hace 0 min" in status
+    assert state.calendar_status(ctx()) == "\n".join(
+        [t("es", "cal_status_google"), t("es", "cal_status_feed_ok", minutes=0)]
+    )

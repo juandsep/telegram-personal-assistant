@@ -44,6 +44,7 @@ from typing import Any
 from google.cloud import firestore
 
 from assistant.context import ToolContext
+from assistant.i18n import t
 
 HISTORY_TURNS = 6
 PENDING_TTL = timedelta(minutes=10)
@@ -417,27 +418,22 @@ def mark_ics_fetch(token: str) -> None:
 
 def calendar_status(ctx: ToolContext) -> str:
     """Which calendars are connected, and whether a subscribed app has read the
-    feed yet. Connection state only, no events."""
+    feed yet. Connection state only, no events. Sent to the user as is."""
+    lang = ctx.lang
     prefs = get_preferences(ctx.chat_id)
     lines = []
     if prefs.get("gcal_token_enc") or prefs.get("gcal_id"):
-        lines.append("Google Calendar: conectado (sincroniza cada hora).")
+        lines.append(t(lang, "cal_status_google"))
     if prefs.get("ics_url_enc"):
-        lines.append("Calendario importado por enlace iCal: conectado (sus ocupados).")
+        lines.append(t(lang, "cal_status_import"))
     token = (get_user(ctx.chat_id) or {}).get("ics_token")
     feed = _data(_doc("ics_tokens", token).get()) if token else None
     if feed and (last := feed.get("last_fetch")):
         minutes = max(int((_now() - last).total_seconds() // 60), 0)
-        lines.append(
-            "Suscripción iPhone/Outlook: funciona; el calendario la leyó por "
-            f"última vez hace {minutes} min."
-        )
+        lines.append(t(lang, "cal_status_feed_ok", minutes=minutes))
     elif feed:
-        lines.append(
-            "Suscripción iPhone/Outlook: enlace creado, pero ningún calendario lo "
-            "ha leído aún (tras suscribirse puede tardar unos minutos)."
-        )
-    return "\n".join(lines) or "Ningún calendario conectado. Puede usar /calendario."
+        lines.append(t(lang, "cal_status_feed_wait"))
+    return "\n".join(lines) or t(lang, "cal_status_none")
 
 
 # --- owner tools -----------------------------------------------------------------

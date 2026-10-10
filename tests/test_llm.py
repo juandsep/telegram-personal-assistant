@@ -51,7 +51,7 @@ def calls(monkeypatch):
             "create_reminder",
             "free_slots",
         ],
-        "state": ["invite_beta", "list_users"],
+        "state": ["invite_beta", "list_users", "calendar_status"],
     }.items():
         m = types.ModuleType(f"assistant.services.{mod}")
         for n in names:
@@ -428,3 +428,14 @@ def test_clash_question_is_kept_out_of_history(calls) -> None:
     result = client.run_turn(ctx(), "recuérdame llamar a las 9:30", [])
     assert result.reply.startswith("Choca con Ocupado") and result.keyboard
     assert result.messages[-1]["content"] == client.PRIVATE_REPLY
+
+
+@respx.mock
+def test_calendar_status_answers_in_one_round(calls) -> None:
+    route = respx.post(URL).mock(
+        return_value=completion(tool_calls=[("calendar_status", "{}")])
+    )
+    result = client.run_turn(ctx(), "¿ya quedó el calendario?", [])
+    assert route.call_count == 1  # no second LLM round to word it
+    assert result.reply == "ok calendar_status" and not result.private
+    assert result.messages[-1]["content"] == "ok calendar_status"

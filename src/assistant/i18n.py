@@ -1,28 +1,30 @@
 # ruff: noqa: E501  (message texts keep Telegram line breaks)
-"""User-facing texts in Spanish, English, Chinese, French and German.
+"""User-facing texts in Spanish, English, Chinese, French, German and Portuguese.
 
 The language is Telegram's ``language_code`` of the user's app (it follows the
 phone's language unless changed in Telegram), stored as ``users.idioma``.
 Any other language falls back to English. Commands keep their Spanish names
 (/tablero, /ultimos...) in every language, and the plain words (dashboard,
-summary...) are the English ones outside Spanish. French and German live in
-their own tables at the end, merged into ``TEXTS`` and ``CATEGORY_NAMES``.
+summary...) are the English ones outside Spanish. French, German and Portuguese
+live in their own tables at the end, merged into ``TEXTS`` and
+``CATEGORY_NAMES``.
 """
 
 from __future__ import annotations
 
-LANGS = ("es", "en", "zh", "fr", "de")
+LANGS = ("es", "en", "zh", "fr", "de", "pt")
 LANG_NAMES = {
     "es": "español",
     "en": "English",
     "zh": "简体中文",
     "fr": "français",
     "de": "Deutsch",
+    "pt": "português",
 }
 
 
 def lang_of(language_code: str | None) -> str:
-    """``en-US`` -> en, ``zh-hans`` -> zh, ``fr-CA`` -> fr, anything else -> en."""
+    """``en-US`` -> en, ``zh-hans`` -> zh, ``pt-BR`` -> pt, anything else -> en."""
     code = (language_code or "").lower()
     return next((i for i in LANGS if code.startswith(i)), "en")
 
@@ -506,9 +508,9 @@ Just write the word, no "/". help shows this again.""",
     },
     # Bot profile (python -m assistant.admin bot-profile)
     "bot_description": {
-        "es": "Hola, soy Juani 🫶 Tu asistente de gastos y agenda.\n\n🪙 Escribe -12 almuerzo y lo registro al instante.\n🧭 Mira tu mes en el Visor de gastos.\n🗓️ Agenda y recordatorios en lenguaje natural.\n🌎 Hablo español, inglés, chino, francés y alemán.\n\nSolo por invitación.",
-        "en": "Hi, I'm Juani 🫶 Your expense and calendar assistant.\n\n🪙 Write -12 lunch and I log it right away.\n🧭 See your month in the Expense viewer.\n🗓️ Calendar and reminders in plain language.\n🌎 I speak English, Spanish, Chinese, French and German.\n\nInvitation only.",
-        "zh": "你好，我是 Juani 🫶 你的记账和日程助手。\n\n🪙 发送 -12 午饭，我马上记下。\n🧭 在支出查看器里查看本月账单。\n🗓️ 用自然语言管理日程和提醒。\n🌎 我会说中文、英语、西班牙语、法语和德语。\n\n仅限邀请使用。",
+        "es": "Hola, soy Juani 🫶 Tu asistente de gastos y agenda.\n\n🪙 Escribe -12 almuerzo y lo registro al instante.\n🧭 Mira tu mes en el Visor de gastos.\n🗓️ Agenda y recordatorios en lenguaje natural.\n🌎 Hablo español, inglés, chino, francés, alemán y portugués.\n\nSolo por invitación.",
+        "en": "Hi, I'm Juani 🫶 Your expense and calendar assistant.\n\n🪙 Write -12 lunch and I log it right away.\n🧭 See your month in the Expense viewer.\n🗓️ Calendar and reminders in plain language.\n🌎 I speak English, Spanish, Chinese, French, German and Portuguese.\n\nInvitation only.",
+        "zh": "你好，我是 Juani 🫶 你的记账和日程助手。\n\n🪙 发送 -12 午饭，我马上记下。\n🧭 在支出查看器里查看本月账单。\n🗓️ 用自然语言管理日程和提醒。\n🌎 我会说中文、英语、西班牙语、法语、德语和葡萄牙语。\n\n仅限邀请使用。",
     },
     "bot_about": {
         "es": "Juani: tus gastos, ingresos y agenda por chat. Escribe -12 almuerzo y listo 🧭",
@@ -635,7 +637,7 @@ CATEGORY_NAMES: dict[str, dict[str, str]] = {
 }
 
 
-# --- French and German -----------------------------------------------------------
+# --- French, German and Portuguese -----------------------------------------------------------
 
 FR: dict[str, str] = {
     "welcome": """Salut 🫶 Je suis Juani, ton assistante sur ton téléphone. Je suis tes dépenses, tes revenus et ton agenda. Écris-moi simplement :
@@ -742,7 +744,7 @@ FR: dict[str, str] = {
     "cal_subscribe": "🗓️ S'abonner",
     "oauth_ok": "✓ C'est fait, retourne sur Telegram.",
     "oauth_error": "Connexion impossible. Retourne sur Telegram et réessaie avec calendar.",
-    "bot_description": "Salut, je suis Juani 🫶 Ton assistante de dépenses et d'agenda.\n\n🪙 Écris -12 déjeuner et je l'enregistre tout de suite.\n🧭 Vois ton mois dans la Visionneuse de dépenses.\n🗓️ Agenda et rappels en langage naturel.\n🌎 Je parle français, anglais, espagnol, chinois et allemand.\n\nSur invitation uniquement.",
+    "bot_description": "Salut, je suis Juani 🫶 Ton assistante de dépenses et d'agenda.\n\n🪙 Écris -12 déjeuner et je l'enregistre tout de suite.\n🧭 Vois ton mois dans la Visionneuse de dépenses.\n🗓️ Agenda et rappels en langage naturel.\n🌎 Je parle français, anglais, espagnol, chinois, allemand et portugais.\n\nSur invitation uniquement.",
     "bot_about": "Juani : tes dépenses, revenus et agenda par chat. Écris -12 déjeuner et c'est fait 🧭",
     "cmd_tablero": "Ta Visionneuse de dépenses du mois (dashboard pin l'épingle)",
     "cmd_resumen": "Tes dépenses d'aujourd'hui, de la semaine et du mois",
@@ -877,7 +879,7 @@ Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "cal_subscribe": "🗓️ Abonnieren",
     "oauth_ok": "✓ Erledigt, geh zurück zu Telegram.",
     "oauth_error": "Verbindung fehlgeschlagen. Geh zurück zu Telegram und versuch es erneut mit calendar.",
-    "bot_description": "Hallo, ich bin Juani 🫶 Deine Assistentin für Ausgaben und Termine.\n\n🪙 Schreib -12 Mittagessen und ich trage es sofort ein.\n🧭 Sieh deinen Monat in der Ausgabenübersicht.\n🗓️ Termine und Erinnerungen in natürlicher Sprache.\n🌎 Ich spreche Deutsch, Englisch, Spanisch, Chinesisch und Französisch.\n\nNur mit Einladung.",
+    "bot_description": "Hallo, ich bin Juani 🫶 Deine Assistentin für Ausgaben und Termine.\n\n🪙 Schreib -12 Mittagessen und ich trage es sofort ein.\n🧭 Sieh deinen Monat in der Ausgabenübersicht.\n🗓️ Termine und Erinnerungen in natürlicher Sprache.\n🌎 Ich spreche Deutsch, Englisch, Spanisch, Chinesisch, Französisch und Portugiesisch.\n\nNur mit Einladung.",
     "bot_about": "Juani: deine Ausgaben, Einnahmen und Termine per Chat. Schreib -12 Mittagessen, fertig 🧭",
     "cmd_tablero": "Deine Ausgabenübersicht des Monats (dashboard pin heftet sie an)",
     "cmd_resumen": "Deine Ausgaben heute, diese Woche und diesen Monat",
@@ -907,31 +909,166 @@ Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "d_no_entries": "Keine Einträge.",
 }
 
-# Category names: (French, German).
-_CATEGORIES_FR_DE = {
-    "vivienda": ("Logement", "Wohnen"),
-    "servicios": ("Factures", "Nebenkosten"),
-    "supermercado": ("Courses", "Lebensmittel"),
-    "transporte": ("Transport", "Verkehr"),
-    "salud": ("Santé", "Gesundheit"),
-    "deudas": ("Dettes", "Schulden"),
-    "restaurantes": ("Restaurants", "Restaurants"),
-    "entretenimiento": ("Loisirs", "Unterhaltung"),
-    "compras": ("Achats", "Shopping"),
-    "viajes": ("Voyages", "Reisen"),
-    "suscripciones": ("Abonnements", "Abos"),
-    "otros": ("Autres", "Sonstiges"),
-    "ahorro": ("Épargne", "Sparen"),
-    "inversion": ("Investissement", "Investition"),
-    "necesidades": ("Besoins", "Bedarf"),
-    "ocio": ("Envies", "Freizeit"),
+PT: dict[str, str] = {
+    "welcome": """Oi 🫶 Sou a Juani, sua assistente no seu celular. Acompanho seus gastos, receitas e agenda. É só me escrever:
+
+🪙 -12 almoço · 25000 cop mercado · +1500 salário (o + é receita)
+🧹 /anular 1 remove o último; depois escreva de novo
+🧭 dashboard: seu mês · summary: hoje, semana e mês
+🗓️ reunião com Ana amanhã 15h · calendar: sua agenda
+📸 foto do seu prato (calorias) ou de um recibo com «jantar 4» (eu divido a conta) · splits: quem te deve
+🪅 fun: respondo com imagens
+
+Escreva só a palavra, sem "/". help mostra isto de novo.""",
+    "guide": "🗺️ Guia completo",
+    "viewer": "Visor de gastos",
+    "dashboard": "Veja seu painel aqui 🫳",
+    "hint": "Para mais detalhes, veja seu painel: Visor de gastos 🧭",
+    "spent_today": "Seus gastos hoje: {total} {currency}.",
+    "no_spending": "Você não registrou gastos hoje.",
+    "yesterday": "Ontem: {total} {currency}.",
+    "week": "Semana {since}–{until}: {total} {currency}",
+    "top": "Top: ",
+    "no_income": "Sem receitas este mês: registre uma (+1000 salário).",
+    "month": "Mês: receitas {income}, gastos {expenses} {currency}.",
+    "save": "Poupe {savings} (20%). Restam {left} {currency} este mês (~{week}/semana).",
+    "overspent": "Você passou {excess} {currency}: sua poupança de {savings} está em risco.",
+    "access_sent": "Pedi acesso ao dono da Juani. Aviso aqui assim que ele responder.",
+    "access_wait": "Seu pedido foi recusado. Você pode pedir de novo {days} dias após a recusa.",
+    "access_today": "Não estou aceitando mais pedidos hoje. Tente amanhã com /start.",
+    "access_full": "A Juani não tem vagas para novos usuários agora.",
+    "access_granted": "✅ Agora você tem acesso. Toque em /start para começar.",
+    "access_rejected": "Seu pedido de acesso foi recusado. Você pode pedir de novo em {days} dias com /start.",
+    "inactive_warning": "Você não usa a Juani há um tempo. Em {days} dias, apago seus dados e seu acesso. Escreva qualquer coisa para mantê-los.",
+    "cal_status_google": "✅ Google Agenda conectado (sincroniza a cada hora).",
+    "cal_status_import": "✅ Agenda importada por link iCal: vejo seus horários ocupados.",
+    "cal_status_feed_ok": "✅ Assinatura iPhone/Outlook ativa: sua agenda leu há {minutes} min.",
+    "cal_status_feed_wait": "⏳ Link de assinatura criado, mas sua agenda ainda não leu. Pode levar alguns minutos.",
+    "cal_status_none": "Nenhuma agenda conectada. Use calendario para conectar uma.",
+    "currency_button": "💱 Escolher moeda",
+    "save_button": "Salvar",
+    "currency_saved": "✓ Moeda: {currency}. Sua hora: {time} ({zone}).",
+    "edited_hint": "✏️ Não leio mensagens editadas. Para corrigir: /anular 1 (o último) e escreva de novo.",
+    "weekly_off_button": "🔕 Não enviar este resumo",
+    "weekly_off": "🔕 Pronto, sem resumo aos domingos. weekly ativa de novo.",
+    "weekly_on": "🔔 Pronto, envio seu resumo de gastos todo domingo às 18:00.",
+    "limit": "Você atingiu o limite por agora. Tente mais tarde.",
+    "text_only": "Por enquanto entendo texto e fotos.",
+    "failed": "Não consegui, tente de novo.",
+    "tz_usage": "Uso: /zona <zona IANA>, ex. /zona America/Sao_Paulo. Atual: {tz}.",
+    "tz_ok": "✓ Fuso horário: {tz}.",
+    "void_usage": "Uso: /anular <n>, ex. /anular 1",
+    "unavailable": "Ainda não disponível.",
+    "link_not_configured": "Link não configurado.",
+    "dashboard_not_configured": "Painel não configurado.",
+    "cancelled": "Cancelado.",
+    "photo_unavailable": "Não consegui ler a foto agora. Tente de novo em instantes.",
+    "photo_other": "Mande a foto de um prato (conto as calorias) ou de um recibo com quantas pessoas, ex. «jantar 4» (eu divido a conta).",
+    "meal": "🍽️ {name} · ~{kcal} kcal\nProteína {protein} g · Carboidratos {carbs} g · Gordura {fat} g\nHoje você está em ~{today} kcal.\n🕐 {times}",
+    "meal_remove": "🗑️ Remover",
+    "meal_removed": "Pronto, removido.",
+    "split_people": "🧾 {title}: {total} {currency}. Entre quantas pessoas dividir (com você)?",
+    "split": "🧾 {title}: {total} {currency} dividido entre {people}\n{shares}\nToque ✅ quando te pagarem. splits mostra o que falta.",
+    "split_settled": "🎉 {title}: todo mundo te pagou.",
+    "split_pending": "Te devem:",
+    "split_none": "Ninguém te deve nada. 🙌",
+    "reset_question": "Apagar tudo? Seus gastos, receitas, agenda, lembretes, agenda conectada, ajustes e conversa serão apagados. Não dá para desfazer.",
+    "reset_yes": "🧨 Sim, apagar tudo",
+    "reset_no": "Cancelar",
+    "reset_done": "✓ Pronto, começamos do zero. O Telegram só me deixa apagar mensagens das últimas 48 h; para as mais antigas use Limpar histórico no chat.",
+    "currency_first": "Antes de registrar, escolha sua moeda para que seus valores fiquem certos.",
+    "currency_question": "Em que moeda você quer ver seus valores? Mude depois com currency.",
+    "currency_ok": "✓ Moeda: {currency}. Seus valores aparecem em {currency}.",
+    "fun_on": "🪅 Modo fun ativado: respondo com imagens e GIFs. /fun desativa.",
+    "fun_off": "Modo fun desativado: respondo com o registro.",
+    "positive": "O valor deve ser maior que 0.",
+    "not_found": "Não encontrei esse registro.",
+    "currency_unsupported": "Moeda não suportada.",
+    "no_rate": "Não consegui a cotação de {cur}, tente mais tarde.",
+    "voided": "✓ anulado: {entry}",
+    "nothing_to_undo": "Nada para desfazer.",
+    "batch_not_found": "Lote não encontrado.",
+    "undone": "↩ desfeito: {n} linha(s)",
+    "already_undone": "Esse lote já foi desfeito.",
+    "no_entries": "Sem registros.",
+    "within_budget": "Dentro do orçamento.",
+    "over_budget": "Acima em {cat}{rule}: {spent} de {cap} {currency} (+{extra}). Corte primeiro aí.",
+    "no_budget": "Sem orçamento nem receitas este mês para comparar.",
+    "empty_7_days": "Nada nos próximos 7 dias.",
+    "weekdays": "Seg Ter Qua Qui Sex Sáb Dom",
+    "no_events": "Sem eventos.",
+    "no_free_slots": "Sem horários livres.",
+    "event_not_found": "Evento não encontrado.",
+    "event_cancelled": "✓ evento cancelado",
+    "invalid_link": "Link inválido.",
+    "cal_unreadable": "Não consegui ler essa agenda.",
+    "cal_disconnected": "Agenda desconectada.",
+    "cal_connected": "✓ Agenda conectada.",
+    "gcal_linked": "✓ Google Agenda conectado ({n} eventos copiados). Seus novos compromissos vão aparecer lá e aviso sobre conflitos com o Google.",
+    "cal_connect": "🪢 Conectar agenda",
+    "cal_disconnect": "✂️ Desconectar {which}",
+    "cal_choose": "Qual agenda você usa?",
+    "cal_google": "Toque no botão, escolha sua conta e permita o acesso à sua agenda. O link vale 10 minutos.",
+    "cal_google_button": "Entrar com Google",
+    "cal_ical": "Toque em 🗓️ Assinar e aceite: seus compromissos da Juani vão aparecer na sua agenda.\n\nOpcional: para avisar sobre conflitos com sua agenda, cole aqui o link iCal secreto dela (iPhone: app Calendário → calendário → Calendário público; Outlook: Configurações → Calendários compartilhados → Publicar).",
+    "cal_subscribe": "🗓️ Assinar",
+    "oauth_ok": "✓ Pronto, volte ao Telegram.",
+    "oauth_error": "Não consegui conectar. Volte ao Telegram e tente de novo com calendar.",
+    "bot_description": "Oi, sou a Juani 🫶 Sua assistente de gastos e agenda.\n\n🪙 Escreva -12 almoço e registro na hora.\n🧭 Veja seu mês no Visor de gastos.\n🗓️ Agenda e lembretes em linguagem natural.\n🌎 Falo português, espanhol, inglês, chinês, francês e alemão.\n\nSó por convite.",
+    "bot_about": "Juani: seus gastos, receitas e agenda pelo chat. Escreva -12 almoço e pronto 🧭",
+    "cmd_tablero": "Seu Visor de gastos do mês (dashboard pin fixa)",
+    "cmd_resumen": "Seus gastos de hoje, da semana e do mês",
+    "cmd_ultimos": "Seus últimos 5 registros",
+    "cmd_anular": "Anular um registro: /anular 1",
+    "cmd_calendario": "Seus próximos 7 dias e conectar sua agenda",
+    "cmd_fun": "Ativar ou desativar respostas com imagens",
+    "cmd_moneda": "A moeda dos seus valores",
+    "cmd_reset": "Apagar todos os seus dados e o chat",
+    "cmd_ayuda": "Como usar a Juani",
+    "months": "janeiro fevereiro março abril maio junho julho agosto setembro "
+    "outubro novembro dezembro",
+    "d_title": "Painel · {month}",
+    "d_amounts_in": "Valores em {currency}.",
+    "d_prev": "← Anterior",
+    "d_next": "Próximo →",
+    "d_income": "Receitas",
+    "d_expenses": "Gastos",
+    "d_savings": "Poupança",
+    "d_rate": "Taxa de poupança",
+    "d_goal": "Meta 20%: {goal} {currency}",
+    "d_no_income": "Sem receitas este mês",
+    "d_by_category": "Gastos por categoria",
+    "d_no_expenses": "Sem gastos.",
+    "d_daily": "Gastos por dia",
+    "d_latest": "Últimos {n} registros",
+    "d_no_entries": "Sem registros.",
 }
 
-for _lang, _texts in (("fr", FR), ("de", DE)):
+# Category names: (French, German, Portuguese).
+_CATEGORIES_FR_DE_PT = {
+    "vivienda": ("Logement", "Wohnen", "Moradia"),
+    "servicios": ("Factures", "Nebenkosten", "Contas"),
+    "supermercado": ("Courses", "Lebensmittel", "Mercado"),
+    "transporte": ("Transport", "Verkehr", "Transporte"),
+    "salud": ("Santé", "Gesundheit", "Saúde"),
+    "deudas": ("Dettes", "Schulden", "Dívidas"),
+    "restaurantes": ("Restaurants", "Restaurants", "Restaurantes"),
+    "entretenimiento": ("Loisirs", "Unterhaltung", "Lazer"),
+    "compras": ("Achats", "Shopping", "Compras"),
+    "viajes": ("Voyages", "Reisen", "Viagens"),
+    "suscripciones": ("Abonnements", "Abos", "Assinaturas"),
+    "otros": ("Autres", "Sonstiges", "Outros"),
+    "ahorro": ("Épargne", "Sparen", "Poupança"),
+    "inversion": ("Investissement", "Investition", "Investimento"),
+    "necesidades": ("Besoins", "Bedarf", "Necessidades"),
+    "ocio": ("Envies", "Freizeit", "Desejos"),
+}
+
+for _lang, _texts in (("fr", FR), ("de", DE), ("pt", PT)):
     for _key, _text in _texts.items():
         TEXTS[_key][_lang] = _text
-for _key, (_fr, _de) in _CATEGORIES_FR_DE.items():
-    CATEGORY_NAMES[_key] |= {"fr": _fr, "de": _de}
+for _key, (_fr, _de, _pt) in _CATEGORIES_FR_DE_PT.items():
+    CATEGORY_NAMES[_key] |= {"fr": _fr, "de": _de, "pt": _pt}
 
 
 def category_name(lang: str, key: str) -> str | None:

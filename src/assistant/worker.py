@@ -33,6 +33,7 @@ from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import WorkerSettings, get_worker_settings
 from assistant.context import CURRENCIES, ToolContext
 from assistant.i18n import lang_of, t
+from assistant.observability.timing import timed
 from assistant.services import agenda, quick, state
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,8 @@ WORDS = {
     "dashboard pin": "/tablero fijar",
     "resumen": "/resumen",
     "summary": "/resumen",
+    "semanal": "/semanal",
+    "weekly": "/semanal",
     "ultimos": "/ultimos",
     "last": "/ultimos",
     "ayuda": "/ayuda",
@@ -141,7 +144,8 @@ def _route(payload: Any) -> int:
     if msg is None:
         logger.warning("unsupported_update")
         return ACK
-    return handle_update(msg, get_worker_settings())
+    with timed("update"):
+        return handle_update(msg, get_worker_settings())
 
 
 def _context(user: dict, msg: InboundMessage, settings: WorkerSettings) -> ToolContext:
@@ -236,6 +240,13 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     if msg.text.startswith(OWNER_COMMANDS):
         _send(channel, msg, *_owner_command(ctx, msg, settings))
+        return ACK
+    if msg.text.startswith("/semanal"):
+        _send(
+            channel,
+            msg,
+            _weekly_toggle(ctx, msg, not user.get("resumen_semanal", True)),
+        )
         return ACK
     if msg.text.startswith("/fun"):
         _send(channel, msg, _fun(ctx, msg))
@@ -642,6 +653,18 @@ def _timezone_command(ctx: ToolContext, msg: InboundMessage) -> str:
     return t(ctx.lang, "tz_ok", tz=tz)
 
 
+def _weekly_toggle(ctx: ToolContext, msg: InboundMessage, on: bool) -> str:
+    """/semanal flips the Sunday summary; its button turns it off."""
+    try:
+        state.set_weekly(ctx.chat_id, on)
+    except Exception as exc:
+        logger.error(
+            "command_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
+        )
+        return t(ctx.lang, "failed")
+    return t(ctx.lang, "weekly_on" if on else "weekly_off")
+
+
 def _currency_command(ctx: ToolContext, msg: InboundMessage) -> str | None:
     """/moneda COP sets it; None without a valid code (the Mini App opens)."""
     cur = msg.text.strip().partition(" ")[2].strip().upper()
@@ -975,6 +998,8 @@ def _callback(
         _send(channel, msg, reply)
     elif action in ("ap", "rj") and ctx.role == "owner":  # access request buttons
         _send(channel, msg, _answer_request(channel, action, token))
+    elif action == "ws":  # the Sunday summary's stop button
+        _send(channel, msg, _weekly_toggle(ctx, msg, msg.callback_data == "ws:on"))
     elif action == "rv":  # /usuarios revoke button
         ok = ctx.role == "owner" and state.revoke(token)
         logger.info("user_revoked update_id=%s ok=%s", msg.update_id, ok)

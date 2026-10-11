@@ -1,9 +1,9 @@
 """Jobs. Cloud Scheduler publishes ``tick`` every hour (UTC); each user gets, in
-their own time zone, the digest at 07:00 (reminders, agenda, yesterday's spend),
-the checkin at 22:00 (the day's list) and on Sunday at 22:00 the checkin plus
-the weekly summary in one message. Once a day, at 12:00 UTC, the tick exports
-the ledger CSV, applies the retention rules (``_retention``) and on Sunday also
-runs the backup. ``digest``, ``checkin`` and
+their own time zone, the digest at 07:00 (reminders and the day's agenda, only
+when there is any) and on Sunday at 18:00 the weekly spending summary, with a
+button to stop it (``users.resumen_semanal``). No daily spending report. Once a
+day, at 12:00 UTC, the tick exports the ledger CSV, applies the retention rules
+(``_retention``) and on Sunday also runs the backup. ``digest``, ``checkin`` and
 ``weekly`` stay runnable by name for manual use.
 
 The assistant is concise: a job messages a chat only when there is something to
@@ -17,7 +17,7 @@ import calendar as cal
 import importlib
 import logging
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -34,12 +34,7 @@ log = logging.getLogger(__name__)
 
 def _digest(ctx: ToolContext) -> str | None:
     agenda.enqueue_reminders(ctx)
-    lines = agenda.agenda_lines(ctx, "hoy")
-    yesterday = ledger.today(ctx) - timedelta(days=1)
-    expenses = ledger.spend_by_category(ctx.chat_id, yesterday, yesterday, ctx.currency)
-    if spent := sum(expenses.values()):
-        lines.append(t(ctx.lang, "yesterday", total=spent, currency=ctx.currency))
-    return "\n".join(lines) or None
+    return "\n".join(agenda.agenda_lines(ctx, "hoy")) or None
 
 
 def _checkin(ctx: ToolContext) -> str | None:
@@ -122,21 +117,26 @@ JOBS: dict[str, Callable[[ToolContext], str | None]] = {
 }
 
 
-def _tick(ctx: ToolContext) -> str | None:
-    """The message due at the user's local hour, or None (ledger left unread).
+WEEKLY_HOUR = 18  # Sunday, local time
+Keyboard = list[list[tuple[str, str]]] | None
+
+
+def _tick(ctx: ToolContext, weekly: bool) -> tuple[str | None, Keyboard]:
+    """The message due at the user's local hour and its buttons, or None
+    (ledger left unread).
 
     ponytail: :30/:45 offsets (India, Nepal) get the local hour the tick lands
-    in (07:30, 22:30); add half-hour ticks if those users want the exact time.
+    in (07:30, 18:30); add half-hour ticks if those users want the exact time.
     """
     agenda.sync_gcal(ctx)  # Google-side moves first, so the digest sees them
     if ctx.now.hour == 7:
-        return _digest(ctx)
-    if ctx.now.hour != 22:
-        return None
-    parts = [_checkin(ctx)]
-    if ctx.now.weekday() == 6:  # Sunday: one message, not two
-        parts.append(_weekly(ctx))
-    return "\n\n".join([*(p for p in parts if p), t(ctx.lang, "hint")])
+        return _digest(ctx), None
+    if not (weekly and ctx.now.weekday() == 6 and ctx.now.hour == WEEKLY_HOUR):
+        return None, None
+    if not (text := _weekly(ctx)):
+        return None, None
+    stop = [[(t(ctx.lang, "weekly_off_button"), "ws:off")]]
+    return f"{text}\n\n{t(ctx.lang, 'hint')}", stop
 
 
 def _ctx(
@@ -233,12 +233,14 @@ def run_job(name: str) -> None:
             if not user:
                 continue
             ctx = _ctx(chat_id, user, settings.default_timezone, now)
+            keyboard: Keyboard = None
             if name == "tick":
-                text = _tick(ctx)
+                weekly = user.get("resumen_semanal", True)
+                text, keyboard = _tick(ctx, weekly)
             else:
                 text = JOBS[name](ctx)
             if text:
-                telegram.send_message(chat_id, text)
+                telegram.send_message(chat_id, text, keyboard)
                 sent += 1
         except Exception as e:  # one chat never blocks the rest
             failed += 1

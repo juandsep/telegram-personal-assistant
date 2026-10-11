@@ -9,6 +9,7 @@ from __future__ import annotations
 import httpx
 
 from assistant.channels.base import Channel, InboundMessage
+from assistant.observability.timing import timed
 
 API_BASE = "https://api.telegram.org"
 # Service updates (e.g. the bot's own pin) arrive as messages without text.
@@ -56,7 +57,10 @@ class Telegram(Channel):
         self._client = httpx.Client(timeout=timeout)
 
     def _post(self, method: str, **payload: object) -> dict:
-        resp = self._client.post(f"{API_BASE}/bot{self._token}/{method}", json=payload)
+        with timed(f"telegram.{method}"):
+            resp = self._client.post(
+                f"{API_BASE}/bot{self._token}/{method}", json=payload
+            )
         resp.raise_for_status()
         return resp.json()
 

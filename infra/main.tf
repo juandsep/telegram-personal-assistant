@@ -500,8 +500,9 @@ resource "google_service_account_iam_member" "worker_acts_as_itself" {
 # Cloud Scheduler publishes directly to the cron topic (no HTTP endpoints).
 locals {
   jobs = {
-    # Hourly in UTC: the worker sends each user's digest (07:00), daily list
-    # (22:00) and Sunday weekly at their own local time; exports/backups at 12 UTC.
+    # Hourly in UTC: the worker sends each user's agenda digest (07:00) and the
+    # Sunday weekly summary (18:00) at their own local time; exports, retention
+    # and backups from 12 UTC.
     tick = { schedule = "0 * * * *", time_zone = "Etc/UTC", label = "per-user local-time reports" }
     # Keeps the production instances alive (idle ones live ~15 min) so a message
     # does not wait for two ~10 s cold starts; night stays scale-to-zero.

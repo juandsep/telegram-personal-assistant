@@ -34,6 +34,7 @@ from google.cloud import firestore
 from assistant.config import get_worker_settings
 from assistant.context import ToolContext
 from assistant.i18n import t
+from assistant.observability.timing import timed
 from assistant.services import crypto
 
 log = logging.getLogger(__name__)
@@ -115,7 +116,8 @@ def _fetch(url: httpx.URL) -> bytes:
 
 
 def _load(raw: str) -> Any:
-    body = _fetch(validate_url(raw))
+    with timed("ics.fetch"):
+        body = _fetch(validate_url(raw))
     try:
         return icalendar.Calendar.from_ical(body)
     except Exception as exc:  # malformed feeds raise all sorts of things

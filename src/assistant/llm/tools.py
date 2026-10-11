@@ -107,6 +107,10 @@ class ListAgenda(_Args):
     period: Literal["hoy", "manana", "semana"]
 
 
+class ConnectCalendar(_Args):
+    """Muestra los botones para conectar un calendario (Google o iPhone/Outlook)."""
+
+
 class CalendarStatus(_Args):
     """Estado de la conexión del calendario: Google, enlace iCal importado y
     la suscripción iPhone/Outlook (si el calendario ya la leyó)."""
@@ -180,6 +184,10 @@ TOOLS: dict[str, tuple[type[_Args], str]] = {
     "create_event": (CreateEvent, "assistant.services.agenda:create_event"),
     "list_agenda": (ListAgenda, "assistant.services.agenda:list_agenda"),
     "calendar_status": (CalendarStatus, "assistant.services.state:calendar_status"),
+    "connect_calendar": (
+        ConnectCalendar,
+        "assistant.services.state:connect_calendar",
+    ),
     "cancel_event": (CancelEvent, "assistant.services.agenda:cancel_event"),
     "create_reminder": (CreateReminder, "assistant.services.agenda:create_reminder"),
     "free_slots": (FreeSlots, "assistant.services.agenda:free_slots"),
@@ -197,7 +205,7 @@ OWNER_ONLY = frozenset({"invite_beta", "list_users"})
 # as is and never back to the LLM (Google user data stays out of the model).
 DIRECT = frozenset({"list_agenda", "free_slots"})
 # Their output is the reply as is: one LLM round instead of two (latency).
-ANSWER = frozenset({"calendar_status"})
+ANSWER = frozenset({"calendar_status", "connect_calendar"})
 # Their confirmation question can name those busy times (a clash).
 CLASH = frozenset({"create_event", "create_reminder"})
 

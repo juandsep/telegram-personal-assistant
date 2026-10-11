@@ -41,8 +41,10 @@ currency with a **💱 Elegir moneda** button that opens a small Mini App: a lis
 (🇺🇸 USD · 🇪🇺 EUR · 🇬🇧 GBP · 🇨🇴 COP · 🇨🇳 CNY, with the current one selected)
 and the phone's local time. Saving stores the currency and the phone's time
 zone, closes the app and confirms in the chat ("✓ Moneda: USD. Tu hora: 14:55
-(America/Panama)"). `/ayuda` shows
-the welcome again.
+(America/Panama)"). Until a currency is picked, an amount or any free text
+gets the same button with "Antes de registrar, elige tu moneda…" instead of
+being logged in a guessed currency; commands and photos still work. `/ayuda`
+shows the welcome again.
 
 `/usuarios` lists everyone with access, how many were active in the last 7
 days and each one's last active day (`hoy`, `ayer`, `hace N días`, `sin uso`),
@@ -209,7 +211,9 @@ Natural language works in any of the three languages: "reunión con Ana mañana
 ### Connecting your calendar
 
 `calendario` → **🪢 Conectar calendario** → pick one calendar (connecting one
-replaces the other; **✂️ Desconectar** or `/calendario off` removes it):
+replaces the other; **✂️ Desconectar** or `/calendario off` removes it). Saying
+it in words ("conecta mi calendario", "sync my Google calendar") shows the same
+Google / iPhone choice: the LLM calls `connect_calendar`.
 
 - **Google:** a button opens Google's sign-in (valid 10 minutes); allow access
   to your calendar's events. The bot says when it is done and copies your

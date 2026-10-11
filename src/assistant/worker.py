@@ -263,6 +263,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
     if msg.text.startswith(LEDGER_COMMANDS):
         _send(channel, msg, *_ledger_command(ctx, msg))
         return ACK
+    if "moneda" not in user:  # never picked: no entry in a guessed currency
+        _currency_app(ctx, channel, msg, settings, "currency_first")
+        return ACK
     entry = quick.parse(msg.text, default=ctx.currency)
     if entry is not None:  # deterministic: no LLM, no spend, no history
         _quick(ctx, msg, entry, channel)
@@ -295,6 +298,8 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
 
     # 3-5. Reply, account, trace.
+    if "connect_calendar" in result.tools:
+        result.reply, result.keyboard = _calendar(ctx, msg, "menu")
     records = [RECORD_TOOLS[t] for t in result.tools if t in RECORD_TOOLS]
     recorded = bool(records) and not result.keyboard
     _send(channel, msg, result.reply, result.keyboard, remember=False)
@@ -672,17 +677,21 @@ def _currency_command(ctx: ToolContext, msg: InboundMessage) -> str | None:
 
 
 def _currency_app(
-    ctx: ToolContext, channel: Telegram, msg: InboundMessage, settings: WorkerSettings
+    ctx: ToolContext,
+    channel: Telegram,
+    msg: InboundMessage,
+    settings: WorkerSettings,
+    key: str = "currency_question",
 ) -> None:
     """The currency picker Mini App, which also reads the phone's time zone;
     plain buttons when the service URL is not set."""
     if not settings.api_url:
-        _send(channel, msg, t(ctx.lang, "currency_question"), CURRENCY_BUTTONS)
+        _send(channel, msg, t(ctx.lang, key), CURRENCY_BUTTONS)
         return
     try:
         channel.send_webapp(
             msg.chat_id,
-            t(ctx.lang, "currency_question"),
+            t(ctx.lang, key),
             t(ctx.lang, "currency_button"),
             f"{settings.api_url}/moneda",
         )

@@ -244,8 +244,11 @@ Send a photo; Gemini (`GEMINI_MODEL`, default `gemini-3.5-flash-lite`) reads
 it once and the photo is not kept. The caption guides it.
 
 - **A meal:** the reply shows the dish, estimated kcal and macros, today's
-  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`) and a 💡 tip that
-  balances the day (Gemini sees what you already ate today). Gemini also rates
+  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`), the time of each meal
+  today (`🕐 08:10 Huevos · 13:05 Arepa`, saved when the photo arrives, in
+  your time zone) and a 💡 tip that balances the day (Gemini sees what and when
+  you already ate today, and the time now). Macros are spelled out (Proteína,
+  Carbohidratos, Grasa) and the tip names concrete foods and portions. Gemini also rates
   the dish healthy, meh or unhealthy: with `/fun` on, a `comida/sana`,
   `comida/meh` or `comida/chatarra` reaction follows. **🗑️ Quitar**
   removes a wrong one. Photo estimates are rough (often ±20–30%): good for
@@ -257,6 +260,10 @@ it once and the photo is not kept. The caption guides it.
   it paid. No expense is recorded: log your own share as usual.
 - **`cuentas`** (or `me deben`, `/cuentas`) lists who still owes you, with the
   ✅ buttons.
+- **Follow-up questions.** The chat LLM never sees the photo. Gemini also
+  writes a one-sentence description, kept in the LLM history next to the reply
+  (`[En la foto: …]`), so "¿qué hay en la foto?", "¿qué es la P?" or "¿qué
+  vegetales y proteínas puedo comer?" get an answer about that meal.
 
 The Gemini project runs on the free tier: Google may use the photos to improve
 its products. Turn on billing in that project to stop it.

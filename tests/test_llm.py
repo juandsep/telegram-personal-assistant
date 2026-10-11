@@ -51,7 +51,7 @@ def calls(monkeypatch):
             "create_reminder",
             "free_slots",
         ],
-        "state": ["invite_beta", "list_users", "calendar_status"],
+        "state": ["invite_beta", "list_users", "calendar_status", "connect_calendar"],
     }.items():
         m = types.ModuleType(f"assistant.services.{mod}")
         for n in names:

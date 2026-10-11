@@ -5,13 +5,14 @@ Everything a user can do with Juani, in detail. Back to the
 
 ## Languages
 
-Juani speaks Spanish, English, Chinese, French and German. The language comes from the
+Juani speaks Spanish, English, Chinese, French, German and Portuguese. The language comes from the
 `language_code` of the user's Telegram app (it follows the phone unless changed
 in Telegram) and is saved as `users.idioma` whenever it changes, so the
 scheduled messages use it too. Any other language falls back to English.
-French and German get every reply, report and the dashboard; the quick
-category keywords stay in Spanish, English and Chinese, so a French or German
-entry without one goes to the LLM, which picks the category.
+French, German and Portuguese get every reply, report and the dashboard; the
+quick category keywords stay in Spanish, English and Chinese, so a French,
+German or Portuguese entry without one goes to the LLM, which picks the
+category.
 
 `src/assistant/i18n.py` holds every reply, the reports, the dashboard and the
 category names (stored keys stay Spanish, so no data changes with the
@@ -38,7 +39,8 @@ which creates the user, shows Juani's short welcome with a **🗺️ Guía compl
 button (this guide's site) and sets the Visor de gastos as the chat's menu
 button (see [Dashboard](#dashboard-visor-de-gastos)), then asks for the
 currency with a **💱 Elegir moneda** button that opens a small Mini App: a list
-(🇺🇸 USD · 🇪🇺 EUR · 🇬🇧 GBP · 🇨🇴 COP · 🇨🇳 CNY, with the current one selected)
+(🇺🇸 USD · 🇪🇺 EUR · 🇬🇧 GBP · 🇨🇴 COP · 🇲🇽 MXN · 🇵🇪 PEN · 🇧🇷 BRL · 🇨🇳 CNY, with
+the current one selected)
 and the phone's local time. Saving stores the currency and the phone's time
 zone, closes the app and confirms in the chat ("✓ Moneda: USD. Tu hora: 14:55
 (America/Panama)"). Until a currency is picked, an amount or any free text
@@ -69,7 +71,9 @@ day's rate.
 is read whenever a Mini App opens: the currency picker and the Visor de gastos
 store it (a trip is picked up the next time either opens). `/moneda COP` typed
 as text only sets a first guess when no zone is set yet (COP →
-America/Bogota, EUR → Europe/Madrid, GBP → Europe/London, CNY → Asia/Shanghai,
+America/Bogota, EUR → Europe/Madrid, GBP → Europe/London, MXN →
+America/Mexico_City, PEN → America/Lima, BRL → America/Sao_Paulo, CNY →
+Asia/Shanghai,
 USD → America/New_York).
 `/zona America/Bogota` is a manual override, not in the menu. Without any, the
 default is `America/Panama`.
@@ -306,7 +310,7 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/cuentas` | Split checks people still owe you, with ✅ buttons |
 | `/semanal` | Sunday summary on or off (not in the menu) |
 | `/fun` | Reaction images on or off |
-| `/moneda [USD\|EUR\|GBP\|COP\|CNY]` | Display currency (the picker Mini App without a code) |
+| `/moneda [USD\|EUR\|GBP\|COP\|MXN\|PEN\|BRL\|CNY]` | Display currency (the picker Mini App without a code) |
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |

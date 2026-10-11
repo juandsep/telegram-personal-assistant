@@ -459,3 +459,19 @@ def test_display_label_names() -> None:
     assert ledger.display_label("supermercado") == "Mercado"
     assert ledger.display_label("vivienda") == "Arriendo"
     assert ledger.display_label("luz") == "Luz" and ledger.display_label("") == ""
+
+
+@respx.mock
+def test_pen_uses_the_last_bcrp_day(db: FakeDB, state: MagicMock) -> None:
+    url = f"{fx.BCRP_URL.format(start='2026-09-19', end='2026-09-29')}"
+    periods = [
+        {"name": "28.Sep.26", "values": ["3.450"]},
+        {"name": "29.Sep.26", "values": ["n.d."]},  # not published yet
+    ]
+    respx.get(url).mock(return_value=httpx.Response(200, json={"periods": periods}))
+    assert fx.rate("PEN", date(2026, 9, 29)) == (Decimal("3.450"), "bcrp")
+    respx.get(url.replace("2026-09-29", "2026-09-30").replace("09-19", "09-20")).mock(
+        return_value=httpx.Response(200, json={"periods": []})
+    )
+    with pytest.raises(fx.FxError):
+        fx.rate("PEN", date(2026, 9, 30))

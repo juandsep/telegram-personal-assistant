@@ -54,7 +54,12 @@ def parse_update(update: object) -> InboundMessage | None:
 class Telegram(Channel):
     def __init__(self, bot_token: str, timeout: float = 10.0) -> None:
         self._token = bot_token
-        self._client = httpx.Client(timeout=timeout)
+        # IPv4 only: Cloud Run has no IPv6 egress, and an IPv6-first connect to
+        # api.telegram.org hangs for the whole timeout before falling back.
+        self._client = httpx.Client(
+            timeout=timeout,
+            transport=httpx.HTTPTransport(local_address="0.0.0.0"),  # noqa: S104
+        )
 
     def _post(self, method: str, **payload: object) -> dict:
         with timed(f"telegram.{method}"):

@@ -465,6 +465,7 @@ def _photo(
         logger.info("photo update_id=%s kind=%s", msg.update_id, data.get("kind"))
         if data.get("kind") == "meal":
             meal_id = photos.add_meal(ctx, data)
+            meals = photos.day_meals(ctx)
             reply = t(
                 ctx.lang,
                 "meal",
@@ -473,7 +474,8 @@ def _photo(
                 protein=int(data.get("protein_g") or 0),
                 carbs=int(data.get("carbs_g") or 0),
                 fat=int(data.get("fat_g") or 0),
-                today=photos.kcal_today(ctx),
+                today=photos.day_totals(meals)["kcal"],
+                times=photos.timeline(meals),
             )
             if tip := str(data.get("tip") or "").strip():
                 reply += f"\n💡 {tip[:200]}"

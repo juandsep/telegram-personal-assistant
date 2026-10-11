@@ -922,7 +922,10 @@ def photo(monkeypatch, tg):
     fake = MagicMock(PhotoUnavailable=photos.PhotoUnavailable, split=photos.split)
     fake.save_split.return_value = "s1"
     fake.add_meal.return_value = "m1"
-    fake.kcal_today.return_value = 900
+    fake.day_meals.return_value = [
+        {"hora": "08:10", "nombre": "Huevos", "kcal": 600},
+        {"hora": "13:05", "nombre": "Arepa", "kcal": 300},
+    ]
     fake_module(
         monkeypatch,
         "assistant.services.photos",
@@ -931,7 +934,7 @@ def photo(monkeypatch, tg):
             for n in (
                 "analyze",
                 "add_meal",
-                "kcal_today",
+                "day_meals",
                 "delete_meal",
                 "save_split",
                 "mark_paid",
@@ -939,6 +942,8 @@ def photo(monkeypatch, tg):
             )
         },
         split=photos.split,
+        day_totals=photos.day_totals,
+        timeline=photos.timeline,
         PhotoUnavailable=photos.PhotoUnavailable,
     )
     return fake
@@ -955,6 +960,7 @@ def test_meal_photo_is_saved_with_todays_total(st, llm, tg, photo) -> None:
     assert photo.analyze.call_args.args[0] == b"jpg"
     assert "Arepa · ~300 kcal" in sent_texts(tg)[0]
     assert "~900 kcal" in sent_texts(tg)[0]
+    assert sent_texts(tg)[0].endswith("🕐 08:10 Huevos · 13:05 Arepa")
     assert keyboards(tg) == [[("🗑️ Quitar", "ml:m1")]]
     llm.run_turn.assert_not_called()
 

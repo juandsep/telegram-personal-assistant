@@ -240,8 +240,10 @@ Send a photo; Gemini (`GEMINI_MODEL`, default `gemini-3.5-flash-lite`) reads
 it once and the photo is not kept. The caption guides it.
 
 - **A meal:** the reply shows the dish, estimated kcal and macros, today's
-  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`) and a 💡 tip that
-  balances the day (Gemini sees what you already ate today). Gemini also rates
+  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`), the time of each meal
+  today (`🕐 08:10 Huevos · 13:05 Arepa`, saved when the photo arrives, in
+  your time zone) and a 💡 tip that balances the day (Gemini sees what and when
+  you already ate today, and the time now). Gemini also rates
   the dish healthy, meh or unhealthy: with `/fun` on, a `comida/sana`,
   `comida/meh` or `comida/chatarra` reaction follows. **🗑️ Quitar**
   removes a wrong one. Photo estimates are rough (often ±20–30%): good for

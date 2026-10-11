@@ -4,7 +4,8 @@ between people (who still owes the owner).
 Stored field names are Spanish, like the rest of Firestore:
 
 - ``comidas/{chat_id}/registros/{id}``: fecha (YYYY-MM-DD, user's zone),
-  nombre, kcal, proteina, carbohidratos, grasa, creado.
+  hora (HH:MM, user's zone), nombre, kcal, proteina, carbohidratos, grasa,
+  creado.
 - ``cuentas/{chat_id}/divisiones/{id}``: fecha, titulo, total, moneda,
   personas, deudores ``[{nombre, monto, pagado}]`` (monto as a string),
   abierta, creado.
@@ -83,8 +84,10 @@ Read this photo. The user's note: "{caption}". Answer in language "{lang}".
 - Food or drink about to be eaten: kind=meal; name = a short dish name; kcal \
 and macros (grams) for the portion shown, adjusted by the note (e.g. "half"); \
 health = healthy, meh or unhealthy for this dish; tip = one short sentence \
-that balances the day, given what the user already ate today ({today}): what \
-to eat more or less of next (e.g. "Add vegetables and protein at dinner").
+that balances the day, given what the user already ate today ({today}; meals \
+so far: {meals}) and that it is now {now}: what to eat more or less of next, or \
+when, if the meal times call for it (e.g. "Add vegetables and protein at \
+dinner", "Long gap since breakfast: have a snack before 16:00").
 - A receipt or bill: kind=receipt; total = the final amount to pay as printed \
 (tax and tip included); currency = ISO 4217 code ("{currency}" if unclear); \
 name = a short title from the note (else the place); people = how many people \
@@ -107,12 +110,18 @@ def analyze(
     """One Gemini call; the parsed JSON (see SCHEMA)."""
     if not api_key:
         raise PhotoUnavailable("no key")
-    totals = day_totals(ctx)
+    meals = day_meals(ctx)
+    totals = day_totals(meals)
     today = (
         "{kcal} kcal, protein {proteina} g, carbs {carbohidratos} g, fat {grasa} g"
     ).format(**totals)
     prompt = PROMPT.format(
-        caption=caption[:300], lang=ctx.lang, currency=ctx.currency, today=today
+        caption=caption[:300],
+        lang=ctx.lang,
+        currency=ctx.currency,
+        today=today,
+        meals=timeline(meals) or "none",
+        now=f"{ctx.now:%H:%M}",
     )
     body = {
         "contents": [
@@ -260,6 +269,7 @@ def add_meal(ctx: ToolContext, meal: dict) -> str:
     ref.set(
         {
             "fecha": ledger.today(ctx).isoformat(),
+            "hora": f"{ctx.now:%H:%M}",
             "nombre": str(meal.get("name") or "?")[:40],
             "kcal": int(meal.get("kcal") or 0),
             "proteina": int(meal.get("protein_g") or 0),
@@ -274,16 +284,24 @@ def add_meal(ctx: ToolContext, meal: dict) -> str:
 MACROS = ("kcal", "proteina", "carbohidratos", "grasa")
 
 
-def day_totals(ctx: ToolContext) -> dict[str, int]:
-    """Today's kcal and macros (grams) of the saved meals."""
+def day_meals(ctx: ToolContext) -> list[dict]:
+    """Today's saved meals, in eating order (meals saved before ``hora`` first)."""
     day = ledger.today(ctx).isoformat()
     query = _meals(ctx.chat_id).where(filter=firestore.FieldFilter("fecha", "==", day))
     meals = [s.to_dict() or {} for s in query.stream()]
+    return sorted(meals, key=lambda m: m.get("hora", ""))
+
+
+def day_totals(meals: list[dict]) -> dict[str, int]:
+    """The kcal and macros (grams) of these meals."""
     return {k: sum(int(m.get(k, 0)) for m in meals) for k in MACROS}
 
 
-def kcal_today(ctx: ToolContext) -> int:
-    return day_totals(ctx)["kcal"]
+def timeline(meals: list[dict]) -> str:
+    """``08:10 Huevos · 13:05 Arepa``: when each meal of the day was eaten."""
+    return " · ".join(
+        f"{m['hora']} {m.get('nombre', '?')}" for m in meals if m.get("hora")
+    )
 
 
 def delete_meal(chat_id: str, meal_id: str) -> None:

@@ -33,6 +33,7 @@ from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import WorkerSettings, get_worker_settings
 from assistant.context import CURRENCIES, ToolContext
 from assistant.i18n import lang_of, t
+from assistant.observability.timing import timed
 from assistant.services import agenda, quick, state
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,8 @@ def _route(payload: Any) -> int:
     if msg is None:
         logger.warning("unsupported_update")
         return ACK
-    return handle_update(msg, get_worker_settings())
+    with timed("update"):
+        return handle_update(msg, get_worker_settings())
 
 
 def _context(user: dict, msg: InboundMessage, settings: WorkerSettings) -> ToolContext:

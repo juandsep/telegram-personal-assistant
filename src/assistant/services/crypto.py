@@ -12,6 +12,8 @@ from functools import cache
 
 from google.cloud import kms
 
+from assistant.observability.timing import timed
+
 
 @cache
 def _client() -> kms.KeyManagementServiceClient:
@@ -19,22 +21,24 @@ def _client() -> kms.KeyManagementServiceClient:
 
 
 def encrypt(key: str, plaintext: str, chat_id: str) -> str:
-    resp = _client().encrypt(
-        request={
-            "name": key,
-            "plaintext": plaintext.encode(),
-            "additional_authenticated_data": chat_id.encode(),
-        }
-    )
+    with timed("kms.encrypt"):
+        resp = _client().encrypt(
+            request={
+                "name": key,
+                "plaintext": plaintext.encode(),
+                "additional_authenticated_data": chat_id.encode(),
+            }
+        )
     return base64.b64encode(resp.ciphertext).decode()
 
 
 def decrypt(key: str, ciphertext: str, chat_id: str) -> str:
-    resp = _client().decrypt(
-        request={
-            "name": key,
-            "ciphertext": base64.b64decode(ciphertext),
-            "additional_authenticated_data": chat_id.encode(),
-        }
-    )
+    with timed("kms.decrypt"):
+        resp = _client().decrypt(
+            request={
+                "name": key,
+                "ciphertext": base64.b64decode(ciphertext),
+                "additional_authenticated_data": chat_id.encode(),
+            }
+        )
     return bytes(resp.plaintext).decode()

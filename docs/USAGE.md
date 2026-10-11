@@ -150,13 +150,12 @@ non-user gets a 403.
 Each one goes out in the user's own time zone (an hourly `tick` job in UTC
 picks who is due):
 
-- **07:00:** the agenda of the day and yesterday's spend.
-- **22:00:** `Tus gastos hoy: 12.49 USD.` (income excluded) or
-  `Hoy no registraste gastos.`, then `Para más detalles revisa tu tablero:
-  Visor de gastos 🧭`.
-- **Sunday 22:00:** the same, plus the week's spend, top categories and,
-  against the month's income, the 20% to save and what is left per week, in
-  one message.
+- **07:00:** the agenda of the day, only when there is something on it.
+- **Sunday 18:00:** the week's spend, top categories and, against the month's
+  income, the 20% to save and what is left per week, then `Para más detalles
+  revisa tu tablero: Visor de gastos 🧭`. Its **🔕 No enviar este resumen**
+  button turns it off (`users.resumen_semanal`); `/semanal` (or `semanal` /
+  `weekly`) turns it back on or off. There is no daily spending report.
 
 `/resumen` (or `resumen` / `summary`) gives the same on demand, without the LLM:
 today's spend and, when there is any spend or income, the week and the month

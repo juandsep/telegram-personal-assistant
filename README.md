@@ -21,8 +21,8 @@ plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
 - **Shows your month.** The pinned *Visor de gastos* opens a Telegram Mini App
   with income, spend by category and day, and the savings rate. No secret in
   the URL: Telegram signs the user in.
-- **Keeps you on track.** At 22:00 it tells you what you spent today; on Sunday,
-  how the week went against the 20% savings rule.
+- **Keeps you on track.** On Sunday at 18:00, how the week went against the 20%
+  savings rule (one tap turns it off); no daily spending messages.
 - **Runs your agenda.** Appointments and reminders in natural language,
   conflict checks, a Google Calendar mirror and a private ICS feed.
 - **Reads photos.** A meal gives estimated calories and macros; a receipt is

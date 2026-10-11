@@ -1123,3 +1123,15 @@ def test_edited_message_gets_a_hint_only(st, llm, tg) -> None:
     assert sent_texts(tg) == [t("es", "edited_hint")]
     llm.run_turn.assert_not_called()
     st.append_history.assert_not_called()
+
+
+def test_weekly_summary_stop_button_and_toggle(monkeypatch, st, llm, tg) -> None:
+    set_weekly = MagicMock()
+    monkeypatch.setattr(state, "set_weekly", set_weekly)
+    client.post("/push", json=envelope(callback("ws:off")))
+    set_weekly.assert_called_with("42", False)
+    st.get_user.return_value = {**st.get_user.return_value, "resumen_semanal": False}
+    client.post("/push", json=envelope(message("semanal")))
+    set_weekly.assert_called_with("42", True)
+    assert sent_texts(tg) == [t("es", "weekly_off"), t("es", "weekly_on")]
+    llm.run_turn.assert_not_called()

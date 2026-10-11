@@ -200,7 +200,6 @@ def _redeem(tx: Any, invite: Any, user: Any) -> bool:
         {
             "nombre": data["nombre"],
             "rol": "beta",
-            "moneda": "USD",
         },
     )
     return True
@@ -260,7 +259,6 @@ def accept_request(chat_id: str) -> dict | None:
         {
             "nombre": data["nombre"],
             "rol": "beta",
-            "moneda": "USD",
             "idioma": data["idioma"],
         }
     )
@@ -423,6 +421,11 @@ def mark_ics_fetch(token: str) -> None:
     ponytail: one write per fetch (apps poll every 15 min to hours); skip
     writes within the hour if Firestore writes ever matter."""
     _doc("ics_tokens", token).set({"last_fetch": _now()}, merge=True)
+
+
+def connect_calendar(ctx: ToolContext) -> str:
+    """The calendar choice; the worker adds the Google / iPhone buttons."""
+    return t(ctx.lang, "cal_choose")
 
 
 def calendar_status(ctx: ToolContext) -> str:

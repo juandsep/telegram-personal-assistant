@@ -486,7 +486,7 @@ def animations(tg, method: str = "sendAnimation") -> list[dict]:
 
 
 def test_quick_expense_skips_llm_and_sends_gif(st, llm, tg, ledger, pick) -> None:
-    st.get_user.return_value = {"fun": True}
+    st.get_user.return_value = {"fun": True, "moneda": "USD"}
     pick.return_value = GIF
     ledger.reaction_key.return_value = "restaurantes"
     assert (
@@ -541,7 +541,7 @@ def test_quick_errors_never_5xx(st, llm, tg, ledger, caplog, pick) -> None:
     ledger.record_expense.side_effect = RuntimeError("down")
     assert client.post("/push", json=envelope(message("cafe 5"))).status_code == 204
     ledger.record_expense.side_effect = None
-    st.get_user.return_value = {"fun": True}
+    st.get_user.return_value = {"fun": True, "moneda": "USD"}
     pick.return_value = GIF
     tg.post(f"{TG}/sendAnimation").mock(return_value=httpx.Response(400))
     assert client.post("/push", json=envelope(message("cafe 7"))).status_code == 204
@@ -556,7 +556,7 @@ def test_quick_errors_never_5xx(st, llm, tg, ledger, caplog, pick) -> None:
 
 
 def test_llm_registration_sends_photo(st, llm, tg, ledger, pick) -> None:
-    st.get_user.return_value = {"fun": True}
+    st.get_user.return_value = {"fun": True, "moneda": "USD"}
     pick.return_value = ("https://storage.googleapis.com/b/media/p.jpg", "foto")
     ledger.reaction_key.return_value = "salario"
     llm.result.keyboard = None
@@ -854,7 +854,7 @@ def test_fun_toggles_gif_replies(monkeypatch, st, llm, tg) -> None:
     set_fun = MagicMock()
     monkeypatch.setattr(state, "set_fun", set_fun)
     client.post("/push", json=envelope(message("/fun")))
-    st.get_user.return_value = {"fun": True}
+    st.get_user.return_value = {"fun": True, "moneda": "USD"}
     client.post("/push", json=envelope(message("/fun")))
     assert [c.args for c in set_fun.call_args_list] == [("42", True), ("42", False)]
     assert sent_texts(tg) == [t("es", "fun_on"), t("es", "fun_off")]
@@ -922,7 +922,10 @@ def photo(monkeypatch, tg):
     fake = MagicMock(PhotoUnavailable=photos.PhotoUnavailable, split=photos.split)
     fake.save_split.return_value = "s1"
     fake.add_meal.return_value = "m1"
-    fake.kcal_today.return_value = 900
+    fake.day_meals.return_value = [
+        {"hora": "08:10", "nombre": "Huevos", "kcal": 600},
+        {"hora": "13:05", "nombre": "Arepa", "kcal": 300},
+    ]
     fake_module(
         monkeypatch,
         "assistant.services.photos",
@@ -931,7 +934,7 @@ def photo(monkeypatch, tg):
             for n in (
                 "analyze",
                 "add_meal",
-                "kcal_today",
+                "day_meals",
                 "delete_meal",
                 "save_split",
                 "mark_paid",
@@ -939,6 +942,8 @@ def photo(monkeypatch, tg):
             )
         },
         split=photos.split,
+        day_totals=photos.day_totals,
+        timeline=photos.timeline,
         PhotoUnavailable=photos.PhotoUnavailable,
     )
     return fake
@@ -950,17 +955,27 @@ def photo_update(caption: str = "") -> dict:
 
 
 def test_meal_photo_is_saved_with_todays_total(st, llm, tg, photo) -> None:
-    photo.analyze.return_value = {"kind": "meal", "name": "Arepa", "kcal": 300}
+    photo.analyze.return_value = {
+        "kind": "meal",
+        "name": "Arepa",
+        "kcal": 300,
+        "description": "Arepa con queso y aguacate.",
+    }
     assert client.post("/push", json=envelope(photo_update())).status_code == 204
     assert photo.analyze.call_args.args[0] == b"jpg"
     assert "Arepa · ~300 kcal" in sent_texts(tg)[0]
     assert "~900 kcal" in sent_texts(tg)[0]
+    assert sent_texts(tg)[0].endswith("🕐 08:10 Huevos · 13:05 Arepa")
+    # The LLM never sees the photo: its history carries what Gemini saw.
+    said, answer = st.append_history.call_args.args[1]
+    assert said["content"] == "[Envió una foto]"
+    assert answer["content"].endswith("[En la foto: Arepa con queso y aguacate.]")
     assert keyboards(tg) == [[("🗑️ Quitar", "ml:m1")]]
     llm.run_turn.assert_not_called()
 
 
 def test_meal_tip_then_reaction_by_health(st, llm, tg, photo, pick) -> None:
-    st.get_user.return_value = {"fun": True}
+    st.get_user.return_value = {"fun": True, "moneda": "USD"}
     pick.return_value = GIF
     photo.analyze.return_value = {
         "kind": "meal",
@@ -1135,3 +1150,21 @@ def test_weekly_summary_stop_button_and_toggle(monkeypatch, st, llm, tg) -> None
     set_weekly.assert_called_with("42", True)
     assert sent_texts(tg) == [t("es", "weekly_off"), t("es", "weekly_on")]
     llm.run_turn.assert_not_called()
+
+
+def test_no_currency_yet_asks_for_it_before_logging(st, llm, tg, ledger) -> None:
+    st.get_user.return_value = {"rol": "beta"}  # a new user who skipped the picker
+    client.post("/push", json=envelope(message("2000 cop cafe")))
+    client.post("/push", json=envelope(message("gasté 5 en pan")))
+    ledger.record_expense.assert_not_called()
+    llm.run_turn.assert_not_called()
+    assert sent_texts(tg) == [t("es", "currency_first")] * 2
+
+
+def test_connect_calendar_in_words_shows_the_buttons(st, llm, tg) -> None:
+    llm.result.keyboard = None
+    llm.result.tools = ["connect_calendar"]
+    client.post("/push", json=envelope(message("conecta mi calendario")))
+    body = json.loads(tg.calls.last.request.read())
+    assert body["text"] == t("es", "cal_choose")
+    assert body["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "cal:g"

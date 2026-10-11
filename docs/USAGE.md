@@ -41,8 +41,10 @@ currency with a **💱 Elegir moneda** button that opens a small Mini App: a lis
 (🇺🇸 USD · 🇪🇺 EUR · 🇬🇧 GBP · 🇨🇴 COP · 🇨🇳 CNY, with the current one selected)
 and the phone's local time. Saving stores the currency and the phone's time
 zone, closes the app and confirms in the chat ("✓ Moneda: USD. Tu hora: 14:55
-(America/Panama)"). `/ayuda` shows
-the welcome again.
+(America/Panama)"). Until a currency is picked, an amount or any free text
+gets the same button with "Antes de registrar, elige tu moneda…" instead of
+being logged in a guessed currency; commands and photos still work. `/ayuda`
+shows the welcome again.
 
 `/usuarios` lists everyone with access, how many were active in the last 7
 days and each one's last active day (`hoy`, `ayer`, `hace N días`, `sin uso`),
@@ -191,7 +193,7 @@ The assistant remembers the last few exchanges, including commands and button
 taps answered without the LLM, so a follow-up like "¿ya quedó?" after
 `/calendario` makes sense to it.
 
-Natural language works in any of the three languages: "reunión con Ana mañana
+Natural language works in any of Juani's languages: "reunión con Ana mañana
 3pm", "remind me to pay the power bill Friday 9am", "我周四有空吗？".
 
 - **Conflicts:** before scheduling, the code checks the agenda and the busy
@@ -209,7 +211,9 @@ Natural language works in any of the three languages: "reunión con Ana mañana
 ### Connecting your calendar
 
 `calendario` → **🪢 Conectar calendario** → pick one calendar (connecting one
-replaces the other; **✂️ Desconectar** or `/calendario off` removes it):
+replaces the other; **✂️ Desconectar** or `/calendario off` removes it). Saying
+it in words ("conecta mi calendario", "sync my Google calendar") shows the same
+Google / iPhone choice: the LLM calls `connect_calendar`.
 
 - **Google:** a button opens Google's sign-in (valid 10 minutes); allow access
   to your calendar's events. The bot says when it is done and copies your
@@ -240,8 +244,11 @@ Send a photo; Gemini (`GEMINI_MODEL`, default `gemini-3.5-flash-lite`) reads
 it once and the photo is not kept. The caption guides it.
 
 - **A meal:** the reply shows the dish, estimated kcal and macros, today's
-  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`) and a 💡 tip that
-  balances the day (Gemini sees what you already ate today). Gemini also rates
+  total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`), the time of each meal
+  today (`🕐 08:10 Huevos · 13:05 Arepa`, saved when the photo arrives, in
+  your time zone) and a 💡 tip that balances the day (Gemini sees what and when
+  you already ate today, and the time now). Macros are spelled out (Proteína,
+  Carbohidratos, Grasa) and the tip names concrete foods and portions. Gemini also rates
   the dish healthy, meh or unhealthy: with `/fun` on, a `comida/sana`,
   `comida/meh` or `comida/chatarra` reaction follows. **🗑️ Quitar**
   removes a wrong one. Photo estimates are rough (often ±20–30%): good for
@@ -253,6 +260,10 @@ it once and the photo is not kept. The caption guides it.
   it paid. No expense is recorded: log your own share as usual.
 - **`cuentas`** (or `me deben`, `/cuentas`) lists who still owes you, with the
   ✅ buttons.
+- **Follow-up questions.** The chat LLM never sees the photo. Gemini also
+  writes a one-sentence description, kept in the LLM history next to the reply
+  (`[En la foto: …]`), so "¿qué hay en la foto?", "¿qué es la P?" or "¿qué
+  vegetales y proteínas puedo comer?" get an answer about that meal.
 
 The Gemini project runs on the free tier: Google may use the photos to improve
 its products. Turn on billing in that project to stop it.
@@ -293,8 +304,9 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/anular <n>` | Voids movement `n` (with confirmation) |
 | `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/cuentas` | Split checks people still owe you, with ✅ buttons |
+| `/semanal` | Sunday summary on or off (not in the menu) |
 | `/fun` | Reaction images on or off |
-| `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
+| `/moneda [USD\|EUR\|GBP\|COP\|CNY]` | Display currency (the picker Mini App without a code) |
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |

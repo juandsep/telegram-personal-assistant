@@ -68,9 +68,10 @@ def test_analyze_parses_gemini_json(db: FakeDB) -> None:
     assert route.calls[0].request.headers["x-goog-api-key"] == "k"
     sent = json.loads(route.calls[0].request.read())
     prompt = sent["contents"][0]["parts"][1]["text"]
-    assert "(300 kcal, protein 8 g, carbs 0 g, fat 0 g)" in prompt  # the day so far
+    assert "(300 kcal, protein 8 g, carbs 0 g, fat 0 g;" in prompt  # the day so far
+    assert f"meals so far: {CTX.now:%H:%M} Arepa)" in prompt
     schema = sent["generationConfig"]["responseSchema"]
-    assert {"health", "tip"} <= set(schema["required"])
+    assert {"health", "tip", "description"} <= set(schema["required"])
 
 
 @pytest.mark.parametrize("response", [httpx.Response(500), httpx.Response(200)])
@@ -89,9 +90,14 @@ def test_analyze_without_key_is_unavailable() -> None:
 def test_meals_add_up_today_and_delete(db: FakeDB) -> None:
     first = photos.add_meal(CTX, {"name": "Arepa", "kcal": 300})
     photos.add_meal(CTX, {"name": "Café", "kcal": 50})
-    assert photos.kcal_today(CTX) == 350
+    assert photos.day_totals(photos.day_meals(CTX))["kcal"] == 350
     photos.delete_meal("42", first)
-    assert photos.kcal_today(CTX) == 50
+    assert photos.day_totals(photos.day_meals(CTX))["kcal"] == 50
+
+
+def test_timeline_in_eating_order() -> None:
+    meals = [{"hora": "08:10", "nombre": "Huevos"}, {"nombre": "Sin hora"}]
+    assert photos.timeline(meals) == "08:10 Huevos"
 
 
 def test_split_closes_when_everyone_paid(db: FakeDB) -> None:

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacidad de Juani</title>
-<meta name="description" content="Política de privacidad de Juani, asistente de gastos y agenda en Telegram. Privacy policy of Juani.">
+<meta name="description" content="Política de privacidad de Juani, asistente de gastos, agenda y comidas en Telegram. Privacy policy of Juani.">
 <link rel="icon" href="../assets/juani-avatar.jpg">
 <style>
 :root { --bg: #fbfaf7; --text: #1f2328; --muted: #5d6470; --line: #e6e2d9; --accent: #2f6fde; }
@@ -25,23 +25,25 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
 </head>
 <body>
 <main>
-
 <section lang="es">
 <h1>Política de privacidad de Juani</h1>
-<p class="muted">Última actualización: 5 de octubre de 2026 · <a href="#en">English below</a></p>
-
-<p>Juani es un asistente personal en Telegram que registra gastos, ingresos y agenda. Es un proyecto personal, solo por invitación. Esta página explica qué datos usa y para qué.</p>
+<p class="muted">Última actualización: 11 de octubre de 2026 · <a href="#en">English below</a></p>
+<p>Juani es un asistente personal en Telegram que registra gastos, ingresos, agenda y comidas. Es un proyecto personal: solo entra quien el dueño del bot acepta o invita. Esta página explica qué datos usa y para qué.</p>
 
 <h2>Qué datos guarda</h2>
 <ul>
-  <li><strong>Tu cuenta de Telegram:</strong> el id de tu chat, el nombre de tu invitación, el idioma de tu app, tu moneda y tu zona horaria.</li>
+  <li><strong>Tu cuenta de Telegram:</strong> el id de tu chat, tu nombre (de la invitación o de tu solicitud de acceso), el idioma de tu app, tu moneda, tu zona horaria y el último día que usaste el bot.</li>
   <li><strong>Lo que registras:</strong> gastos e ingresos (monto, moneda, categoría, nota y fecha), eventos y recordatorios.</li>
-  <li><strong>Conversación reciente:</strong> los últimos 6 turnos con el asistente, para entender lo que escribes.</li>
+  <li><strong>Comidas (si envías fotos):</strong> el nombre del plato, las calorías y macronutrientes estimados, la fecha y la hora. <strong>La foto no se guarda.</strong></li>
+  <li><strong>Cuentas divididas (si envías un recibo):</strong> el título, el total y los nombres y montos de quienes te deben.</li>
+  <li><strong>Plan de alimentación (opcional):</strong> sexo, edad, peso, altura, nivel de actividad, tu meta y la meta de calorías calculada. Son datos de salud: solo se guardan si llenas el formulario de <code>/plan</code>, y los borras cuando quieras con <code>/plan borrar</code>.</li>
+  <li><strong>Conversación reciente:</strong> los últimos 6 turnos con el asistente, incluida una frase con lo que se vio en tus fotos, para entender lo que escribes después.</li>
   <li><strong>Calendario conectado (opcional):</strong> el permiso de Google o el enlace iCal privado que tú autorizas, guardado cifrado.</li>
 </ul>
 
 <h2>Para qué los usa</h2>
-<p>Solo para darte el servicio: registrar, resumir y mostrarte tus gastos y tu agenda, y enviarte tus recordatorios y resúmenes. No hay publicidad, no se venden datos y no se comparten con terceros para otros fines.</p>
+<p>Solo para darte el servicio: registrar, resumir y mostrarte tus gastos y tu agenda; estimar las calorías de tus comidas y darte consejos; y enviarte tus recordatorios y resúmenes. No hay publicidad, no se venden datos y no se comparten con terceros para otros fines.</p>
+<p><strong>Las calorías, la meta diaria y los consejos de comida son estimaciones automáticas, no un consejo médico ni nutricional.</strong> Si tienes una condición de salud, consulta a un profesional.</p>
 
 <h2>Google Calendar</h2>
 <p>Si conectas Google, Juani pide solo el permiso <code>calendar.events</code> de tu calendario principal para:</p>
@@ -56,37 +58,45 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
 <ul>
   <li><strong>Telegram</strong> entrega tus mensajes al bot.</li>
   <li><strong>Google Cloud</strong> aloja el servicio y los datos (Firestore, Cloud Storage), cifra los permisos de calendario con Cloud KMS y guarda copias de seguridad.</li>
-  <li><strong>DeepSeek</strong> (modelo de lenguaje) recibe el texto de los mensajes que no son registros rápidos, junto con tu conversación reciente, para entenderlos. No recibe datos de tu calendario: las preguntas de agenda las responde el código directamente.</li>
-  <li>Las tasas de cambio se consultan en fuentes públicas (datos.gov.co y el Banco Central Europeo) sin enviar datos tuyos.</li>
+  <li><strong>DeepSeek</strong> (modelo de lenguaje) recibe el texto de los mensajes que no son registros rápidos, junto con tu conversación reciente y, si tienes plan, solo tu meta y tus calorías diarias. No recibe tu edad, peso ni altura, ni datos de tu calendario.</li>
+  <li><strong>Google Gemini</strong> lee cada foto que envías con su texto, junto con las comidas del día (nombre, calorías y hora) y, si tienes plan, tu meta y tus calorías diarias. Tampoco recibe tu edad, peso ni altura. Hoy usa el nivel gratuito de Gemini, en el que Google puede usar las fotos para mejorar sus productos.</li>
+  <li>Las tasas de cambio se consultan en fuentes públicas (datos.gov.co, el Banco Central de Reserva del Perú y el Banco Central Europeo) sin enviar datos tuyos.</li>
 </ul>
 
 <h2>Cuánto tiempo se guardan</h2>
-<p>Tus registros se guardan mientras uses Juani. Los datos técnicos temporales se borran solos en minutos o días. Las copias de seguridad semanales se borran a los 90 días.</p>
+<ul>
+  <li>Tus datos se guardan mientras uses Juani. <code>/reset</code> los borra todos (también tu plan) y deja solo tu acceso.</li>
+  <li>Si el dueño revoca tu acceso, tus datos se borran 30 días después. Si no usas el bot en 60 días, se borran tus datos y tu acceso; el bot te avisa una semana antes.</li>
+  <li>El historial de gastos se exporta cada día como datos anónimos (un alias al azar, sin nota ni id de chat), que se conservan después de borrar tu cuenta.</li>
+  <li>Los datos técnicos temporales se borran solos en minutos o días. Las copias de seguridad semanales se borran a los 90 días.</li>
+</ul>
 
 <h2>Tus derechos</h2>
-<p>Puedes pedir una copia de tus datos o que se borren. Escríbele al dueño del bot (quien te invitó) o abre un caso en <a href="https://github.com/juandsep/telegram-personal-assistant/issues">GitHub</a>.</p>
-
-<p class="muted">Más información: <a href="../guia/">guía de Juani</a>.</p>
+<p>Puedes borrar tus datos tú mismo con <code>/reset</code> (todo) o <code>/plan borrar</code> (solo el plan), y pedir una copia o el borrado al dueño del bot, o en <a href="https://github.com/juandsep/telegram-personal-assistant/issues">GitHub</a>. Juani no está pensado para menores de 14 años.</p>
+<p class="muted">Más información: <a href="../guia/">guía de Juani</a> · <a href="../terminos/">términos</a>.</p>
 </section>
 
 <hr>
 
 <section lang="en" id="en">
 <h1>Juani privacy policy</h1>
-<p class="muted">Last updated: October 5, 2026</p>
-
-<p>Juani is a personal assistant on Telegram that tracks expenses, income and a calendar. It is a personal, invitation-only project. This page explains what data it uses and why.</p>
+<p class="muted">Last updated: October 11, 2026</p>
+<p>Juani is a personal assistant on Telegram that tracks expenses, income, a calendar and meals. It is a personal project: only people the bot's owner accepts or invites get in. This page explains what data it uses and why.</p>
 
 <h2>What it stores</h2>
 <ul>
-  <li><strong>Your Telegram account:</strong> your chat id, the name on your invitation, your app language, your currency and your time zone.</li>
+  <li><strong>Your Telegram account:</strong> your chat id, your name (from the invitation or your access request), your app language, your currency, your time zone and the last day you used the bot.</li>
   <li><strong>What you log:</strong> expenses and income (amount, currency, category, note and date), events and reminders.</li>
-  <li><strong>Recent conversation:</strong> the last 6 turns with the assistant, to understand what you write.</li>
+  <li><strong>Meals (if you send photos):</strong> the dish name, estimated calories and macronutrients, date and time. <strong>The photo is not stored.</strong></li>
+  <li><strong>Split checks (if you send a receipt):</strong> the title, the total and the names and amounts of who owes you.</li>
+  <li><strong>Meal plan (optional):</strong> sex, age, weight, height, activity level, your goal and the computed calorie target. This is health data: it is stored only if you fill in the <code>/plan</code> form, and you delete it any time with <code>/plan delete</code>.</li>
+  <li><strong>Recent conversation:</strong> the last 6 turns with the assistant, including one sentence on what your photos showed, to understand what you write next.</li>
   <li><strong>Connected calendar (optional):</strong> the Google grant or private iCal link you authorize, stored encrypted.</li>
 </ul>
 
 <h2>What it uses them for</h2>
-<p>Only to provide the service: log, summarize and show your expenses and calendar, and send your reminders and summaries. There are no ads, data is not sold, and it is not shared with third parties for any other purpose.</p>
+<p>Only to provide the service: log, summarize and show your expenses and calendar; estimate your meals' calories and give tips; and send your reminders and summaries. There are no ads, data is not sold, and it is not shared with third parties for any other purpose.</p>
+<p><strong>Calories, the daily target and meal tips are automatic estimates, not medical or nutritional advice.</strong> If you have a health condition, see a professional.</p>
 
 <h2>Google Calendar</h2>
 <p>If you connect Google, Juani asks only for the <code>calendar.events</code> permission on your primary calendar, to:</p>
@@ -101,19 +111,23 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
 <ul>
   <li><strong>Telegram</strong> delivers your messages to the bot.</li>
   <li><strong>Google Cloud</strong> hosts the service and the data (Firestore, Cloud Storage), encrypts calendar grants with Cloud KMS and keeps backups.</li>
-  <li><strong>DeepSeek</strong> (language model) receives the text of messages that are not quick entries, with your recent conversation, to understand them. It receives no data from your calendar: agenda questions are answered by the code directly.</li>
-  <li>Exchange rates come from public sources (datos.gov.co and the European Central Bank); no data about you is sent.</li>
+  <li><strong>DeepSeek</strong> (language model) receives the text of messages that are not quick entries, with your recent conversation and, if you have a plan, only your goal and daily calories. It receives neither your age, weight or height nor any calendar data.</li>
+  <li><strong>Google Gemini</strong> reads each photo you send with its caption, plus the day's meals (name, calories and time) and, if you have a plan, your goal and daily calories. It does not receive your age, weight or height either. It currently runs on Gemini's free tier, where Google may use the photos to improve its products.</li>
+  <li>Exchange rates come from public sources (datos.gov.co, the Central Reserve Bank of Peru and the European Central Bank); no data about you is sent.</li>
 </ul>
 
 <h2>How long it is kept</h2>
-<p>Your entries are kept while you use Juani. Temporary technical data deletes itself within minutes or days. Weekly backups are deleted after 90 days.</p>
+<ul>
+  <li>Your data is kept while you use Juani. <code>/reset</code> erases all of it (your plan too) and keeps only your access.</li>
+  <li>If the owner revokes your access, your data is erased 30 days later. If you do not use the bot for 60 days, your data and access are erased; the bot warns you a week before.</li>
+  <li>The expense history is exported every day as anonymous data (a random alias, no note or chat id), kept after your account is erased.</li>
+  <li>Temporary technical data deletes itself within minutes or days. Weekly backups are deleted after 90 days.</li>
+</ul>
 
 <h2>Your rights</h2>
-<p>You can ask for a copy of your data or for its deletion. Write to the bot's owner (who invited you) or open an issue on <a href="https://github.com/juandsep/telegram-personal-assistant/issues">GitHub</a>.</p>
-
-<p class="muted">More: <a href="../guia/?lang=en">Juani guide</a>.</p>
+<p>You can erase your data yourself with <code>/reset</code> (everything) or <code>/plan delete</code> (the plan only), and ask the bot's owner, or on <a href="https://github.com/juandsep/telegram-personal-assistant/issues">GitHub</a>, for a copy or deletion. Juani is not meant for children under 14.</p>
+<p class="muted">More: <a href="../guia/?lang=en">Juani guide</a> · <a href="../terminos/#en">terms</a>.</p>
 </section>
-
 </main>
 </body>
 </html>

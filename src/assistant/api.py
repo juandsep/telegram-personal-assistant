@@ -43,7 +43,7 @@ from assistant.channels.telegram import Telegram, parse_update
 from assistant.config import get_api_settings, get_worker_settings
 from assistant.context import CATEGORIES, CURRENCIES, ToolContext
 from assistant.i18n import lang_of, t
-from assistant.services import agenda, dashboard, gcal, media, pubsub, state
+from assistant.services import agenda, dashboard, gcal, media, photos, pubsub, state
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -121,7 +121,8 @@ CURRENCY_HTML = f"""<!doctype html>
 CURRENCY_STYLE = """<style>
 body{font-family:system-ui,sans-serif;margin:16px;color:var(--tg-theme-text-color,#222);
 background:var(--tg-theme-bg-color,#fff)}
-form{display:grid;gap:12px}select,button{font:inherit;padding:10px;border-radius:8px}
+form{display:grid;gap:12px}label{display:grid;gap:4px}
+select,input,button{font:inherit;padding:10px;border-radius:8px}
 button{background:var(--tg-theme-button-color,#2a7);color:var(--tg-theme-button-text-color,#fff);border:0}
 </style>"""
 _CURRENCY_HASH = base64.b64encode(
@@ -132,6 +133,42 @@ CURRENCY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'none'; "
         f"script-src https://telegram.org 'sha256-{_CURRENCY_HASH}'; "
+        "connect-src 'self'; style-src 'unsafe-inline'"
+    ),
+}
+
+
+PLAN_JS = """const tg = window.Telegram.WebApp;
+const auth = () => ({Authorization: "tma " + tg.initData});
+async function load() {
+  const r = await fetch("/plan/datos", {method: "POST", headers: auth()});
+  if (!r.ok) { document.body.textContent = "Telegram → /plan"; return; }
+  document.getElementById("app").innerHTML = await r.text();
+}
+document.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const b = e.target.querySelector("button");
+  b.disabled = true;
+  const q = new URLSearchParams(new FormData(e.target));
+  const r = await fetch("/plan/guardar?" + q, {method: "POST", headers: auth()});
+  if (r.ok) tg.close(); else b.disabled = false;
+});
+tg.ready();
+load();
+"""
+PLAN_HTML = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plan</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head><body><div id="app">…</div><script>{PLAN_JS}</script></body></html>
+"""
+_PLAN_HASH = base64.b64encode(hashlib.sha256(PLAN_JS.encode()).digest()).decode()
+PLAN_HEADERS = {
+    **DASH_HEADERS,
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        f"script-src https://telegram.org 'sha256-{_PLAN_HASH}'; "
         "connect-src 'self'; style-src 'unsafe-inline'"
     ),
 }
@@ -520,11 +557,109 @@ def currency_save(request: Request, currency: str = Query(alias="moneda")) -> Re
     lang = user.get("idioma", "es")
     hour = f"{datetime.now(ZoneInfo(zone)):%H:%M}"
     text = t(lang, "currency_saved", currency=currency, time=hour, zone=zone)
+    settings = get_worker_settings()
     try:  # best effort: the setting is stored either way
-        Telegram(get_worker_settings().telegram_bot_token).send_message(chat_id, text)
+        tg = Telegram(settings.telegram_bot_token)
+        tg.send_message(chat_id, text)
+        if "moneda" not in user and "plan" not in user and settings.api_url:
+            # Onboarding: the meal plan next, optional (/plan later).
+            url = f"{settings.api_url}/plan"
+            tg.send_webapp(chat_id, t(lang, "plan_offer"), t(lang, "plan_button"), url)
     except Exception as exc:
         logger.warning("moneda_notify_failed error=%s", type(exc).__name__)
     logger.info("moneda_guardar status=204")
+    return Response(status_code=204)
+
+
+# --- meal plan (any user) --------------------------------------------------------
+
+
+@router.get("/plan")
+def plan_shell() -> Response:
+    return HTMLResponse(PLAN_HTML, headers=PLAN_HEADERS)
+
+
+def _options(lang: str, prefix: str, keys: Any, current: str) -> str:
+    return "".join(
+        f'<option value="{k}"{" selected" if k == current else ""}>'
+        f"{html.escape(t(lang, prefix + k))}</option>"
+        for k in keys
+    )
+
+
+@router.post("/plan/datos")
+def plan_form(request: Request) -> Response:
+    """The plan form, filled with the stored plan."""
+    if (found := _mini_app_user(request)) is None:
+        logger.info("plan status=403")
+        return Response(status_code=403, headers=PLAN_HEADERS)
+    _, user = found
+    lang, plan = user.get("idioma", "es"), user.get("plan") or {}
+
+    def number(field: str, label: str) -> str:
+        low, high = photos.LIMITS[field]
+        value = plan.get(field, "")
+        return (
+            f"<label>{t(lang, label)}<input name={field} type=number "
+            f'inputmode=numeric min={low} max={high} value="{value}" required>'
+            "</label>"
+        )
+
+    sexes = _options(lang, "sex_", ("m", "h"), plan.get("sexo", ""))
+    levels = _options(lang, "act_", photos.ACTIVITY, plan.get("actividad", "media"))
+    goals = _options(lang, "goal_", photos.GOALS, plan.get("meta", ""))
+    body = (
+        f"{CURRENCY_STYLE}<form><b>{t(lang, 'plan_question')}</b>"
+        f"<label>{t(lang, 'plan_goal')}<select name=meta>{goals}</select></label>"
+        f"<label>{t(lang, 'plan_sex')}<select name=sexo>{sexes}</select></label>"
+        f"{number('edad', 'plan_age')}{number('peso', 'plan_weight')}"
+        f"{number('altura', 'plan_height')}"
+        f"<label>{t(lang, 'plan_activity')}"
+        f"<select name=actividad>{levels}</select></label>"
+        f"<small>{t(lang, 'plan_privacy')}</small>"
+        f"<button>{t(lang, 'save_button')}</button></form>"
+    )
+    return HTMLResponse(body, headers=PLAN_HEADERS)
+
+
+def _plan_from(request: Request) -> dict | None:
+    """The form's plan with its daily kcal; None when any field is out of range."""
+    q = request.query_params
+    try:
+        plan: dict[str, Any] = {f: int(q[f]) for f in photos.LIMITS}
+    except (KeyError, ValueError):
+        return None
+    if not all(lo <= plan[f] <= hi for f, (lo, hi) in photos.LIMITS.items()):
+        return None
+    plan |= {f: q.get(f, "") for f in ("sexo", "actividad", "meta")}
+    if (
+        plan["sexo"] not in ("m", "h")
+        or plan["actividad"] not in photos.ACTIVITY
+        or plan["meta"] not in photos.GOALS
+    ):
+        return None
+    return plan | {"kcal": photos.daily_kcal(plan)}
+
+
+@router.post("/plan/guardar")
+def plan_save(request: Request) -> Response:
+    """Store the plan and confirm it in the chat with its daily target."""
+    if (found := _mini_app_user(request)) is None:
+        logger.info("plan_guardar status=403")
+        return Response(status_code=403)
+    if (plan := _plan_from(request)) is None:
+        logger.info("plan_guardar status=400")
+        return Response(status_code=400)
+    chat_id, user = found
+    state.set_plan(chat_id, plan)
+    lang = user.get("idioma", "es")
+    goal = t(lang, f"goal_{plan['meta']}")
+    text = t(lang, "plan_saved", goal=goal, kcal=plan["kcal"])
+    try:  # best effort: the plan is stored either way
+        Telegram(get_worker_settings().telegram_bot_token).send_message(chat_id, text)
+    except Exception as exc:
+        logger.warning("plan_notify_failed error=%s", type(exc).__name__)
+    logger.info("plan_guardar status=204")
     return Response(status_code=204)
 
 

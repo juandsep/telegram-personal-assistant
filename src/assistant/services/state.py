@@ -140,6 +140,12 @@ TIMEZONE_BY_CURRENCY = {
 }
 
 
+def set_plan(chat_id: str, plan: dict | None) -> None:
+    """The meal plan (see photos.daily_kcal); None deletes it."""
+    value = plan if plan is not None else firestore.DELETE_FIELD
+    _doc("users", chat_id).set({"plan": value}, merge=True)
+
+
 def set_currency(chat_id: str, currency: str) -> None:
     """The display currency; a missing or old-default zone gets a first guess."""
     ref = _doc("users", chat_id)

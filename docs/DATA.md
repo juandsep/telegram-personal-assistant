@@ -100,7 +100,7 @@ feed) with a pointer in `users.ics_token`.
 
 | Collection | Content | Expiry |
 |---|---|---|
-| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| GBP \| COP \| MXN \| PEN \| BRL \| CNY; unset until the user picks one, and nothing is logged before), `zona_horaria` (the phone's zone from a Mini App, else a guess from the currency or `/zona`), `idioma`, `fun`, `last_batch`, `resumen_semanal` (Sunday summary on, default true), `ultimo_uso` (last active day, ISO date in the user's zone, written once a day), `alias` (random id in the CSV export) | — |
+| `users/{chat_id}` | `nombre`, `rol` (owner \| beta), `moneda` (display currency: USD \| EUR \| GBP \| COP \| MXN \| PEN \| BRL \| CNY; unset until the user picks one, and nothing is logged before), `zona_horaria` (the phone's zone from a Mini App, else a guess from the currency or `/zona`), `idioma`, `fun`, `last_batch`, `resumen_semanal` (Sunday summary on, default true), `ultimo_uso` (last active day, ISO date in the user's zone, written once a day), `alias` (random id in the CSV export), `plan` (optional meal plan: `sexo` m \| h, `edad`, `peso` kg, `altura` cm, `actividad` baja \| media \| alta, `meta` bajar \| mantener \| subir \| sano, `kcal` daily target; health data, erased by `/plan borrar` and `/reset`) | — |
 | `processed/{update_id}` | Dedup marker | TTL 7 days |
 | `invites/{code}` | Single-use invite | TTL 24 h |
 | `requests/{chat_id}` | Access request: `nombre`, `idioma`, `status` (pending \| rejected) | TTL 7 d pending, 10 d after a rejection |

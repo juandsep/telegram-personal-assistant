@@ -66,6 +66,7 @@ WORDS = {
     "moneda": "/moneda",
     "currency": "/moneda",
     "cuentas": "/cuentas",
+    "plan": "/plan",
     "splits": "/cuentas",
     "me deben": "/cuentas",
     "reset": "/reset",
@@ -167,6 +168,8 @@ def _context(user: dict, msg: InboundMessage, settings: WorkerSettings) -> ToolC
         now=datetime.now(ZoneInfo(tz)),
         lang=lang,
         fun=bool(user.get("fun")),
+        goal=str((user.get("plan") or {}).get("meta", "")),
+        kcal_target=int((user.get("plan") or {}).get("kcal", 0)),
     )
 
 
@@ -251,6 +254,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     if msg.text.startswith("/fun"):
         _send(channel, msg, _fun(ctx, msg))
+        return ACK
+    if msg.text.startswith("/plan"):
+        _plan(ctx, channel, msg, settings)
         return ACK
     if msg.text.startswith("/tablero"):
         _dashboard(ctx, channel, msg, settings)
@@ -480,9 +486,10 @@ def _photo(
                 protein=int(data.get("protein_g") or 0),
                 carbs=int(data.get("carbs_g") or 0),
                 fat=int(data.get("fat_g") or 0),
-                today=photos.day_totals(meals)["kcal"],
+                today=(today := photos.day_totals(meals)["kcal"]),
                 times=photos.timeline(meals),
             )
+            reply += "\n" + _meal_goal(ctx, today)
             if tip := str(data.get("tip") or "").strip():
                 reply += f"\n💡 {tip[:200]}"
             _send(
@@ -691,6 +698,48 @@ def _currency_command(ctx: ToolContext, msg: InboundMessage) -> str | None:
     """/moneda COP sets it; None without a valid code (the Mini App opens)."""
     cur = msg.text.strip().partition(" ")[2].strip().upper()
     return _set_currency(ctx, msg, cur) if cur in CURRENCIES else None
+
+
+def _meal_goal(ctx: ToolContext, today: int) -> str:
+    """How far the day is from the plan's kcal target, or how to set one."""
+    if not ctx.kcal_target:
+        return t(ctx.lang, "meal_no_plan")
+    left = ctx.kcal_target - today
+    if left >= 0:
+        return t(ctx.lang, "meal_left", left=left, target=ctx.kcal_target)
+    return t(ctx.lang, "meal_over", over=-left, target=ctx.kcal_target)
+
+
+def _plan(
+    ctx: ToolContext, channel: Telegram, msg: InboundMessage, settings: WorkerSettings
+) -> None:
+    """/plan opens the meal-plan Mini App; /plan borrar deletes the plan."""
+    if msg.text.partition(" ")[2].strip().lower() in ("borrar", "delete", "off"):
+        try:
+            state.set_plan(ctx.chat_id, None)
+        except Exception as exc:
+            logger.error(
+                "command_failed update_id=%s error=%s",
+                msg.update_id,
+                type(exc).__name__,
+            )
+            _send(channel, msg, t(ctx.lang, "failed"))
+            return
+        _send(channel, msg, t(ctx.lang, "plan_deleted"))
+        return
+    if not settings.api_url:
+        _send(channel, msg, t(ctx.lang, "unavailable"))
+        return
+    text = t(ctx.lang, "plan_question")
+    if ctx.goal:
+        goal = t(ctx.lang, f"goal_{ctx.goal}")
+        text = t(ctx.lang, "plan_current", goal=goal, kcal=ctx.kcal_target)
+    try:
+        channel.send_webapp(
+            msg.chat_id, text, t(ctx.lang, "plan_button"), f"{settings.api_url}/plan"
+        )
+    except httpx.HTTPError:
+        logger.warning("send_failed update_id=%s", msg.update_id)
 
 
 def _currency_app(

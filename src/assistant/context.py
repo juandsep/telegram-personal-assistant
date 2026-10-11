@@ -56,5 +56,9 @@ class ToolContext:
     timezone: str
     update_id: int
     now: datetime  # timezone-aware, in the user's zone
-    lang: str = "es"  # es | en | zh | fr | de, see assistant.i18n
+    lang: str = "es"  # es | en | zh | fr | de | pt, see assistant.i18n
     fun: bool = False  # /fun: reaction images from the catalog (services/media.py)
+    # /plan: the meal goal (photos.GOALS) and daily kcal target; "" / 0 unset.
+    # Only these two reach the LLMs, never age, weight or height.
+    goal: str = ""
+    kcal_target: int = 0

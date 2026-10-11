@@ -12,6 +12,10 @@ Stored field names are Spanish, like the rest of Firestore:
 
 The photo itself is never stored. Neither is an expense: the owner records
 their own share by hand.
+
+The optional meal plan (``/plan``) lives in ``users/{chat_id}.plan``: sexo
+(m|h), edad, peso (kg), altura (cm), actividad, meta and the derived daily
+kcal. Only meta and kcal reach Gemini and the chat LLM.
 """
 
 from __future__ import annotations
@@ -90,9 +94,10 @@ and macros (grams) for the portion shown, adjusted by the note (e.g. "half"); \
 health = healthy, meh or unhealthy for this dish; tip = one short sentence \
 that balances the day, given what the user already ate today ({today}; meals \
 so far: {meals}) and that it is now {now}: what to eat more or less of next, or \
-when, if the meal times call for it. Name concrete foods and portions, never \
-generic groups (e.g. "Dinner: grilled chicken breast (150 g) with broccoli and \
-spinach", not "add vegetables and protein").
+when, if the meal times call for it, toward the user's goal ({goal}). Name \
+concrete foods and portions, never generic groups (e.g. "Dinner: grilled \
+chicken breast (150 g) with broccoli and spinach", not "add vegetables and \
+protein").
 - A receipt or bill: kind=receipt; total = the final amount to pay as printed \
 (tax and tip included); currency = ISO 4217 code ("{currency}" if unclear); \
 name = a short title from the note (else the place); people = how many people \
@@ -127,6 +132,11 @@ def analyze(
         today=today,
         meals=timeline(meals) or "none",
         now=f"{ctx.now:%H:%M}",
+        goal=(
+            f"{GOALS[ctx.goal][0]}, about {ctx.kcal_target} kcal a day"
+            if ctx.goal in GOALS
+            else "none set"
+        ),
     )
     body = {
         "contents": [
@@ -264,6 +274,30 @@ def open_splits(chat_id: str) -> list[tuple[str, dict]]:
 
 def _splits(chat_id: str) -> Any:
     return state._db().collection("cuentas").document(chat_id).collection("divisiones")
+
+
+# --- meal plan -------------------------------------------------------------------
+
+# meta -> what the LLMs read, and the daily kcal change from maintenance.
+GOALS = {
+    "bajar": ("lose weight", -500),
+    "mantener": ("keep weight", 0),
+    "subir": ("gain weight", 300),
+    "sano": ("eat healthier", 0),
+}
+ACTIVITY = {"baja": 1.2, "media": 1.375, "alta": 1.55}
+MIN_KCAL = 1200
+# Accepted ranges (inclusive) for the Mini App form.
+LIMITS = {"edad": (14, 100), "peso": (30, 300), "altura": (120, 230)}
+
+
+def daily_kcal(plan: dict) -> int:
+    """Mifflin-St Jeor resting energy times activity, plus the goal's change,
+    rounded to 50 kcal and never below MIN_KCAL. An estimate, not advice."""
+    rest = 10 * plan["peso"] + 6.25 * plan["altura"] - 5 * plan["edad"]
+    rest += 5 if plan["sexo"] == "h" else -161
+    kcal = rest * ACTIVITY[plan["actividad"]] + GOALS[plan["meta"]][1]
+    return max(MIN_KCAL, round(kcal / 50) * 50)
 
 
 # --- meals -----------------------------------------------------------------------

@@ -22,6 +22,8 @@ from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import httpx
+
 from assistant.channels.telegram import Telegram
 from assistant.config import get_worker_settings
 from assistant.context import ToolContext
@@ -226,7 +228,7 @@ def run_job(name: str) -> None:
         backup.run(settings)  # manual run: a failure raises
     if name == "digest":
         _once(state, f"export:{now:%Y-%m-%d}", lambda: backup.export_ledger(settings))
-    sent = failed = 0
+    sent = failed = blocked = 0
     for chat_id in state.list_chat_ids():
         try:
             user = state.get_user(chat_id)
@@ -243,6 +245,13 @@ def run_job(name: str) -> None:
                 telegram.send_message(chat_id, text, keyboard)
                 sent += 1
         except Exception as e:  # one chat never blocks the rest
+            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 403:
+                # The user blocked the bot: not a job failure (no alert).
+                # Retention erases them after INACTIVE_DAYS without use.
+                blocked += 1
+                continue
             failed += 1
             log.warning("job_chat_failed job=%s error=%s", name, type(e).__name__)
-    log.info("job_done job=%s sent=%d failed=%d", name, sent, failed)
+    log.info(
+        "job_done job=%s sent=%d failed=%d blocked=%d", name, sent, failed, blocked
+    )

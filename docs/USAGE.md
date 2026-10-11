@@ -191,7 +191,7 @@ The assistant remembers the last few exchanges, including commands and button
 taps answered without the LLM, so a follow-up like "¿ya quedó?" after
 `/calendario` makes sense to it.
 
-Natural language works in any of the three languages: "reunión con Ana mañana
+Natural language works in any of Juani's languages: "reunión con Ana mañana
 3pm", "remind me to pay the power bill Friday 9am", "我周四有空吗？".
 
 - **Conflicts:** before scheduling, the code checks the agenda and the busy
@@ -293,8 +293,9 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/anular <n>` | Voids movement `n` (with confirmation) |
 | `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/cuentas` | Split checks people still owe you, with ✅ buttons |
+| `/semanal` | Sunday summary on or off (not in the menu) |
 | `/fun` | Reaction images on or off |
-| `/moneda [USD\|EUR\|COP\|CNY]` | Display currency (buttons without a code) |
+| `/moneda [USD\|EUR\|GBP\|COP\|CNY]` | Display currency (the picker Mini App without a code) |
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |
 | `/ayuda` | The welcome |

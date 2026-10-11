@@ -10,24 +10,32 @@
 
 **Juani** (repo `telegram-personal-assistant`) is a Telegram bot that logs your
 expenses and income, shows your month on a pinned dashboard, recommends how to
-save, and keeps your agenda with on-the-minute reminders. It runs for one owner
-plus a few invited users, on GCP, for about $1–2/month (LLM tokens only).
+save, keeps your agenda with on-the-minute reminders and reads photos of meals
+and receipts. It runs for one owner and up to 100 people the owner lets in, on
+GCP, for about $1–2/month (LLM tokens only).
 
 ## What Juani does
 
 - **Logs money in one line.** `-12 lunch`, `2000 cop cafe`, `+1500 salario`
   are registered by code with zero LLM tokens; free text goes to the LLM. Each
   entry comes back as stored; `/anular 1` voids the last one to write it again.
+- **Works in your currency.** USD, EUR, GBP, COP or CNY, picked in a small
+  Mini App that also reads your phone's time zone. Amounts in another currency
+  (`20 eur cena`) are converted at the day's rate.
 - **Shows your month.** The pinned *Visor de gastos* opens a Telegram Mini App
   with income, spend by category and day, and the savings rate. No secret in
   the URL: Telegram signs the user in.
 - **Keeps you on track.** On Sunday at 18:00, how the week went against the 20%
   savings rule (one tap turns it off); no daily spending messages.
 - **Runs your agenda.** Appointments and reminders in natural language,
-  conflict checks, a Google Calendar mirror and a private ICS feed.
+  conflict checks and one-tap calendar connect: two-way sync with Google
+  Calendar, or a private feed for iPhone and Outlook.
 - **Reads photos.** A meal gives estimated calories and macros; a receipt is
   split between people, and `cuentas` shows who still owes you.
 - **Speaks your language.** Spanish, English, Chinese, French or German, following your phone (English for any other language).
+- **Lets people in on request.** A stranger taps Start and the owner accepts
+  or rejects; inactive or revoked users are erased after 60 or 30 days, and
+  their ledger rows stay only as anonymous history.
 - **Has fun if you want.** `/fun` turns on reaction images, picked by category and by how healthy your meal is.
 
 The full guide, with every command and example, is in the documentation below.
@@ -39,8 +47,10 @@ The full guide, with every command and example, is in the documentation below.
 One Cloud Run service, scaled to zero. The Telegram webhook only verifies the
 update, publishes it to Pub/Sub and acks in under 300 ms; Pub/Sub pushes it
 back to the same service, which calls the LLM (DeepSeek, tool calling), writes
-to Firestore and replies on its own request. Reminders are Cloud Tasks; reports
-run from an hourly Cloud Scheduler job. Cloud Monitoring collects request and
+to Firestore and replies on its own request. Photos go to Gemini; Google
+Calendar tokens are encrypted with Cloud KMS. Reminders are Cloud Tasks; the
+morning agenda, the Sunday summary, calendar sync and data retention run from
+an hourly Cloud Scheduler job. Cloud Monitoring collects request and
 LLM metrics and mails alerts, always on; a local Grafana explores them
 ([monitoring/](monitoring/README.md)). Interactive diagrams live
 in [`docs/architecture/`](docs/architecture/).
@@ -49,8 +59,12 @@ in [`docs/architecture/`](docs/architecture/).
 
 | Document | What it covers |
 |---|---|
-| [docs/USAGE.md](docs/USAGE.md) | Logging, corrections, dashboard, reports, reactions, agenda, languages, commands |
-| [docs/DATA.md](docs/DATA.md) | Ledger model, CSV export and backup, Looker Studio, agenda and other collections |
+| [User guide](https://juandsep.github.io/telegram-personal-assistant/guia/) | Short guide for non-technical users (es/en), the bot's 🗺️ Guía completa button |
+| [docs/USAGE.md](docs/USAGE.md) | Access, currency, logging, corrections, dashboard, scheduled messages, reactions, agenda, photos, commands |
+| [docs/DATA.md](docs/DATA.md) | Ledger model, CSV export and backup, retention, Looker Studio, Firestore collections |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Running your own Juani on GCP, configuration variables, admin CLI |
+| [monitoring/README.md](monitoring/README.md) | Metrics, alerts, slow-call logs, local Grafana |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Branch flow, commits, local checks, releases |
 | [ROADMAP.md](ROADMAP.md) | The original plan: decisions, architecture, costs, security, roadmap |
 
 ## Run locally
@@ -68,14 +82,15 @@ uv run ruff check . && uv run ruff format --check .
 Local runs read a git-ignored `.env` with the same variables as the deploy (see
 [docs/DEPLOY.md](docs/DEPLOY.md#configuration)).
 
-**Stack:** FastAPI, httpx (DeepSeek, Telegram), `google-cloud-*` (Firestore,
-Pub/Sub, Storage, Tasks, KMS), Cloud Monitoring + Grafana, uv + ruff + mypy +
+**Stack:** FastAPI, httpx (DeepSeek, Gemini, Telegram, Google Calendar),
+`google-cloud-*` (Firestore, Pub/Sub, Storage, Tasks, KMS), Cloud Monitoring + Grafana, uv + ruff + mypy +
 pytest, Terraform, GitHub Actions.
 
 ## Deploy
 
 Juani runs on GCP: Terraform for the base infrastructure, GitHub Actions for
-the two Cloud Run services (`dev` deploys staging, `main` deploys production).
+the Cloud Run service (`dev` deploys `assistant-staging`, `main` deploys
+`assistant`).
 Step by step, the bot profile, every configuration variable and the admin CLI:
 see [docs/DEPLOY.md](docs/DEPLOY.md).
 

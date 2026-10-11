@@ -71,7 +71,7 @@ def test_analyze_parses_gemini_json(db: FakeDB) -> None:
     assert "(300 kcal, protein 8 g, carbs 0 g, fat 0 g;" in prompt  # the day so far
     assert f"meals so far: {CTX.now:%H:%M} Arepa)" in prompt
     schema = sent["generationConfig"]["responseSchema"]
-    assert {"health", "tip"} <= set(schema["required"])
+    assert {"health", "tip", "description"} <= set(schema["required"])
 
 
 @pytest.mark.parametrize("response", [httpx.Response(500), httpx.Response(200)])

@@ -955,12 +955,21 @@ def photo_update(caption: str = "") -> dict:
 
 
 def test_meal_photo_is_saved_with_todays_total(st, llm, tg, photo) -> None:
-    photo.analyze.return_value = {"kind": "meal", "name": "Arepa", "kcal": 300}
+    photo.analyze.return_value = {
+        "kind": "meal",
+        "name": "Arepa",
+        "kcal": 300,
+        "description": "Arepa con queso y aguacate.",
+    }
     assert client.post("/push", json=envelope(photo_update())).status_code == 204
     assert photo.analyze.call_args.args[0] == b"jpg"
     assert "Arepa · ~300 kcal" in sent_texts(tg)[0]
     assert "~900 kcal" in sent_texts(tg)[0]
     assert sent_texts(tg)[0].endswith("🕐 08:10 Huevos · 13:05 Arepa")
+    # The LLM never sees the photo: its history carries what Gemini saw.
+    said, answer = st.append_history.call_args.args[1]
+    assert said["content"] == "[Envió una foto]"
+    assert answer["content"].endswith("[En la foto: Arepa con queso y aguacate.]")
     assert keyboards(tg) == [[("🗑️ Quitar", "ml:m1")]]
     llm.run_turn.assert_not_called()
 

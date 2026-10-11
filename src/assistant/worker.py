@@ -480,7 +480,11 @@ def _photo(
             if tip := str(data.get("tip") or "").strip():
                 reply += f"\n💡 {tip[:200]}"
             _send(
-                channel, msg, reply, [[(t(ctx.lang, "meal_remove"), f"ml:{meal_id}")]]
+                channel,
+                msg,
+                reply,
+                [[(t(ctx.lang, "meal_remove"), f"ml:{meal_id}")]],
+                remember=_photo_note(reply, data),
             )
             tag = MEAL_REACTION.get(str(data.get("health")))
             if ctx.fun and tag:  # after the text, like a registration's reaction
@@ -513,7 +517,9 @@ def _photo(
                 currency=receipt["currency"],
             )
             return question, [[(str(n), f"pp:{token}:{n}") for n in PEOPLE_CHOICES]]
-        return t(ctx.lang, "photo_other"), None
+        other = t(ctx.lang, "photo_other")
+        _send(channel, msg, other, remember=_photo_note(other, data))
+        return None
     except (photos.PhotoUnavailable, httpx.HTTPError) as exc:
         logger.warning(
             "photo_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
@@ -524,6 +530,14 @@ def _photo(
             "photo_failed update_id=%s error=%s", msg.update_id, type(exc).__name__
         )
         return t(ctx.lang, "failed"), None
+
+
+def _photo_note(reply: str, data: dict) -> str:
+    """The reply plus what Gemini saw: the LLM never sees the photo, so its
+    history carries the description for follow-up questions."""
+    if description := str(data.get("description") or "").strip():
+        return f"{reply}\n[En la foto: {description[:300]}]"
+    return reply
 
 
 def _money(value: Decimal) -> str:

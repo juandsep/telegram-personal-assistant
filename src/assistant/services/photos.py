@@ -45,6 +45,7 @@ SCHEMA = {
     "properties": {
         "kind": {"type": "STRING", "enum": ["meal", "receipt", "other"]},
         "name": _STR,
+        "description": _STR,
         "kcal": _INT,
         "protein_g": _INT,
         "carbs_g": _INT,
@@ -67,6 +68,7 @@ SCHEMA = {
     "required": [
         "kind",
         "name",
+        "description",
         "kcal",
         "protein_g",
         "carbs_g",
@@ -81,13 +83,16 @@ SCHEMA = {
 }
 PROMPT = """\
 Read this photo. The user's note: "{caption}". Answer in language "{lang}".
+- Always: description = one sentence on what the photo shows (for food, the \
+visible ingredients and portion).
 - Food or drink about to be eaten: kind=meal; name = a short dish name; kcal \
 and macros (grams) for the portion shown, adjusted by the note (e.g. "half"); \
 health = healthy, meh or unhealthy for this dish; tip = one short sentence \
 that balances the day, given what the user already ate today ({today}; meals \
 so far: {meals}) and that it is now {now}: what to eat more or less of next, or \
-when, if the meal times call for it (e.g. "Add vegetables and protein at \
-dinner", "Long gap since breakfast: have a snack before 16:00").
+when, if the meal times call for it. Name concrete foods and portions, never \
+generic groups (e.g. "Dinner: grilled chicken breast (150 g) with broccoli and \
+spinach", not "add vegetables and protein").
 - A receipt or bill: kind=receipt; total = the final amount to pay as printed \
 (tax and tip included); currency = ISO 4217 code ("{currency}" if unclear); \
 name = a short title from the note (else the place); people = how many people \

@@ -2,6 +2,9 @@
 
 - COP: official TRM from datos.gov.co (dataset ``32sa-8pi3``), the latest row
   with ``vigenciadesde <= fecha``. Source ``trm``.
+- PEN: official SBS rate (sale) from the BCRP API (series ``PD04640PD``), the
+  latest published day up to ``fecha`` (none on weekends and holidays).
+  Source ``bcrp``.
 - ECB currencies: Frankfurter ``/v1/{day}?base=USD``. Source ``ecb``.
 - USD: no lookup, rate 1. Source ``usd``.
 
@@ -14,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from functools import cache
 
@@ -25,6 +28,10 @@ log = logging.getLogger(__name__)
 
 TRM_URL = "https://www.datos.gov.co/resource/32sa-8pi3.json"
 ECB_URL = "https://api.frankfurter.dev/v1/{day}"
+BCRP_URL = (
+    "https://estadisticas.bcrp.gob.pe/estadisticas/series/api/PD04640PD/json/"
+    "{start}/{end}"
+)
 # Currencies the ECB (Frankfurter) publishes against USD.
 ECB = frozenset(
     "AUD BGN BRL CAD CHF CNY CZK DKK EUR GBP HKD HUF IDR ILS INR ISK JPY KRW "
@@ -67,6 +74,16 @@ def _fetch_rate(currency: str, day: date) -> tuple[Decimal, str]:
         if not isinstance(rows, list) or not rows:
             raise FxError("data")
         return Decimal(str(rows[0]["valor"])), "trm"
+    if currency == "PEN":
+        start = (day - timedelta(days=10)).isoformat()  # past a long weekend
+        data = _get(BCRP_URL.format(start=start, end=day.isoformat()), {})
+        if not isinstance(data, dict):
+            raise FxError("data")
+        values = [p["values"][0] for p in data["periods"]]
+        last = next((v for v in reversed(values) if v != "n.d."), None)
+        if last is None:
+            raise FxError("data")
+        return Decimal(str(last)), "bcrp"
     data = _get(
         ECB_URL.format(day=day.isoformat()), {"base": "USD", "symbols": currency}
     )
@@ -79,7 +96,7 @@ def rate(currency: str, day: date) -> tuple[Decimal, str]:
     """(units of currency per 1 USD, source), cached per day and currency."""
     if currency == "USD":
         return Decimal(1), "usd"
-    if currency != "COP" and currency not in ECB:
+    if currency not in ECB | {"COP", "PEN"}:
         raise FxError("unsupported")
     try:
         ref = _db().collection("fx").document(f"{day.isoformat()}_{currency}")

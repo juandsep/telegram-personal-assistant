@@ -5,7 +5,7 @@
 <h1 align="center">Juani</h1>
 
 <p align="center">
-  Your expense and calendar assistant on Telegram · Español · English · 中文
+  Your expense and calendar assistant on Telegram · Español · English · 中文 · Français · Deutsch · Português
 </p>
 
 **Juani** (repo `telegram-personal-assistant`) is a Telegram bot that logs your
@@ -19,7 +19,7 @@ GCP, for about $1–2/month (LLM tokens only).
 - **Logs money in one line.** `-12 lunch`, `2000 cop cafe`, `+1500 salario`
   are registered by code with zero LLM tokens; free text goes to the LLM. Each
   entry comes back as stored; `/anular 1` voids the last one to write it again.
-- **Works in your currency.** USD, EUR, GBP, COP or CNY, picked in a small
+- **Works in your currency.** USD, EUR, GBP, COP, MXN, PEN, BRL or CNY, picked in a small
   Mini App that also reads your phone's time zone. Amounts in another currency
   (`20 eur cena`) are converted at the day's rate.
 - **Shows your month.** The pinned *Visor de gastos* opens a Telegram Mini App
@@ -32,7 +32,7 @@ GCP, for about $1–2/month (LLM tokens only).
   Calendar, or a private feed for iPhone and Outlook.
 - **Reads photos.** A meal gives estimated calories and macros; a receipt is
   split between people, and `cuentas` shows who still owes you.
-- **Speaks your language.** Spanish, English, Chinese, French or German, following your phone (English for any other language).
+- **Speaks your language.** Spanish, English, Chinese, French, German or Portuguese, following your phone (English for any other language).
 - **Lets people in on request.** A stranger taps Start and the owner accepts
   or rejects; inactive or revoked users are erased after 60 or 30 days, and
   their ledger rows stay only as anonymous history.

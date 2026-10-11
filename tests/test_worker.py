@@ -277,15 +277,10 @@ def test_start_asks_the_currency_with_buttons(st, llm, tg) -> None:
     client.post("/push", json=envelope(message("/start")))
     question = json.loads(tg.calls.last.request.read())
     assert question["text"] == t("es", "currency_question")
-    assert question["reply_markup"]["inline_keyboard"] == [
-        [
-            {"text": "🇺🇸 USD", "callback_data": "mo:USD"},
-            {"text": "🇪🇺 EUR", "callback_data": "mo:EUR"},
-            {"text": "🇬🇧 GBP", "callback_data": "mo:GBP"},
-            {"text": "🇨🇴 COP", "callback_data": "mo:COP"},
-            {"text": "🇨🇳 CNY", "callback_data": "mo:CNY"},
-        ]
-    ]
+    rows = question["reply_markup"]["inline_keyboard"]
+    assert [len(r) for r in rows] == [4, 4]
+    assert rows[0][0] == {"text": "🇺🇸 USD", "callback_data": "mo:USD"}
+    assert rows[1][2] == {"text": "🇧🇷 BRL", "callback_data": "mo:BRL"}
 
 
 def test_currency_command_and_buttons(monkeypatch, st, llm, tg) -> None:

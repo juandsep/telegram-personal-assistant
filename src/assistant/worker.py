@@ -76,7 +76,8 @@ RESET_BUTTONS = "rs:ok", "rs:no"
 # Telegram lets a bot delete messages only for 48 h; older ones are skipped.
 RESET_SCAN = 1000
 # Display currencies: /moneda and the onboarding buttons.
-CURRENCY_BUTTONS = [[(label, f"mo:{cur}") for cur, label in CURRENCIES.items()]]
+_PICK = [(label, f"mo:{cur}") for cur, label in CURRENCIES.items()]
+CURRENCY_BUTTONS = [_PICK[i : i + 4] for i in range(0, len(_PICK), 4)]
 PEOPLE_CHOICES = range(2, 7)
 # Gemini's verdict on a meal photo -> the comida/<key> reaction tag.
 MEAL_REACTION = {"healthy": "sana", "meh": "meh", "unhealthy": "chatarra"}

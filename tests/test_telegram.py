@@ -113,10 +113,19 @@ def test_lang_from_language_code() -> None:
     }
     msg = parse_update(update)
     assert msg is not None and msg.language_code == "zh-hant"
-    codes = ("zh-hant", "en-GB", "es-CO", "fr-CA", "de", "pt-br", None)
-    assert [lang_of(c) for c in codes] == ["zh", "en", "es", "fr", "de", "en", "en"]
+    codes = ("zh-hant", "en-GB", "es-CO", "fr-CA", "de", "pt-br", "it", None)
+    assert [lang_of(c) for c in codes] == [
+        "zh",
+        "en",
+        "es",
+        "fr",
+        "de",
+        "pt",
+        "en",
+        "en",
+    ]
     assert t("fr", "viewer") == "Visionneuse de dépenses"
-    assert t("pt", "viewer") == "Expense viewer"  # unknown: English
+    assert t("it", "viewer") == "Expense viewer"  # unknown: English
 
 
 def test_every_text_in_every_language_with_the_same_placeholders() -> None:
@@ -156,7 +165,7 @@ def test_bot_profile_in_every_language(monkeypatch) -> None:
     owner = bodies.pop()
     assert owner["scope"] == {"type": "chat", "chat_id": "42"}
     assert "language_code" not in owner and len(owner["commands"]) == len(COMMANDS) + 3
-    assert [b["language_code"] for b in bodies] == ["es", "", "zh", "fr", "de"]
+    assert [b["language_code"] for b in bodies] == ["es", "", "zh", "fr", "de", "pt"]
     assert [c["command"] for c in bodies[1]["commands"]] == list(COMMANDS)
     for b in bodies:
         for c in b["commands"]:

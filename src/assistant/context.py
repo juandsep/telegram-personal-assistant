@@ -18,6 +18,9 @@ CURRENCIES = {
     "EUR": "🇪🇺 EUR",
     "GBP": "🇬🇧 GBP",
     "COP": "🇨🇴 COP",
+    "MXN": "🇲🇽 MXN",
+    "PEN": "🇵🇪 PEN",
+    "BRL": "🇧🇷 BRL",
     "CNY": "🇨🇳 CNY",
 }
 

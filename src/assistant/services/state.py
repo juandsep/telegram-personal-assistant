@@ -7,10 +7,11 @@ maps them at this boundary.
 Collections (Firestore native):
 
 - ``users/{chat_id}``: nombre, rol (owner|beta), moneda (display currency:
-  USD|EUR|GBP|COP|CNY, /moneda; the ledger stays in USD), zona_horaria (unset until
-  /moneda guesses it, the Mini App sends the phone's or /zona sets it; readers
-  fall back to the default zone), idioma (es|en|zh|fr|de, from the Telegram
-  app), fun (reaction images, /fun), last_batch.
+  USD|EUR|GBP|COP|MXN|PEN|BRL|CNY, /moneda; the ledger stays in USD),
+  zona_horaria (unset until /moneda guesses it, the Mini App sends the phone's
+  or /zona sets it; readers fall back to the default zone), idioma
+  (es|en|zh|fr|de|pt, from the Telegram app), fun (reaction images, /fun),
+  last_batch.
 - ``processed/{update_id}``: dedup marker; ``expire_at`` drives a 7-day TTL.
 - ``invites/{code}``: nombre, used, ``expire_at`` (24 h, single use).
 - ``rate/{chat_id}_{minute}``: messages in that minute.
@@ -132,6 +133,9 @@ TIMEZONE_BY_CURRENCY = {
     "EUR": "Europe/Madrid",
     "GBP": "Europe/London",
     "CNY": "Asia/Shanghai",
+    "MXN": "America/Mexico_City",
+    "PEN": "America/Lima",
+    "BRL": "America/Sao_Paulo",
     "USD": "America/New_York",
 }
 

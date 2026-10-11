@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
 from google.api_core.exceptions import PreconditionFailed
 
@@ -150,6 +151,22 @@ def test_one_failing_chat_does_not_stop_others(
     jobs.run_job("checkin")
     env.telegram.send_message.assert_called_once()
     assert env.telegram.send_message.call_args.args[0] == "3"
+
+
+def test_blocked_user_is_not_a_job_failure(
+    env: SimpleNamespace, caplog: pytest.LogCaptureFixture
+) -> None:
+    env.state.list_chat_ids.return_value = ["1", "2"]
+    env.state.get_user.return_value = {"moneda": "USD"}
+
+    def status(code: int) -> httpx.HTTPStatusError:
+        req = httpx.Request("POST", "https://api.telegram.org")
+        return httpx.HTTPStatusError("x", request=req, response=httpx.Response(code))
+
+    env.telegram.send_message.side_effect = [status(403), status(500)]
+    with caplog.at_level("INFO"):
+        jobs.run_job("checkin")
+    assert "sent=0 failed=1 blocked=1" in caplog.text
 
 
 class FakeBucket:

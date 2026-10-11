@@ -15,7 +15,7 @@ firing.
 | Requests by status class, latency (p50/p95/p99), instances | Cloud Run built-in metrics |
 | `llm_turns`, `llm_latency_ms`, `llm_cost_usd`, `llm_tokens_out` | The `llm_turn` log line of each LLM turn (`src/assistant/observability/trace.py`) |
 | `llm_rejected` | LLM turns with a rejected tool call |
-| `job_failed` | Scheduled job runs where some chat failed (`job_done ... failed=N`) |
+| `job_failed` | Scheduled job runs where some chat failed (`job_done ... failed=N`); a chat that blocked the bot counts as `blocked=N`, not a failure |
 
 Slow replies: any external call (Telegram, Firestore history, KMS, iCal fetch)
 or a whole update taking 800 ms or more logs `slow_call name=<call> ms=<n>`.

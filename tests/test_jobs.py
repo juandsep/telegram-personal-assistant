@@ -69,10 +69,12 @@ def test_checkin_in_user_language(
     entries = [{"tipo_mov": "gasto", "monto": "3.00"}]
     monkeypatch.setattr(ledger, "of_day", lambda *a: entries)
     jobs.run_job("checkin")
-    env.telegram.send_message.assert_called_with("42", "Your spending today: 3.00 USD.")
+    env.telegram.send_message.assert_called_with(
+        "42", "Your spending today: 3.00 USD.", None
+    )
 
 
-def test_digest_agenda_and_yesterday(
+def test_digest_is_the_agenda_only(
     env: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
@@ -83,8 +85,8 @@ def test_digest_agenda_and_yesterday(
     )
     jobs.run_job("digest")
     env.telegram.send_message.assert_called_once_with(
-        "42", "29/09 09:00 X [e1]\nAyer: 4.50 USD."
-    )
+        "42", "29/09 09:00 X [e1]", None
+    )  # no daily spending report
 
 
 def test_checkin_totals_the_day(
@@ -92,7 +94,9 @@ def test_checkin_totals_the_day(
 ) -> None:
     monkeypatch.setattr(ledger, "of_day", lambda *a: [])
     jobs.run_job("checkin")
-    env.telegram.send_message.assert_called_with("42", "Hoy no registraste gastos.")
+    env.telegram.send_message.assert_called_with(
+        "42", "Hoy no registraste gastos.", None
+    )
     entries = [
         {
             "tipo_mov": "gasto",
@@ -363,11 +367,11 @@ def test_tick_sends_per_local_time(
         "es",
         "pa",
     ]  # every chat, every hour
-    # 20:00 UTC: Madrid 22:00 daily list.
+    # 20:00 UTC: Madrid 22:00, no daily spending report any more.
     tick.telegram.reset_mock()
     _at(monkeypatch, 2026, 9, 30, 20)
     jobs.run_job("tick")
-    assert _sent(tick) == {"es": "Hoy no registraste gastos.\n\n" + t("es", "hint")}
+    assert _sent(tick) == {}
     # 12:00 UTC: Panama 07:00 digest; nobody at 22:00.
     tick.telegram.reset_mock()
     _at(monkeypatch, 2026, 9, 30, 12)
@@ -387,21 +391,30 @@ def test_tick_skips_unmatched_users_without_ledger(
     tick.enqueue.assert_not_called()
 
 
-def test_tick_sunday_one_combined_message(
+def test_tick_sunday_18_weekly_summary_with_stop_button(
     tick: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
         ledger, "spend_by_category", lambda *a: {"otros": Decimal("5.00")}
     )
-    # Mon 2026-10-05 03:00 UTC is Sunday 22:00 in Panama.
-    _at(monkeypatch, 2026, 10, 5, 3)
+    # Sun 2026-10-04 23:00 UTC is Sunday 18:00 in Panama (Madrid: Monday 01:00).
+    _at(monkeypatch, 2026, 10, 4, 23)
     jobs.run_job("tick")
     tick.telegram.send_message.assert_called_once()
-    lines = _sent(tick)["pa"].splitlines()
-    assert lines[0] == "Hoy no registraste gastos."
-    assert lines[1] == ""
-    assert lines[2].startswith("Semana ") and lines[2].endswith(": 5.00 USD")
+    chat_id, text, keyboard = tick.telegram.send_message.call_args.args
+    lines = text.splitlines()
+    assert chat_id == "pa"
+    assert lines[0].startswith("Semana ") and lines[0].endswith(": 5.00 USD")
     assert lines[-1] == t("es", "hint")
+    assert keyboard == [[(t("es", "weekly_off_button"), "ws:off")]]
+    # turned off: nothing on Sunday
+    tick.telegram.reset_mock()
+    tick.state.get_user.side_effect = lambda c: {
+        "zona_horaria": "America/Panama",
+        "resumen_semanal": False,
+    }
+    jobs.run_job("tick")
+    tick.telegram.send_message.assert_not_called()
 
 
 def test_tick_side_effects_once_a_day_from_12_utc(

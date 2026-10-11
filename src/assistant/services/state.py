@@ -113,6 +113,11 @@ def set_fun(chat_id: str, fun: bool) -> None:
     _doc("users", chat_id).set({"fun": fun}, merge=True)
 
 
+def set_weekly(chat_id: str, on: bool) -> None:
+    """The Sunday spending summary on or off."""
+    _doc("users", chat_id).set({"resumen_semanal": on}, merge=True)
+
+
 def set_lang(chat_id: str, lang: str) -> None:
     _doc("users", chat_id).set({"idioma": lang}, merge=True)
 

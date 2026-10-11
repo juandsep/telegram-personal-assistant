@@ -45,6 +45,7 @@ from google.cloud import firestore
 
 from assistant.context import ToolContext
 from assistant.i18n import t
+from assistant.observability.timing import timed
 
 HISTORY_TURNS = 6
 PENDING_TTL = timedelta(minutes=10)
@@ -375,15 +376,17 @@ def consume_oauth_state(token: str) -> str | None:
 
 
 def get_history(chat_id: str) -> list[dict]:
-    turns = (_data(_doc("history", chat_id).get()) or {}).get("turns", [])
+    with timed("firestore.get_history"):
+        turns = (_data(_doc("history", chat_id).get()) or {}).get("turns", [])
     return [m for turn in turns for m in turn["messages"]]
 
 
 def append_history(chat_id: str, messages: list[dict]) -> None:
     ref = _doc("history", chat_id)
-    turns = (_data(ref.get()) or {}).get("turns", [])
-    turns = [*turns, {"messages": messages}][-HISTORY_TURNS:]
-    ref.set({"turns": turns})
+    with timed("firestore.append_history"):
+        turns = (_data(ref.get()) or {}).get("turns", [])
+        turns = [*turns, {"messages": messages}][-HISTORY_TURNS:]
+        ref.set({"turns": turns})
 
 
 # --- ICS feed tokens ------------------------------------------------------------

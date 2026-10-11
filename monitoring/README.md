@@ -17,6 +17,11 @@ firing.
 | `llm_rejected` | LLM turns with a rejected tool call |
 | `job_failed` | Scheduled job runs where some chat failed (`job_done ... failed=N`) |
 
+Slow replies: any external call (Telegram, Firestore history, KMS, iCal fetch)
+or a whole update taking 800 ms or more logs `slow_call name=<call> ms=<n>`.
+Search Cloud Logging for `slow_call` to see which step a slow reply spent its
+time in.
+
 Alerts (production service `assistant`, mailed to `alert_email`): more than 5
 responses with 5xx in 5 min; p99 latency above 25 s for 10 min (LLM turns take
 seconds by design); any failed job run in an hour; more than 3 turns with

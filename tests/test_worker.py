@@ -1180,3 +1180,24 @@ def test_plan_delete_erases_it(st, llm, tg) -> None:
     client.post("/push", json=envelope(message("/plan borrar")))
     st.set_plan.assert_called_once_with("42", None)
     assert sent_texts(tg) == [t("es", "plan_deleted")]
+
+
+def test_plan_opens_the_app_with_the_current_goal(monkeypatch, st, llm, tg) -> None:
+    unset = dataclasses.replace(get_worker_settings(), api_url="")
+    monkeypatch.setattr(worker, "get_worker_settings", lambda: unset)
+    client.post("/push", json=envelope(message("/plan")))
+    assert sent_texts(tg) == [t("es", "unavailable")]
+    s = dataclasses.replace(unset, api_url="https://api.example")
+    monkeypatch.setattr(worker, "get_worker_settings", lambda: s)
+    st.get_user.return_value = {"moneda": "USD", "plan": {"meta": "sano", "kcal": 2000}}
+    send = MagicMock(side_effect=httpx.ConnectError("down"))
+    monkeypatch.setattr(Telegram, "send_webapp", send)
+    client.post("/push", json=envelope(message("/plan")))
+    _, text, _, url = send.call_args.args
+    assert url == "https://api.example/plan" and "2000" in text
+
+
+def test_plan_delete_failure(st, llm, tg) -> None:
+    st.set_plan.side_effect = RuntimeError("down")
+    client.post("/push", json=envelope(message("/plan borrar")))
+    assert sent_texts(tg) == [t("es", "failed")]

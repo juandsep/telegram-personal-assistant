@@ -653,3 +653,18 @@ def test_first_currency_pick_offers_the_plan(dash_db, monkeypatch) -> None:
     client.post("/moneda/guardar?moneda=USD", headers=headers)
     chat_id, _, _, url = tg.send_webapp.call_args.args
     assert (chat_id, url) == ("42", "https://x/plan")
+
+
+def test_plan_save_rejects_bad_choices_and_survives_telegram(
+    dash_db, monkeypatch
+) -> None:
+    monkeypatch.setattr(state, "set_plan", MagicMock())
+    tg = MagicMock()
+    tg.send_message.side_effect = RuntimeError("down")
+    monkeypatch.setattr(api, "Telegram", lambda token: tg)
+    headers = {"Authorization": "tma " + init_data(dash_db)}
+    for bad in ("meta=bajar", PLAN_QUERY.replace("sexo=h", "sexo=x")):
+        assert client.post(f"/plan/guardar?{bad}", headers=headers).status_code == 400
+    assert (
+        client.post(f"/plan/guardar?{PLAN_QUERY}", headers=headers).status_code == 204
+    )

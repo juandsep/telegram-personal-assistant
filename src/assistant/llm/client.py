@@ -15,6 +15,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -84,9 +85,18 @@ def _context_message(ctx: ToolContext) -> dict[str, str]:
     }
 
 
-def _post(client: httpx.Client, url: str, body: dict[str, Any]) -> dict[str, Any]:
+@cache
+def _http() -> httpx.Client:
+    """One pooled client per process: a turn reuses the open TLS connection
+    to the LLM API instead of paying a new handshake."""
+    return httpx.Client(timeout=TIMEOUT_S)
+
+
+def _post(
+    client: httpx.Client, url: str, headers: dict[str, str], body: dict[str, Any]
+) -> dict[str, Any]:
     try:
-        resp = client.post(url, json=body)
+        resp = client.post(url, json=body, headers=headers)
     except httpx.TransportError as exc:  # timeouts and connection errors
         raise LLMUnavailable(type(exc).__name__) from exc
     if resp.status_code == 429 or resp.status_code >= 500:
@@ -119,40 +129,41 @@ def run_turn(ctx: ToolContext, text: str, history: list[dict[str, Any]]) -> Turn
     )
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {settings.deepseek_api_key}"}
-    with httpx.Client(timeout=TIMEOUT_S, headers=headers) as client:
-        for _ in range(MAX_ROUNDS):
-            data = _post(
-                client,
-                url,
-                {
-                    "model": settings.llm_model,
-                    "messages": messages,
-                    "tools": TOOL_SPECS,
-                    "tool_choice": "auto",
-                    "temperature": 0.2,
-                    "thinking": {"type": "disabled"},
-                    "stream": False,
-                },
-            )
-            usage = data.get("usage") or {}
-            result.tokens_hit += int(usage.get("prompt_cache_hit_tokens", 0))
-            result.tokens_miss += int(usage.get("prompt_cache_miss_tokens", 0))
-            result.tokens_out += int(usage.get("completion_tokens", 0))
-            message = data["choices"][0]["message"]
-            calls = message.get("tool_calls") or []
-            if not calls:
-                result.reply = (message.get("content") or "").strip() or FALLBACK_REPLY
-                break
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": message.get("content") or "",
-                    "tool_calls": calls,
-                }
-            )
-            if _run_calls(ctx, calls, messages, result):
-                break  # a confirmation turn ends here, without another LLM call
-        # ponytail: a 3rd round that still asks for tools gets FALLBACK_REPLY.
+    client = _http()
+    for _ in range(MAX_ROUNDS):
+        data = _post(
+            client,
+            url,
+            headers,
+            {
+                "model": settings.llm_model,
+                "messages": messages,
+                "tools": TOOL_SPECS,
+                "tool_choice": "auto",
+                "temperature": 0.2,
+                "thinking": {"type": "disabled"},
+                "stream": False,
+            },
+        )
+        usage = data.get("usage") or {}
+        result.tokens_hit += int(usage.get("prompt_cache_hit_tokens", 0))
+        result.tokens_miss += int(usage.get("prompt_cache_miss_tokens", 0))
+        result.tokens_out += int(usage.get("completion_tokens", 0))
+        message = data["choices"][0]["message"]
+        calls = message.get("tool_calls") or []
+        if not calls:
+            result.reply = (message.get("content") or "").strip() or FALLBACK_REPLY
+            break
+        messages.append(
+            {
+                "role": "assistant",
+                "content": message.get("content") or "",
+                "tool_calls": calls,
+            }
+        )
+        if _run_calls(ctx, calls, messages, result):
+            break  # a confirmation turn ends here, without another LLM call
+    # ponytail: a 3rd round that still asks for tools gets FALLBACK_REPLY.
     result.cost_usd = (
         result.tokens_hit * settings.price_in_hit
         + result.tokens_miss * settings.price_in_miss

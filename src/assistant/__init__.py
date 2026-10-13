@@ -3,7 +3,7 @@
 import logging
 import sys
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 # Cloud Run ships stdout to Cloud Logging. Without a handler Python drops every
 # INFO record, including the per-turn trace line. Only this package logs at

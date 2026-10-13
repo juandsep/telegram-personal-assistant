@@ -83,6 +83,7 @@ def st(monkeypatch):
         "create_pending",
         "get_preferences",
         "mark_seen",
+        "set_plan",
     ):
         monkeypatch.setattr(state, name, getattr(m, name))
     return m
@@ -960,7 +961,8 @@ def test_meal_photo_is_saved_with_todays_total(st, llm, tg, photo) -> None:
     assert photo.analyze.call_args.args[0] == b"jpg"
     assert "Arepa · ~300 kcal" in sent_texts(tg)[0]
     assert "~900 kcal" in sent_texts(tg)[0]
-    assert sent_texts(tg)[0].endswith("🕐 08:10 Huevos · 13:05 Arepa")
+    times = "🕐 08:10 Huevos · 13:05 Arepa\n🎯 Define tu meta con /plan"
+    assert times in sent_texts(tg)[0]
     # The LLM never sees the photo: its history carries what Gemini saw.
     said, answer = st.append_history.call_args.args[1]
     assert said["content"] == "[Envió una foto]"
@@ -1163,3 +1165,39 @@ def test_connect_calendar_in_words_shows_the_buttons(st, llm, tg) -> None:
     body = json.loads(tg.calls.last.request.read())
     assert body["text"] == t("es", "cal_choose")
     assert body["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "cal:g"
+
+
+def test_meal_photo_shows_what_is_left_of_the_plan(st, llm, tg, photo) -> None:
+    plan = {"meta": "bajar", "kcal": 1800}
+    st.get_user.return_value = {"moneda": "USD", "plan": plan}
+    photo.analyze.return_value = {"kind": "meal", "name": "Arepa", "kcal": 300}
+    client.post("/push", json=envelope(photo_update()))
+    assert "🎯 Te quedan ~900 de 1800 kcal hoy." in sent_texts(tg)[0]
+    assert photo.analyze.call_args.args[2].goal == "bajar"
+
+
+def test_plan_delete_erases_it(st, llm, tg) -> None:
+    client.post("/push", json=envelope(message("/plan borrar")))
+    st.set_plan.assert_called_once_with("42", None)
+    assert sent_texts(tg) == [t("es", "plan_deleted")]
+
+
+def test_plan_opens_the_app_with_the_current_goal(monkeypatch, st, llm, tg) -> None:
+    unset = dataclasses.replace(get_worker_settings(), api_url="")
+    monkeypatch.setattr(worker, "get_worker_settings", lambda: unset)
+    client.post("/push", json=envelope(message("/plan")))
+    assert sent_texts(tg) == [t("es", "unavailable")]
+    s = dataclasses.replace(unset, api_url="https://api.example")
+    monkeypatch.setattr(worker, "get_worker_settings", lambda: s)
+    st.get_user.return_value = {"moneda": "USD", "plan": {"meta": "sano", "kcal": 2000}}
+    send = MagicMock(side_effect=httpx.ConnectError("down"))
+    monkeypatch.setattr(Telegram, "send_webapp", send)
+    client.post("/push", json=envelope(message("/plan")))
+    _, text, _, url = send.call_args.args
+    assert url == "https://api.example/plan" and "2000" in text
+
+
+def test_plan_delete_failure(st, llm, tg) -> None:
+    st.set_plan.side_effect = RuntimeError("down")
+    client.post("/push", json=envelope(message("/plan borrar")))
+    assert sent_texts(tg) == [t("es", "failed")]

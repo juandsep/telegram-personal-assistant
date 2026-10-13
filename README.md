@@ -30,8 +30,11 @@ GCP, for about $1–2/month (LLM tokens only).
 - **Runs your agenda.** Appointments and reminders in natural language,
   conflict checks and one-tap calendar connect: two-way sync with Google
   Calendar, or a private feed for iPhone and Outlook.
-- **Reads photos.** A meal gives estimated calories and macros; a receipt is
-  split between people, and `cuentas` shows who still owes you.
+- **Reads photos.** A meal gives estimated calories, macros and meal times; a
+  receipt is split between people, and `cuentas` shows who still owes you.
+- **Tracks a meal plan if you want.** `/plan` takes your goal, age, weight and
+  height and sets a daily calorie target; each meal shows what is left.
+  Estimates, not medical advice.
 - **Speaks your language.** Spanish, English, Chinese, French, German or Portuguese, following your phone (English for any other language).
 - **Lets people in on request.** A stranger taps Start and the owner accepts
   or rejects; inactive or revoked users are erased after 60 or 30 days, and

@@ -407,6 +407,12 @@ def test_context_message_names_the_language() -> None:
 
     zh = ToolContext("42", "beta", "USD", "America/Panama", 7, NOW, lang="zh")
     assert _context_message(zh)["content"].endswith("Responde siempre en 简体中文.")
+    plan = ToolContext(
+        "42", "beta", "USD", "America/Panama", 7, NOW, goal="bajar", kcal_target=1800
+    )
+    assert _context_message(plan)["content"].endswith(
+        "Plan de comida: bajar, ~1800 kcal/día."
+    )
 
 
 @respx.mock

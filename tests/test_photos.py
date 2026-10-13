@@ -119,3 +119,11 @@ def test_misread_thousands_are_scaled_for_currencies_without_cents() -> None:
     }
     usd = {"total": 16.83, "currency": "USD", "items": []}
     assert photos._thousands(dict(usd)) == usd
+
+
+def test_daily_kcal_mifflin_st_jeor_with_a_floor() -> None:
+    man = {"sexo": "h", "edad": 30, "peso": 80, "altura": 180, "actividad": "media"}
+    assert photos.daily_kcal(man | {"meta": "mantener"}) == 2450
+    assert photos.daily_kcal(man | {"meta": "bajar"}) == 1950
+    small = {"sexo": "m", "edad": 50, "peso": 50, "altura": 150, "actividad": "baja"}
+    assert photos.daily_kcal(small | {"meta": "bajar"}) == photos.MIN_KCAL

@@ -612,3 +612,59 @@ def test_stranger_edit_is_not_an_access_request(fake, monkeypatch) -> None:
     assert client.post(URL, json=body, headers=HEADERS).status_code == 200
     ask.assert_not_called()
     fake.publish.assert_not_called()
+
+
+PLAN_QUERY = "meta=bajar&sexo=h&edad=30&peso=80&altura=180&actividad=media"
+
+
+def test_plan_form_is_signed_and_prefilled(dash_db, monkeypatch) -> None:
+    assert client.get("/plan").headers["content-security-policy"].count("sha256-") == 1
+    assert client.post("/plan/datos").status_code == 403
+    user = {"idioma": "en", "plan": {"meta": "sano", "edad": 41}}
+    monkeypatch.setattr(state, "get_user", {"42": user}.get)
+    headers = {"Authorization": "tma " + init_data(dash_db)}
+    resp = client.post("/plan/datos", headers=headers)
+    assert '<option value="sano" selected>eat healthier</option>' in resp.text
+    assert 'value="41"' in resp.text
+
+
+def test_plan_save_validates_stores_and_confirms(dash_db, monkeypatch) -> None:
+    set_plan, tg = MagicMock(), MagicMock()
+    monkeypatch.setattr(state, "set_plan", set_plan)
+    monkeypatch.setattr(api, "Telegram", lambda token: tg)
+    headers = {"Authorization": "tma " + init_data(dash_db)}
+    bad = PLAN_QUERY.replace("edad=30", "edad=9")
+    assert client.post(f"/plan/guardar?{bad}", headers=headers).status_code == 400
+    assert client.post(f"/plan/guardar?{PLAN_QUERY}").status_code == 403
+    resp = client.post(f"/plan/guardar?{PLAN_QUERY}", headers=headers)
+    assert resp.status_code == 204
+    chat_id, plan = set_plan.call_args.args
+    assert chat_id == "42" and plan["kcal"] == 1950 and plan["meta"] == "bajar"
+    assert tg.send_message.call_args.args[1].startswith("✓ Plan: bajar de peso")
+
+
+def test_first_currency_pick_offers_the_plan(dash_db, monkeypatch) -> None:
+    monkeypatch.setattr(state, "set_currency", MagicMock())
+    tg = MagicMock()
+    monkeypatch.setattr(api, "Telegram", lambda token: tg)
+    settings = dataclasses.replace(get_worker_settings(), api_url="https://x")
+    monkeypatch.setattr(api, "get_worker_settings", lambda: settings)
+    headers = {"Authorization": "tma " + init_data(dash_db)}
+    client.post("/moneda/guardar?moneda=USD", headers=headers)
+    chat_id, _, _, url = tg.send_webapp.call_args.args
+    assert (chat_id, url) == ("42", "https://x/plan")
+
+
+def test_plan_save_rejects_bad_choices_and_survives_telegram(
+    dash_db, monkeypatch
+) -> None:
+    monkeypatch.setattr(state, "set_plan", MagicMock())
+    tg = MagicMock()
+    tg.send_message.side_effect = RuntimeError("down")
+    monkeypatch.setattr(api, "Telegram", lambda token: tg)
+    headers = {"Authorization": "tma " + init_data(dash_db)}
+    for bad in ("meta=bajar", PLAN_QUERY.replace("sexo=h", "sexo=x")):
+        assert client.post(f"/plan/guardar?{bad}", headers=headers).status_code == 400
+    assert (
+        client.post(f"/plan/guardar?{PLAN_QUERY}", headers=headers).status_code == 204
+    )

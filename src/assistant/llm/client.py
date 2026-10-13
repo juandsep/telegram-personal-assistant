@@ -75,6 +75,11 @@ def _context_message(ctx: ToolContext) -> dict[str, str]:
             f"Ahora: {_WEEKDAYS[now.weekday()]} {now:%Y-%m-%d %H:%M} "
             f"({ctx.timezone}). Moneda: {ctx.currency}. "
             f"Responde siempre en {LANG_NAMES.get(ctx.lang, 'español')}."
+            + (
+                f" Plan de comida: {ctx.goal}, ~{ctx.kcal_target} kcal/día."
+                if ctx.goal
+                else ""
+            )
         ),
     }
 

@@ -318,3 +318,8 @@ def test_calendar_status(db) -> None:
     assert state.calendar_status(ctx()) == "\n".join(
         [t("es", "cal_status_google"), t("es", "cal_status_feed_ok", minutes=0)]
     )
+
+
+def test_set_plan(db) -> None:
+    state.set_plan("1", {"meta": "sano", "kcal": 2000})
+    assert state.get_user("1")["plan"] == {"meta": "sano", "kcal": 2000}

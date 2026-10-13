@@ -251,8 +251,11 @@ it once and the photo is not kept. The caption guides it.
   total (`🍽️ Arepa · ~300 kcal … Hoy llevas ~900 kcal`), the time of each meal
   today (`🕐 08:10 Huevos · 13:05 Arepa`, saved when the photo arrives, in
   your time zone) and a 💡 tip that balances the day (Gemini sees what and when
-  you already ate today, and the time now). Macros are spelled out (Proteína,
-  Carbohidratos, Grasa) and the tip names concrete foods and portions. Gemini also rates
+  you already ate today, the time now and your plan's goal). Macros are spelled
+  out (Proteína, Carbohidratos, Grasa) and the tip names concrete foods and
+  portions. A 🎯 line shows what is left of the plan's daily kcal
+  (`🎯 Te quedan ~900 de 1800 kcal hoy.`), or points to `/plan` without one.
+  Gemini also rates
   the dish healthy, meh or unhealthy: with `/fun` on, a `comida/sana`,
   `comida/meh` or `comida/chatarra` reaction follows. **🗑️ Quitar**
   removes a wrong one. Photo estimates are rough (often ±20–30%): good for
@@ -267,10 +270,27 @@ it once and the photo is not kept. The caption guides it.
 - **Follow-up questions.** The chat LLM never sees the photo. Gemini also
   writes a one-sentence description, kept in the LLM history next to the reply
   (`[En la foto: …]`), so "¿qué hay en la foto?", "¿qué es la P?" or "¿qué
-  vegetales y proteínas puedo comer?" get an answer about that meal.
+  vegetales y proteínas puedo comer?" get an answer about that meal: at most
+  three options, one line each (food and portion).
 
 The Gemini project runs on the free tier: Google may use the photos to improve
 its products. Turn on billing in that project to stop it.
+
+### Meal plan (`/plan`)
+
+Optional. `/plan` (or `plan`) opens a Mini App with the goal (lose weight, keep
+weight, gain weight, eat healthier), sex, age (14–100), weight (30–300 kg),
+height (120–230 cm) and activity (low 1.2, medium 1.375, high 1.55). Saving
+computes the daily target with Mifflin-St Jeor times the activity, −500 kcal to
+lose and +300 to gain, rounded to 50 and never below 1200, and confirms it in
+the chat (`✓ Plan: bajar de peso · ~1950 kcal al día`). It is offered once,
+right after the first currency pick; skipping it leaves `/plan` and the 🎯 hint
+on each meal. With a plan, `/plan` shows it and reopens the form;
+`/plan borrar` (`/plan delete`) erases it, and so does `/reset`.
+
+Only the goal and the daily kcal reach Gemini and the chat LLM, never age,
+weight or height. Estimates, not medical advice: the privacy policy and terms
+say so too.
 
 ## Talking to Juani
 
@@ -310,6 +330,7 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/cuentas` | Split checks people still owe you, with ✅ buttons |
 | `/semanal` | Sunday summary on or off (not in the menu) |
 | `/fun` | Reaction images on or off |
+| `/plan [borrar]` | Meal plan and daily kcal target (Mini App); `borrar` erases it |
 | `/moneda [USD\|EUR\|GBP\|COP\|MXN\|PEN\|BRL\|CNY]` | Display currency (the picker Mini App without a code) |
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |
 | `/zona <IANA zone>` | Time zone (not in the menu) |

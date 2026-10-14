@@ -123,8 +123,8 @@ def _remind(chat_id: str, event_id: str, version: int) -> None:
 
 
 def _warm(settings: WorkerSettings) -> None:
-    """Scheduler ping in waking hours: the push keeps this worker's instance
-    alive and the GET keeps the api's (a cold start of both costs ~10 s)."""
+    """Scheduler ping every 10 minutes, all day: the push and the GET keep the
+    instance alive (a cold start costs 4-30 s)."""
     if not settings.api_url:
         return
     try:

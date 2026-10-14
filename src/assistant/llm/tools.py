@@ -209,7 +209,7 @@ ANSWER = frozenset({"calendar_status", "connect_calendar"})
 # Their confirmation question can name those busy times (a clash).
 CLASH = frozenset({"create_event", "create_reminder"})
 
-# DeepSeek strict mode supports neither these keywords nor date formats.
+# Kept to the OpenAI strict-mode subset: no such keywords, no date formats.
 _DROP = {"title", "default", "format", "minLength", "maxLength", "minItems", "maxItems"}
 _DATE_PATTERNS = {
     "date": r"^\d{4}-\d{2}-\d{2}$",
@@ -249,15 +249,14 @@ def _spec(name: str, model: type[_Args]) -> dict[str, Any]:
         "function": {
             "name": name,
             "description": (model.__doc__ or "").strip(),
-            # No "strict": DeepSeek only honours it on the /beta endpoint; the
-            # pydantic models are the real guard.
+            # No "strict": the pydantic models are the real guard.
             "parameters": params,
         },
     }
 
 
 # Built once at import (pure, deterministic): identical bytes on every request
-# so DeepSeek's prefix cache hits.
+# so the LLM's prefix cache hits.
 TOOL_SPECS: list[dict[str, Any]] = [_spec(n, m) for n, (m, _) in TOOLS.items()]
 TOOLS_JSON = json.dumps(TOOL_SPECS, ensure_ascii=False, sort_keys=True)
 

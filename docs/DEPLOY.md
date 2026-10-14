@@ -26,7 +26,7 @@ How to run your own Juani on GCP. Back to the [README](../README.md).
    read -rs TOKEN && printf '%s' "$TOKEN" | gcloud secrets versions add assistant-bot-token --data-file=- --project "$PROJECT_ID"
    openssl rand -hex 32 | tr -d '\n' | gcloud secrets versions add assistant-webhook-secret --data-file=-
    openssl rand -hex 32 | tr -d '\n' | gcloud secrets versions add assistant-webhook-path --data-file=-
-   read -rs KEY   && printf '%s' "$KEY"  | gcloud secrets versions add assistant-deepseek-key --data-file=-
+   read -rs KEY   && printf '%s' "$KEY"  | gcloud secrets versions add assistant-gemini-key --data-file=-
    ```
 
 3. Configure GitHub: set the values from `terraform output github_variables`
@@ -145,9 +145,10 @@ and `roles/storage.objectUser` for the service account. The deploy sets
 `MEDIA_BUCKET=<GCP_PROJECT_ID>-media`; no repository variable is needed. The
 owner fills it from `/catalogo` in the chat (see docs/USAGE.md).
 
-### Photos (Gemini)
+### Gemini (chat and photos)
 
-Photos of meals and receipts are read by Gemini through an API key from a
+The chat LLM and the photos of meals and receipts use Gemini through one API
+key from a
 separate AI Studio project (`gen-lang-client-0241526918`, named
 `botjonh-gemini`; free tier, no billing). Terraform creates the empty
 `assistant-gemini-key` secret; store the key once (the deploy mounts it, so it
@@ -161,8 +162,9 @@ gcloud services api-keys get-key-string "$KEY_ID" --project gen-lang-client-0241
   | gcloud secrets versions add assistant-gemini-key --data-file=-
 ```
 
-The key is restricted to `generativelanguage.googleapis.com`. Without it,
-photos answer "No pude leer la foto ahora".
+The key is restricted to `generativelanguage.googleapis.com`. The chat calls
+Gemini's OpenAI-compatible endpoint (`LLM_BASE_URL`); the service does not start
+without the key.
 
 Every merge into `dev` deploys the `assistant-staging` service (its own bot and
 Firestore database); merging `dev` into `main` deploys `assistant` to
@@ -232,7 +234,6 @@ Local runs read the same variables from a git-ignored `.env`.
 | `UPDATES_TOPIC` | Pub/Sub topic, default `assistant-updates` |
 | `TELEGRAM_BOT_ID` | Number before `:` in the bot token; checks the Visor's signature |
 | `TELEGRAM_BOT_TOKEN` | Secret `assistant-bot-token` |
-| `DEEPSEEK_API_KEY` | Secret `assistant-deepseek-key` |
 | `WORKER_URL` | The service's URL: reminder target and the OIDC audience of `/push` (empty = no reminders, `/push` refused) |
 | `WORKER_SA` | The runtime service account: signs reminder tasks; the only caller `/push` accepts |
 | `TASKS_QUEUE` / `TASKS_LOCATION` | Cloud Tasks queue (`assistant-reminders`) and region (`us-central1`) |
@@ -240,10 +241,10 @@ Local runs read the same variables from a git-ignored `.env`.
 | `KMS_KEY` | Cloud KMS key that encrypts iCal URLs and Google refresh tokens (empty = both refused) |
 | `GOOGLE_OAUTH_CLIENT_ID` | Secret `assistant-google-oauth-client-id` (empty = Google sign-in refused) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Secret `assistant-google-oauth-client-secret` |
-| `GEMINI_API_KEY` | Secret `assistant-gemini-key` (empty = photos refused) |
+| `GEMINI_API_KEY` | Secret `assistant-gemini-key`: the chat LLM and photos (required) |
 | `GEMINI_MODEL` | Gemini model that reads photos (default `gemini-3.5-flash-lite`) |
 | `BACKUP_BUCKET` | Daily ledger CSV and weekly JSON backup |
-| `LLM_MODEL` / `LLM_BASE_URL` | Default `deepseek-flash` / `https://api.deepseek.com` |
+| `LLM_MODEL` / `LLM_BASE_URL` | Chat model, default `gemini-3.5-flash-lite` / `https://generativelanguage.googleapis.com/v1beta/openai` |
 | `MAX_MSGS_PER_MINUTE` | Per-chat rate limit (default 10) |
 | `MAX_LLM_USD_PER_DAY` | Daily LLM spend cap per chat, default 0.10 (fails closed) |
 | `CONFIRM_ABOVE` | Amount above which a write asks for confirmation (default 100) |

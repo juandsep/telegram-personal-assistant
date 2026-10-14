@@ -273,8 +273,8 @@ it once and the photo is not kept. The caption guides it.
   vegetales y proteínas puedo comer?" get an answer about that meal: at most
   three options, one line each (food and portion).
 
-The Gemini project runs on the free tier: Google may use the photos to improve
-its products. Turn on billing in that project to stop it.
+The Gemini project runs on the free tier: Google may use the photos and the
+chat messages to improve its products. Turn on billing in that project to stop it.
 
 ### Meal plan (`/plan`)
 

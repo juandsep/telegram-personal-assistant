@@ -350,6 +350,10 @@ Pending, to review later:
   1.9 s but p90 12 s (DeepSeek API spikes); turns with a tool p50 5 s (two
   LLM rounds). `calendar_status` now answers in one round. Next: compare the
   p90 against another provider (e.g. Gemini Flash-Lite, key already in place).
+  Measured 2026-10-13 from the request logs: webhook ack 0.2-0.8 s, Pub/Sub
+  hop about 0.5 s, LLM 1.6-2 s, and cold starts of 4-30 s outside the warm
+  window (06-23 h). Telegram and the LLM now share one pooled HTTP client per
+  process, so a turn no longer opens a new TLS connection to each API.
 - **Python 3.14 (consideration):** the image stays on 3.12 and Dependabot
   ignores minor and major `python` bumps (`.github/dependabot.yml`). Before
   moving, check that every dependency ships 3.14 wheels, then update the

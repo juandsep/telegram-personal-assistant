@@ -38,7 +38,7 @@ TEXTS: dict[str, dict[str, str]] = {
 🧭 tablero: tu mes · resumen: hoy, semana y mes
 🗓️ reunión con Ana mañana 3pm · calendario: tu agenda
 📸 foto de tu plato (calorías) o de un recibo con «cena 4» (divido la cuenta) · cuentas: quién te debe
-🪅 fun: te respondo con imágenes
+🪅 fun: te respondo con imágenes y sarcasmo
 
 Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
         "en": """Hi 🫶 I'm Juani, your assistant on your phone. I track your expenses, income and calendar. Just write to me:
@@ -48,7 +48,7 @@ Escribe la palabra sola, sin "/". ayuda muestra esto de nuevo.""",
 🧭 dashboard: your month · summary: today, week and month
 🗓️ meeting with Ana tomorrow 3pm · calendar: your agenda
 📸 a photo of your meal (calories) or of a receipt with "dinner 4" (I split it) · splits: who owes you
-🪅 fun: I answer with images
+🪅 fun: I answer with images and sarcasm
 
 Just write the word, no "/". help shows this again.""",
         "zh": """你好 🫶 我是 Juani，你手机里的助手。我帮你记录支出、收入和日程。直接给我发消息：
@@ -58,7 +58,7 @@ Just write the word, no "/". help shows this again.""",
 🧭 dashboard：本月账单 · summary：今天、本周和本月
 🗓️ 明天下午3点和 Ana 开会 · calendar：你的日程
 📸 餐食照片（热量）或带「晚餐 4」的收据（分账）· splits：谁欠你钱
-🪅 fun：用图片回复你
+🪅 fun：用图片和调侃回复你
 
 直接发送单词，不用 "/"。help 再次显示此说明。""",
     },
@@ -337,9 +337,9 @@ Just write the word, no "/". help shows this again.""",
         "zh": "✓ 货币：{currency}。你的金额将以 {currency} 显示。",
     },
     "fun_on": {
-        "es": "🪅 Modo fun activado: te respondo con imágenes y GIFs. /fun lo apaga.",
-        "en": "🪅 Fun mode on: I'll answer with images and GIFs. /fun turns it off.",
-        "zh": "🪅 已开启趣味模式：我会用图片和 GIF 回复。再发 /fun 关闭。",
+        "es": "🪅 Modo fun activado: te respondo con imágenes, GIFs y algo de sarcasmo. /fun lo apaga.",
+        "en": "🪅 Fun mode on: I'll answer with images, GIFs and some sarcasm. /fun turns it off.",
+        "zh": "🪅 已开启趣味模式：我会用图片、GIF 和一点调侃回复。再发 /fun 关闭。",
     },
     "fun_off": {
         "es": "Modo fun apagado: te respondo con el registro.",
@@ -564,9 +564,9 @@ Just write the word, no "/". help shows this again.""",
         "zh": "未来 7 天的日程，连接你的日历",
     },
     "cmd_fun": {
-        "es": "Activa o apaga las respuestas con imágenes",
-        "en": "Turn image replies on or off",
-        "zh": "开启或关闭图片回复",
+        "es": "Activa o apaga las imágenes y el sarcasmo",
+        "en": "Turn images and sarcasm on or off",
+        "zh": "开启或关闭图片和调侃回复",
     },
     "cmd_moneda": {
         "es": "La moneda en que ves tus montos",
@@ -668,7 +668,7 @@ FR: dict[str, str] = {
 🧭 dashboard : ton mois · summary : aujourd'hui, semaine et mois
 🗓️ réunion avec Ana demain 15h · calendar : ton agenda
 📸 une photo de ton assiette (calories) ou d'un ticket avec « dîner 4 » (je partage l'addition) · splits : qui te doit
-🪅 fun : je réponds avec des images
+🪅 fun : je réponds avec des images et du sarcasme
 
 Écris juste le mot, sans « / ». help affiche ce message à nouveau.""",
     "guide": "🗺️ Guide complet",
@@ -730,7 +730,7 @@ FR: dict[str, str] = {
     "currency_first": "Avant d'enregistrer, choisis ta devise pour que tes montants soient justes.",
     "currency_question": "Dans quelle devise veux-tu voir tes montants ? Change-la plus tard avec currency.",
     "currency_ok": "✓ Devise : {currency}. Tes montants s'affichent en {currency}.",
-    "fun_on": "🪅 Mode fun activé : je réponds avec des images et des GIF. /fun le désactive.",
+    "fun_on": "🪅 Mode fun activé : je réponds avec des images, des GIF et un peu de sarcasme. /fun le désactive.",
     "fun_off": "Mode fun désactivé : je réponds avec l'enregistrement.",
     "positive": "Le montant doit être supérieur à 0.",
     "not_found": "Je n'ai pas trouvé cet enregistrement.",
@@ -776,7 +776,7 @@ FR: dict[str, str] = {
     "cmd_ultimos": "Tes 5 derniers enregistrements",
     "cmd_anular": "Annuler un enregistrement : /anular 1",
     "cmd_calendario": "Tes 7 prochains jours et la connexion de ton calendrier",
-    "cmd_fun": "Activer ou désactiver les réponses en images",
+    "cmd_fun": "Activer ou désactiver les images et le sarcasme",
     "cmd_moneda": "La devise de tes montants",
     "cmd_reset": "Effacer toutes tes données et le chat",
     "cmd_ayuda": "Comment utiliser Juani",
@@ -807,7 +807,7 @@ DE: dict[str, str] = {
 🧭 dashboard: dein Monat · summary: heute, Woche und Monat
 🗓️ Treffen mit Ana morgen 15 Uhr · calendar: deine Termine
 📸 ein Foto deines Essens (Kalorien) oder einer Rechnung mit „Abendessen 4“ (ich teile sie auf) · splits: wer dir etwas schuldet
-🪅 fun: ich antworte mit Bildern
+🪅 fun: ich antworte mit Bildern und Sarkasmus
 
 Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "guide": "🗺️ Vollständige Anleitung",
@@ -869,7 +869,7 @@ Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "currency_first": "Bevor du etwas einträgst, wähle deine Währung, damit deine Beträge stimmen.",
     "currency_question": "In welcher Währung willst du deine Beträge sehen? Ändere sie später mit currency.",
     "currency_ok": "✓ Währung: {currency}. Deine Beträge erscheinen in {currency}.",
-    "fun_on": "🪅 Fun-Modus an: ich antworte mit Bildern und GIFs. /fun schaltet ihn aus.",
+    "fun_on": "🪅 Fun-Modus an: ich antworte mit Bildern, GIFs und etwas Sarkasmus. /fun schaltet ihn aus.",
     "fun_off": "Fun-Modus aus: ich antworte mit dem Eintrag.",
     "positive": "Der Betrag muss größer als 0 sein.",
     "not_found": "Ich konnte diesen Eintrag nicht finden.",
@@ -915,7 +915,7 @@ Schreib nur das Wort, ohne „/“. help zeigt das hier erneut.""",
     "cmd_ultimos": "Deine letzten 5 Einträge",
     "cmd_anular": "Einen Eintrag stornieren: /anular 1",
     "cmd_calendario": "Deine nächsten 7 Tage und Kalender verbinden",
-    "cmd_fun": "Bild-Antworten an- oder ausschalten",
+    "cmd_fun": "Bilder und Sarkasmus an- oder ausschalten",
     "cmd_moneda": "Die Währung deiner Beträge",
     "cmd_reset": "Alle deine Daten und den Chat löschen",
     "cmd_ayuda": "So nutzt du Juani",
@@ -946,7 +946,7 @@ PT: dict[str, str] = {
 🧭 dashboard: seu mês · summary: hoje, semana e mês
 🗓️ reunião com Ana amanhã 15h · calendar: sua agenda
 📸 foto do seu prato (calorias) ou de um recibo com «jantar 4» (eu divido a conta) · splits: quem te deve
-🪅 fun: respondo com imagens
+🪅 fun: respondo com imagens e sarcasmo
 
 Escreva só a palavra, sem "/". help mostra isto de novo.""",
     "guide": "🗺️ Guia completo",
@@ -1008,7 +1008,7 @@ Escreva só a palavra, sem "/". help mostra isto de novo.""",
     "currency_first": "Antes de registrar, escolha sua moeda para que seus valores fiquem certos.",
     "currency_question": "Em que moeda você quer ver seus valores? Mude depois com currency.",
     "currency_ok": "✓ Moeda: {currency}. Seus valores aparecem em {currency}.",
-    "fun_on": "🪅 Modo fun ativado: respondo com imagens e GIFs. /fun desativa.",
+    "fun_on": "🪅 Modo fun ativado: respondo com imagens, GIFs e um pouco de sarcasmo. /fun desativa.",
     "fun_off": "Modo fun desativado: respondo com o registro.",
     "positive": "O valor deve ser maior que 0.",
     "not_found": "Não encontrei esse registro.",
@@ -1054,7 +1054,7 @@ Escreva só a palavra, sem "/". help mostra isto de novo.""",
     "cmd_ultimos": "Seus últimos 5 registros",
     "cmd_anular": "Anular um registro: /anular 1",
     "cmd_calendario": "Seus próximos 7 dias e conectar sua agenda",
-    "cmd_fun": "Ativar ou desativar respostas com imagens",
+    "cmd_fun": "Ativar ou desativar imagens e sarcasmo",
     "cmd_moneda": "A moeda dos seus valores",
     "cmd_reset": "Apagar todos os seus dados e o chat",
     "cmd_ayuda": "Como usar a Juani",

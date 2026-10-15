@@ -436,7 +436,7 @@ def test_void_entry_needs_confirmation(calls) -> None:
 
 
 def test_context_message_names_the_language() -> None:
-    from assistant.llm.client import _context_message
+    from assistant.llm.client import FUN_STYLE, _context_message
 
     zh = ToolContext("42", "beta", "USD", "America/Panama", 7, NOW, lang="zh")
     assert _context_message(zh)["content"].endswith("Responde siempre en 简体中文.")
@@ -446,6 +446,9 @@ def test_context_message_names_the_language() -> None:
     assert _context_message(plan)["content"].endswith(
         "Plan de comida: bajar, ~1800 kcal/día."
     )
+    fun = ToolContext("42", "beta", "USD", "America/Panama", 7, NOW, fun=True)
+    assert _context_message(fun)["content"].endswith(FUN_STYLE)
+    assert FUN_STYLE not in _context_message(plan)["content"]
 
 
 @respx.mock

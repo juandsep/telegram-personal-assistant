@@ -172,7 +172,12 @@ against income.
 `/fun` toggles reaction replies per user (`users.fun`, **off by default**). With
 it on, a registration answers with a random image or GIF instead of the text,
 and a meal photo gets one after its reply; the text is the fallback when the
-catalog has nothing that fits or sending fails.
+catalog has nothing that fits or sending fails. It also changes the LLM's
+tone: the per-turn context message adds a style line (loose, direct, light irony
+and sarcasm about the spending, never about the person; no jokes on errors,
+cancellations, health or debts). The system prompt stays byte-identical, so the
+prefix cache is unaffected. Template replies (quick entries, commands, photos)
+keep their text.
 
 One shared catalog, curated by the owner, serves every user. Each item has a
 tag `<kind>/<key>`:
@@ -329,7 +334,7 @@ nightly backups and ledger CSV exports in GCS are not touched.
 | `/calendario [off\|nuevo]` | Next 7 days and connecting a calendar; `off` disconnects, `nuevo` a new feed link |
 | `/cuentas` | Split checks people still owe you, with ✅ buttons |
 | `/semanal` | Sunday summary on or off (not in the menu) |
-| `/fun` | Reaction images on or off |
+| `/fun` | Reaction images and sarcastic tone on or off |
 | `/plan [borrar]` | Meal plan and daily kcal target (Mini App); `borrar` erases it |
 | `/moneda [USD\|EUR\|GBP\|COP\|MXN\|PEN\|BRL\|CNY]` | Display currency (the picker Mini App without a code) |
 | `/reset` | Erases all the user's data and recent chat messages (with confirmation) |

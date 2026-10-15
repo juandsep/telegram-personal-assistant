@@ -47,6 +47,12 @@ FALLBACK_REPLY = "No pude completarlo, intenta de nuevo."
 PRIVATE_REPLY = "(agenda mostrada al usuario)"
 _WEEKDAYS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 _MILLION = Decimal(1_000_000)
+FUN_STYLE = (
+    " Modo fun: habla suelto y directo, como un amigo con humor; ironía y"
+    " sarcasmo ligeros sobre el gasto o la situación, nunca sobre la persona."
+    " Sin bromas en errores, cancelaciones, salud ni deudas. Datos exactos y"
+    " las reglas de estilo siguen igual."
+)
 
 
 class LLMUnavailable(Exception):
@@ -82,6 +88,7 @@ def _context_message(ctx: ToolContext) -> dict[str, str]:
                 if ctx.goal
                 else ""
             )
+            + (FUN_STYLE if ctx.fun else "")
         ),
     }
 

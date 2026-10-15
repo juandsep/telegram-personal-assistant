@@ -191,7 +191,9 @@ def _run_calls(
     messages: list[dict[str, Any]],
     result: TurnResult,
 ) -> bool:
-    """Run one round of tool calls. True if it ended in a confirmation turn."""
+    """Run one round of tool calls. True if it ended the turn: a confirmation, a
+    DIRECT tool, or a round of only ANSWER tools (their outputs are the reply)."""
+    answers: list[str] = []
     for call in calls:
         fn = call.get("function") or {}
         name = str(fn.get("name", ""))
@@ -207,12 +209,17 @@ def _run_calls(
             result.reply, result.keyboard = content, buttons(token)
             result.private = name in CLASH
             return True
-        if name in DIRECT | ANSWER and name in result.tools:
+        if name in DIRECT and name in result.tools:
             # ponytail: later calls of the same round are dropped; the prompt
             # asks for these tools alone.
-            result.reply, result.private = content, name in DIRECT
+            result.reply, result.private = content, True
             return True
+        if name in ANSWER and name in result.tools:
+            answers.append(content)
         messages.append(
             {"role": "tool", "tool_call_id": call.get("id", ""), "content": content}
         )
+    if answers and len(answers) == len(calls):
+        result.reply = "\n".join(answers)
+        return True
     return False

@@ -427,8 +427,12 @@ def finance_summary(ctx: ToolContext, period: str) -> str:
     expenses = spend_by_category(ctx.chat_id, since, until, ctx.currency)
     total = sum(expenses.values(), Decimal("0.00"))
     income = total_income(ctx.chat_id, since, until, ctx.currency)
-    text = f"{period}: gastos {total} {ctx.currency}, ingresos {income} {ctx.currency}"
+    cur = ctx.currency
+    text = t(
+        ctx.lang, f"summary_{period}", spent=f"{total} {cur}", income=f"{income} {cur}"
+    )
     top = max(expenses, key=lambda c: expenses[c], default=None)
     if top is not None and expenses[top] > 0:
-        text += f"; mayor {top} {expenses[top]}"
+        cat = display_label(top, ctx.lang)
+        text += t(ctx.lang, "summary_top", cat=cat, amount=f"{expenses[top]} {cur}")
     return text

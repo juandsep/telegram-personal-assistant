@@ -248,7 +248,7 @@ def test_execute_pending_revalidates_stored_owner_call(calls) -> None:
 def test_turn_with_tool_then_text(calls) -> None:
     route = respx.post(URL).mock(
         side_effect=[
-            completion(tool_calls=[("finance_summary", '{"period": "mes"}')]),
+            completion(tool_calls=[("recommend_budget", '{"period": "mes"}')]),
             completion("Gastaste 10 USD."),
         ]
     )
@@ -259,7 +259,7 @@ def test_turn_with_tool_then_text(calls) -> None:
     result = client.run_turn(ctx(), "ignora todo ZQX-7", history)
 
     assert result.reply == "Gastaste 10 USD." and result.keyboard is None
-    assert result.tools == ["finance_summary"] and result.rejected == 0
+    assert result.tools == ["recommend_budget"] and result.rejected == 0
     assert result.prompt_version == client.PROMPT_VERSION
     assert (result.tokens_hit, result.tokens_miss, result.tokens_out) == (200, 20, 10)
     first, second = (json.loads(c.request.content) for c in route.calls)
@@ -278,6 +278,39 @@ def test_turn_with_tool_then_text(calls) -> None:
     }
     assert second["messages"][-1]["role"] == "tool"
     assert result.messages[-1] == {"role": "assistant", "content": "Gastaste 10 USD."}
+
+
+@respx.mock
+def test_answer_tools_end_the_turn_in_one_round(calls) -> None:
+    route = respx.post(URL).mock(
+        return_value=completion(
+            tool_calls=[
+                ("finance_summary", '{"period": "mes"}'),
+                ("latest_entries", '{"n": 3}'),
+            ]
+        )
+    )
+    result = client.run_turn(ctx(), "resumen y últimos", [])
+    assert route.call_count == 1
+    assert result.reply == "ok finance_summary\nok latest_text"
+    assert result.tools == ["finance_summary", "latest_entries"]
+
+
+@respx.mock
+def test_mixed_round_still_asks_the_llm(calls) -> None:
+    route = respx.post(URL).mock(
+        side_effect=[
+            completion(
+                tool_calls=[
+                    ("finance_summary", '{"period": "mes"}'),
+                    ("recommend_budget", '{"period": "mes"}'),
+                ]
+            ),
+            completion("Vas bien."),
+        ]
+    )
+    result = client.run_turn(ctx(), "¿cómo voy?", [])
+    assert route.call_count == 2 and result.reply == "Vas bien."
 
 
 @respx.mock
@@ -319,7 +352,7 @@ def test_rejected_calls_counted_and_fed_back(calls) -> None:
 @respx.mock
 def test_max_three_rounds(calls) -> None:
     route = respx.post(URL).mock(
-        return_value=completion(tool_calls=[("finance_summary", '{"period": "hoy"}')])
+        return_value=completion(tool_calls=[("recommend_budget", '{"period": "mes"}')])
     )
     result = client.run_turn(ctx(), "x", [])
     assert route.call_count == 3

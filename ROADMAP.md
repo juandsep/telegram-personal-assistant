@@ -358,6 +358,11 @@ Pending, to review later:
   (`reasoning_effort: minimal`, same key as photos), which answered the real
   prompt and tools in about 0.8-1 s against DeepSeek's 1.8 s p50; the warm
   ping now runs all day, so the first message of the morning is not cold.
+  On staging a turn with a tool still took 2.4 s: two Gemini rounds of about
+  1.2 s each (call the tool, then word the reply). Tools whose output is
+  already the reply in the user's language (record, summary, latest entries,
+  void, undo, cancel event, calendar status) now end the turn after the first
+  round when every call of that round is one of them.
 - **Python 3.14 (consideration):** the image stays on 3.12 and Dependabot
   ignores minor and major `python` bumps (`.github/dependabot.yml`). Before
   moving, check that every dependency ships 3.14 wheels, then update the

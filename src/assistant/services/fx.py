@@ -24,6 +24,8 @@ from functools import cache
 import httpx
 from google.cloud import firestore
 
+from assistant.observability.timing import timed
+
 log = logging.getLogger(__name__)
 
 TRM_URL = "https://www.datos.gov.co/resource/32sa-8pi3.json"
@@ -54,7 +56,8 @@ def _db() -> firestore.Client:
 
 def _get(url: str, params: dict[str, str]) -> object:
     # httpx does not follow redirects by default: a 3xx is a failure here.
-    r = httpx.get(url, params=params, timeout=5.0)
+    with timed("fx.fetch"):
+        r = httpx.get(url, params=params, timeout=5.0)
     if r.status_code != 200:
         raise FxError("http")
     return r.json(parse_float=Decimal)

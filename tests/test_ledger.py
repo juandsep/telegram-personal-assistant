@@ -165,14 +165,15 @@ def test_finance_summary_includes_reversals(db: FakeDB, state: MagicMock) -> Non
     )
     ledger.undo(make_ctx(update_id=5), "g2")
     assert ledger.finance_summary(make_ctx(), "mes") == (
-        "mes: gastos 45.00 USD, ingresos 900.00 USD; mayor restaurantes 45.00"
+        "Este mes: gastos 45.00 USD, ingresos 900.00 USD."
+        " Mayor gasto: Restaurantes (45.00 USD)."
     )
     assert ledger.spend_by_category("42", date(2026, 9, 28), date(2026, 9, 28)) == {
         "supermercado": Decimal("0.00")
     }
     assert ledger.total_income("42", date(2026, 9, 2), date(2026, 9, 29)) == 0
     assert ledger.finance_summary(make_ctx(chat_id="7"), "hoy") == (
-        "hoy: gastos 0.00 USD, ingresos 0.00 USD"
+        "Hoy: gastos 0.00 USD, ingresos 0.00 USD."
     )
 
 
@@ -373,7 +374,8 @@ def test_totals_in_the_user_currency(
     seed(db)
     monkeypatch.setattr(fx, "rate", lambda cur, day: (Decimal("4000"), "trm"))
     assert ledger.finance_summary(cop_ctx(), "mes") == (
-        "mes: gastos 8000.00 COP, ingresos 3600000.00 COP; mayor supermercado 8000.00"
+        "Este mes: gastos 8000.00 COP, ingresos 3600000.00 COP."
+        " Mayor gasto: Mercado (8000.00 COP)."
     )
     assert ledger.latest_text(cop_ctx()) == (
         "1) 30/09 −2000.00 COP Café\n"

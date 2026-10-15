@@ -104,6 +104,7 @@ jobs:
             KMS_KEY=projects/${{ vars.GCP_PROJECT_ID }}/locations/${{ vars.GCP_REGION }}/keyRings/botjonh/cryptoKeys/ics-url
             TASKS_LOCATION=${{ vars.GCP_REGION }}
             API_URL=${{ vars.API_URL }}
+          secrets_update_strategy: overwrite  # pragma: allowlist secret
           secrets: |
             WEBHOOK_SECRET_TOKEN=assistant-webhook-secret:latest
             WEBHOOK_PATH=assistant-webhook-path:latest

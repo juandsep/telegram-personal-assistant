@@ -24,7 +24,7 @@
       "id": "assistant",
       "type": "backend",
       "label": "assistant",
-      "sublabel": "Cloud Run \u00b7 public",
+      "sublabel": "Cloud Run · public",
       "pos": [
         210,
         200
@@ -89,10 +89,10 @@
       ]
     },
     {
-      "id": "deepseek",
+      "id": "gemini",
       "type": "external",
-      "label": "DeepSeek",
-      "sublabel": "LLM",
+      "label": "Gemini",
+      "sublabel": "LLM + photos",
       "pos": [
         460,
         40
@@ -134,7 +134,7 @@
       "id": "gcs",
       "type": "database",
       "label": "GCS",
-      "sublabel": "CSV \u00b7 media",
+      "sublabel": "CSV · media",
       "pos": [
         890,
         400
@@ -161,27 +161,13 @@
       "id": "monitoring",
       "type": "cloud",
       "label": "Cloud Monitoring",
-      "sublabel": "metrics \u00b7 alerts \u00b7 Grafana",
+      "sublabel": "metrics · alerts · Grafana",
       "pos": [
         650,
         570
       ],
       "size": [
         200,
-        64
-      ]
-    },
-    {
-      "id": "gemini",
-      "type": "external",
-      "label": "Gemini",
-      "sublabel": "photos",
-      "pos": [
-        20,
-        40
-      ],
-      "size": [
-        120,
         64
       ]
     },
@@ -254,8 +240,8 @@
     {
       "id": "llm",
       "from": "assistant",
-      "to": "deepseek",
-      "label": "tool calls",
+      "to": "gemini",
+      "label": "tool calls + photos",
       "variant": "dashed",
       "toSide": "bottom"
     },
@@ -303,15 +289,6 @@
       "to": "monitoring",
       "label": "logs + metrics",
       "labelDy": 63
-    },
-    {
-      "id": "photos",
-      "from": "assistant",
-      "to": "gemini",
-      "label": "read photo",
-      "variant": "dashed",
-      "fromSide": "top",
-      "toSide": "right"
     },
     {
       "id": "calendar",

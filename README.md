@@ -49,8 +49,8 @@ The full guide, with every command and example, is in the documentation below.
 
 One Cloud Run service, scaled to zero. The Telegram webhook only verifies the
 update, publishes it to Pub/Sub and acks in under 300 ms; Pub/Sub pushes it
-back to the same service, which calls the LLM (DeepSeek, tool calling), writes
-to Firestore and replies on its own request. Photos go to Gemini; Google
+back to the same service, which calls the LLM (Gemini Flash-Lite, tool calling),
+writes to Firestore and replies on its own request. Photos also go to Gemini; Google
 Calendar tokens are encrypted with Cloud KMS. Reminders are Cloud Tasks; the
 morning agenda, the Sunday summary, calendar sync and data retention run from
 an hourly Cloud Scheduler job. Cloud Monitoring collects request and
@@ -85,7 +85,7 @@ uv run ruff check . && uv run ruff format --check .
 Local runs read a git-ignored `.env` with the same variables as the deploy (see
 [docs/DEPLOY.md](docs/DEPLOY.md#configuration)).
 
-**Stack:** FastAPI, httpx (DeepSeek, Gemini, Telegram, Google Calendar),
+**Stack:** FastAPI, httpx (Gemini, Telegram, Google Calendar),
 `google-cloud-*` (Firestore, Pub/Sub, Storage, Tasks, KMS), Cloud Monitoring + Grafana, uv + ruff + mypy +
 pytest, Terraform, GitHub Actions.
 

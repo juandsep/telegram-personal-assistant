@@ -69,7 +69,8 @@ class ApiSettings:
 class WorkerSettings:
     project_id: str
     telegram_bot_token: str
-    deepseek_api_key: str
+    # Gemini answers the chat (tool calling) and reads photos (meals, receipts).
+    gemini_api_key: str
     # URL of the assistant service and its runtime account. Cloud Tasks POST to
     # {worker_url}/tasks/reminder with an OIDC token for worker_sa, and /push
     # and /tasks/reminder accept only tokens with audience worker_url signed for
@@ -89,15 +90,15 @@ class WorkerSettings:
     backup_bucket: str = ""
     # Public-read bucket of the reaction catalog (services/media.py).
     media_bucket: str = ""
-    # Gemini reads photos (meals, receipts). Empty key: photos are refused.
-    gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"
-    llm_model: str = "deepseek-flash"
-    llm_base_url: str = "https://api.deepseek.com"
-    # USD per 1M tokens (DeepSeek peak rate, September 2026).
-    price_in_hit: Decimal = Decimal("0.006")
+    # Chat model, through Gemini's OpenAI-compatible endpoint. Flash-Lite with
+    # minimal reasoning answered in about 1 s in an October 2026 test.
+    llm_model: str = "gemini-3.5-flash-lite"
+    llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    # USD per 1M tokens (Gemini 3.5 Flash-Lite paid rate; the free tier is $0).
+    price_in_hit: Decimal = Decimal("0.03")
     price_in_miss: Decimal = Decimal("0.30")
-    price_out: Decimal = Decimal("1.20")
+    price_out: Decimal = Decimal("2.50")
     max_llm_usd_per_day: Decimal = Decimal("0.10")
     max_msgs_per_minute: int = 10
     # In the user's currency; above it a write needs a confirmation turn.
@@ -114,7 +115,7 @@ class WorkerSettings:
         return cls(
             project_id=_require(values, "GCP_PROJECT_ID"),
             telegram_bot_token=_require(values, "TELEGRAM_BOT_TOKEN"),
-            deepseek_api_key=_require(values, "DEEPSEEK_API_KEY"),
+            gemini_api_key=_require(values, "GEMINI_API_KEY"),
             worker_url=get("WORKER_URL", "").rstrip("/"),
             worker_sa=get("WORKER_SA", ""),
             tasks_queue=get("TASKS_QUEUE", "assistant-reminders"),
@@ -125,13 +126,12 @@ class WorkerSettings:
             google_client_secret=get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
             backup_bucket=get("BACKUP_BUCKET", ""),
             media_bucket=get("MEDIA_BUCKET", ""),
-            gemini_api_key=get("GEMINI_API_KEY", ""),
             gemini_model=get("GEMINI_MODEL", "gemini-3.5-flash-lite"),
-            llm_model=get("LLM_MODEL", "deepseek-flash"),
-            llm_base_url=get("LLM_BASE_URL", "https://api.deepseek.com"),
-            price_in_hit=Decimal(get("PRICE_IN_HIT", "0.006")),
+            llm_model=get("LLM_MODEL", cls.llm_model),
+            llm_base_url=get("LLM_BASE_URL", cls.llm_base_url),
+            price_in_hit=Decimal(get("PRICE_IN_HIT", "0.03")),
             price_in_miss=Decimal(get("PRICE_IN_MISS", "0.30")),
-            price_out=Decimal(get("PRICE_OUT", "1.20")),
+            price_out=Decimal(get("PRICE_OUT", "2.50")),
             max_llm_usd_per_day=Decimal(get("MAX_LLM_USD_PER_DAY", "0.10")),
             max_msgs_per_minute=int(get("MAX_MSGS_PER_MINUTE", "10")),
             confirm_above=Decimal(get("CONFIRM_ABOVE", "100")),

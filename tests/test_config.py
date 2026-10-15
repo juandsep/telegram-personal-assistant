@@ -7,7 +7,7 @@ from assistant.config import ApiSettings, WorkerSettings, _load_dotenv
 BASE = {
     "GCP_PROJECT_ID": "p",
     "TELEGRAM_BOT_TOKEN": "t",
-    "DEEPSEEK_API_KEY": "k",  # pragma: allowlist secret
+    "GEMINI_API_KEY": "k",  # pragma: allowlist secret
 }
 
 
@@ -25,7 +25,7 @@ def test_api_requires_its_secrets() -> None:
 
 def test_worker_defaults_and_overrides() -> None:
     s = WorkerSettings.from_env(BASE)
-    assert s.llm_model == "deepseek-flash"
+    assert s.llm_model == "gemini-3.5-flash-lite"
     assert s.max_llm_usd_per_day == Decimal("0.10")
     assert (s.worker_url, s.worker_sa, s.api_url) == ("", "", "")
     assert (s.tasks_queue, s.tasks_location) == ("assistant-reminders", "us-central1")

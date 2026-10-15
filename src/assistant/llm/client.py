@@ -1,6 +1,7 @@
-"""DeepSeek chat client with a bounded tool-calling loop.
+"""Gemini chat client (OpenAI-compatible endpoint) with a bounded tool-calling
+loop.
 
-Request layout, for DeepSeek's automatic prefix cache: the fixed system prompt
+Request layout, for Gemini's implicit prefix cache: the fixed system prompt
 and the tools come first and are byte-identical on every call; then a short
 ``system`` message with the current date, time and currency; then the recent
 history; then the user text, only ever as a ``user`` message.
@@ -128,7 +129,7 @@ def run_turn(ctx: ToolContext, text: str, history: list[dict[str, Any]]) -> Turn
         rejected=0,
     )
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {settings.deepseek_api_key}"}
+    headers = {"Authorization": f"Bearer {settings.gemini_api_key}"}
     client = _http()
     for _ in range(MAX_ROUNDS):
         data = _post(
@@ -141,13 +142,16 @@ def run_turn(ctx: ToolContext, text: str, history: list[dict[str, Any]]) -> Turn
                 "tools": TOOL_SPECS,
                 "tool_choice": "auto",
                 "temperature": 0.2,
-                "thinking": {"type": "disabled"},
+                # Lowest latency: Flash-Lite rejects "none", "minimal" skips
+                # nearly all thinking.
+                "reasoning_effort": "minimal",
                 "stream": False,
             },
         )
         usage = data.get("usage") or {}
-        result.tokens_hit += int(usage.get("prompt_cache_hit_tokens", 0))
-        result.tokens_miss += int(usage.get("prompt_cache_miss_tokens", 0))
+        cached = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0))
+        result.tokens_hit += cached
+        result.tokens_miss += int(usage.get("prompt_tokens", 0)) - cached
         result.tokens_out += int(usage.get("completion_tokens", 0))
         message = data["choices"][0]["message"]
         calls = message.get("tool_calls") or []

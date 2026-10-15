@@ -108,7 +108,6 @@ jobs:
             WEBHOOK_SECRET_TOKEN=assistant-webhook-secret:latest
             WEBHOOK_PATH=assistant-webhook-path:latest
             TELEGRAM_BOT_TOKEN=${{ env.STAGING == 'true' && 'assistant-bot-token-staging' || 'assistant-bot-token' }}:latest
-            DEEPSEEK_API_KEY=assistant-deepseek-key:latest
             GOOGLE_OAUTH_CLIENT_ID=assistant-google-oauth-client-id:latest
             GOOGLE_OAUTH_CLIENT_SECRET=assistant-google-oauth-client-secret:latest
             GEMINI_API_KEY=assistant-gemini-key:latest

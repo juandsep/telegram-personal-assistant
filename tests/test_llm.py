@@ -13,7 +13,7 @@ from assistant.context import CATEGORIES, ToolContext
 from assistant.llm import client, tools
 from assistant.llm.tools import ToolRejected, execute_pending, validate_args
 
-URL = "https://api.deepseek.com/chat/completions"
+URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 NOW = datetime(2026, 9, 29, 18, 30, tzinfo=ZoneInfo("America/Panama"))
 
 
@@ -89,8 +89,8 @@ def completion(content=None, tool_calls=None, hit=100, miss=10, out=5):
             for i, (n, a) in enumerate(tool_calls)
         ]
     usage = {
-        "prompt_cache_hit_tokens": hit,
-        "prompt_cache_miss_tokens": miss,
+        "prompt_tokens": hit + miss,
+        "prompt_tokens_details": {"cached_tokens": hit},
         "completion_tokens": out,
     }
     return httpx.Response(200, json={"choices": [{"message": msg}], "usage": usage})
@@ -268,7 +268,7 @@ def test_turn_with_tool_then_text(calls) -> None:
     assert first["tools"] == second["tools"] == json.loads(json.dumps(tools.TOOL_SPECS))
     assert first["messages"][0] == second["messages"][0]  # fixed prefix
     assert first["messages"][0]["content"] == client.SYSTEM_PROMPT
-    assert first["thinking"] == {"type": "disabled"} and first["stream"] is False
+    assert first["reasoning_effort"] == "minimal" and first["stream"] is False
     assert "2026-09-29 18:30" in first["messages"][1]["content"]
     systems = [m["content"] for m in first["messages"] if m["role"] == "system"]
     assert systems and all("ZQX-7" not in s for s in systems)
@@ -352,8 +352,8 @@ def test_cost_math(calls) -> None:
             return_value=completion("ok", hit=1_000_000, miss=2_000_000, out=500_000)
         )
         result = client.run_turn(ctx(), "x", [])
-    # 1M * 0.006 + 2M * 0.30 + 0.5M * 1.20 per 1M tokens
-    assert result.cost_usd == Decimal("1.206")
+    # 1M * 0.03 + 2M * 0.30 + 0.5M * 2.50 per 1M tokens
+    assert result.cost_usd == Decimal("1.88")
 
 
 @pytest.mark.parametrize("status", [429, 500, 503])

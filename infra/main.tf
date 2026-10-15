@@ -164,10 +164,9 @@ locals {
     "assistant-bot-token-staging",          # test bot for the staging services
     "assistant-webhook-secret",             # X-Telegram-Bot-Api-Secret-Token
     "assistant-webhook-path",               # webhook route secret (32 random chars)
-    "assistant-deepseek-key",               # DeepSeek API key
     "assistant-google-oauth-client-id",     # OAuth web client: Conectar → Google
     "assistant-google-oauth-client-secret", # its secret
-    "assistant-gemini-key",                 # Gemini API key: reads photos
+    "assistant-gemini-key",                 # Gemini API key: chat LLM and photos
   ]
 }
 
@@ -236,7 +235,7 @@ resource "google_project_iam_member" "worker" {
 
 resource "google_secret_manager_secret_iam_member" "worker_reads_secrets" {
   for_each = toset([
-    "assistant-bot-token", "assistant-bot-token-staging", "assistant-deepseek-key",
+    "assistant-bot-token", "assistant-bot-token-staging",
     "assistant-webhook-secret", "assistant-webhook-path",
     "assistant-google-oauth-client-id", "assistant-google-oauth-client-secret",
     "assistant-gemini-key",
@@ -506,7 +505,7 @@ locals {
     tick = { schedule = "0 * * * *", time_zone = "Etc/UTC", label = "per-user local-time reports" }
     # Keeps the production instances alive (idle ones live ~15 min) so a message
     # does not wait for two ~10 s cold starts; night stays scale-to-zero.
-    warm = { schedule = "*/10 6-23 * * *", time_zone = var.timezone, label = "keep instances warm in waking hours" }
+    warm = { schedule = "*/10 * * * *", time_zone = var.timezone, label = "keep the instance warm all day" }
   }
 }
 

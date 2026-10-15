@@ -6,6 +6,8 @@ inline keyboard. The bot token is never logged.
 
 from __future__ import annotations
 
+from functools import cache
+
 import httpx
 
 from assistant.channels.base import Channel, InboundMessage
@@ -51,15 +53,23 @@ def parse_update(update: object) -> InboundMessage | None:
         return None
 
 
+@cache
+def _http() -> httpx.Client:
+    """One pooled client per process: each update reuses the open TLS
+    connection to api.telegram.org instead of a new handshake.
+
+    IPv4 only: Cloud Run has no IPv6 egress, and an IPv6-first connect to
+    api.telegram.org hangs for the whole timeout before falling back."""
+    return httpx.Client(
+        timeout=10.0,
+        transport=httpx.HTTPTransport(local_address="0.0.0.0"),  # noqa: S104
+    )
+
+
 class Telegram(Channel):
-    def __init__(self, bot_token: str, timeout: float = 10.0) -> None:
+    def __init__(self, bot_token: str) -> None:
         self._token = bot_token
-        # IPv4 only: Cloud Run has no IPv6 egress, and an IPv6-first connect to
-        # api.telegram.org hangs for the whole timeout before falling back.
-        self._client = httpx.Client(
-            timeout=timeout,
-            transport=httpx.HTTPTransport(local_address="0.0.0.0"),  # noqa: S104
-        )
+        self._client = _http()
 
     def _post(self, method: str, **payload: object) -> dict:
         with timed(f"telegram.{method}"):

@@ -34,7 +34,7 @@ and income in Google Sheets, recommends budgets to save, schedules appointments
 | Repo | **A single repo** `personal-assistant-bot` | One product = one repo = one GCP project (ADR 0006, one GCP project per product). Shared infrastructure already lives in `portfolio-infra`. |
 | Compute | **Cloud Run**, billed per request, scale to zero | The free tier easily covers a personal bot. `min-instances=0` is mandatory. |
 | Decoupling | **2 Cloud Run services + Pub/Sub** | Cloud Run does not guarantee CPU between requests: a `BackgroundTasks` is lost. Telegram retries without a 2xx. `api` acks in <300 ms, `worker` thinks and writes. |
-| LLM | **DeepSeek API, `deepseek-flash`** | Cheap paid API (0.30/1M in miss, 0.006 hit, 1.20/1M out), automatic prefix cache, tool calling. Accepted risk: data is processed on DeepSeek servers (China). Minimal context is sent. |
+| LLM | **DeepSeek API, `deepseek-flash`** | Cheap paid API (0.30/1M in miss, 0.006 hit, 1.20/1M out), automatic prefix cache, tool calling. Accepted risk: data is processed on DeepSeek servers (China). Minimal context is sent. **2026-10: replaced by Gemini 3.5 Flash-Lite** (same OpenAI-format client, about half the latency, no China hop). |
 | Observability | **Shared MLflow from `jd-portfolio-shared`** (ADR 0002, shared MLflow on Cloud Run) | Already exists, costs $0 idle. **No** own e2-micro: less ops, same cost. Message text is stored hashed. |
 | Finance | **Google Sheets** (ledger) + **Firestore** (budgets, preferences) | Sheet = readable and editable on the phone. Budgets are structured per-user config → Firestore. |
 | Calendar | **Dedicated Google Calendar** | Does not touch your main calendar. |
@@ -71,7 +71,7 @@ Your Telegram / beta testers
                                        ├─▶ Google Calendar (dedicated calendar)
                                        └─▶ Shared MLflow (tokens, latency, cost)
 
-Secret Manager → bot token, secret token, webhook route, DeepSeek key
+Secret Manager → bot token, secret token, webhook route, DeepSeek key (Gemini key since 2026-10)
 ```
 
 ### Why two services
@@ -250,7 +250,7 @@ personal-assistant-bot/
 │   │   ├── base.py           # common channel interface
 │   │   └── telegram.py       # sendMessage, inline buttons, /start
 │   ├── llm/
-│   │   ├── client.py         # DeepSeek flash, spend cap
+│   │   ├── client.py         # LLM (Gemini Flash-Lite since 2026-10), spend cap
 │   │   ├── tools.py          # schemas + validation (allowlist)
 │   │   └── prompts/system.md # versioned prompt (concise style)
 │   ├── services/
@@ -350,6 +350,14 @@ Pending, to review later:
   1.9 s but p90 12 s (DeepSeek API spikes); turns with a tool p50 5 s (two
   LLM rounds). `calendar_status` now answers in one round. Next: compare the
   p90 against another provider (e.g. Gemini Flash-Lite, key already in place).
+  Measured 2026-10-13 from the request logs: webhook ack 0.2-0.8 s, Pub/Sub
+  hop about 0.5 s, LLM 1.6-2 s, and cold starts of 4-30 s outside the warm
+  window (06-23 h). Telegram and the LLM now share one pooled HTTP client per
+  process, so a turn no longer opens a new TLS connection to each API.
+  Done 2026-10-14: the chat LLM moved from DeepSeek to Gemini 3.5 Flash-Lite
+  (`reasoning_effort: minimal`, same key as photos), which answered the real
+  prompt and tools in about 0.8-1 s against DeepSeek's 1.8 s p50; the warm
+  ping now runs all day, so the first message of the morning is not cold.
 - **Python 3.14 (consideration):** the image stays on 3.12 and Dependabot
   ignores minor and major `python` bumps (`.github/dependabot.yml`). Before
   moving, check that every dependency ships 3.14 wheels, then update the

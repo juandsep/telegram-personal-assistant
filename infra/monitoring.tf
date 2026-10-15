@@ -116,7 +116,7 @@ resource "google_monitoring_alert_policy" "service_5xx" {
   conditions {
     display_name = "more than 5 responses with 5xx in 5 min"
     condition_threshold {
-      # Includes the 503 /push returns when DeepSeek is down (Pub/Sub retries).
+      # Includes the 503 /push returns when the LLM is down (Pub/Sub retries).
       filter          = "${local.prod} AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
       comparison      = "COMPARISON_GT"
       threshold_value = 5
@@ -142,7 +142,7 @@ resource "google_monitoring_alert_policy" "service_latency" {
     display_name = "p99 request latency > 25 s for 10 min"
     condition_threshold {
       # Not uplift's 1 s: the /push requests run LLM turns that take seconds by
-      # design. 25 s means turns are hanging toward the 30 s DeepSeek timeout.
+      # design. 25 s means turns are hanging toward the 30 s LLM timeout.
       filter          = "${local.prod} AND metric.type = \"run.googleapis.com/request_latencies\""
       comparison      = "COMPARISON_GT"
       threshold_value = 25000

@@ -40,6 +40,7 @@ from google.cloud.firestore import FieldFilter
 
 from assistant.config import WorkerSettings, get_worker_settings
 from assistant.context import ToolContext
+from assistant.observability.timing import timed
 from assistant.services import crypto
 
 log = logging.getLogger(__name__)
@@ -92,9 +93,10 @@ def _call(
             creds.refresh(google.auth.transport.requests.Request())
         token = creds.token
     headers = {"Authorization": f"Bearer {token}"}
-    return httpx.request(
-        method, f"{API}{path}", headers=headers, timeout=TIMEOUT_S, **kwargs
-    )
+    with timed(f"gcal.{method}"):
+        return httpx.request(
+            method, f"{API}{path}", headers=headers, timeout=TIMEOUT_S, **kwargs
+        )
 
 
 def _events(cal: str) -> str:
@@ -127,7 +129,8 @@ def _access_token(chat_id: str, enc: str) -> str:
         "refresh_token": crypto.decrypt(s.kms_key, enc, chat_id),
         "grant_type": "refresh_token",
     }
-    resp = httpx.post(TOKEN_URL, data=data, timeout=TIMEOUT_S)
+    with timed("gcal.token"):
+        resp = httpx.post(TOKEN_URL, data=data, timeout=TIMEOUT_S)
     if resp.status_code == 400 and "invalid_grant" in resp.text:
         _prefs(chat_id).set({"gcal_token_enc": firestore.DELETE_FIELD}, merge=True)
         _tokens.pop(chat_id, None)

@@ -86,7 +86,8 @@ def _data(snap: Any) -> dict | None:
 
 
 def get_user(chat_id: str) -> dict | None:
-    return _data(_doc("users", chat_id).get())
+    with timed("firestore.get_user"):
+        return _data(_doc("users", chat_id).get())
 
 
 def upsert_user(

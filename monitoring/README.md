@@ -17,8 +17,10 @@ firing.
 | `llm_rejected` | LLM turns with a rejected tool call |
 | `job_failed` | Scheduled job runs where some chat failed (`job_done ... failed=N`); a chat that blocked the bot counts as `blocked=N`, not a failure |
 
-Slow replies: any external call (Telegram, Firestore history, KMS, iCal fetch)
-or a whole update taking 800 ms or more logs `slow_call name=<call> ms=<n>`.
+Slow replies: any external call (Telegram, Firestore user and history, KMS,
+iCal fetch, Google Calendar, FX rates, reaction catalog), the calendar view, a
+quick entry or a whole update taking 300 ms or more logs
+`slow_call name=<call> ms=<n>`.
 Search Cloud Logging for `slow_call` to see which step a slow reply spent its
 time in.
 

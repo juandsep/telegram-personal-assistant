@@ -237,7 +237,9 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     if msg.text.startswith("/calendario"):
         arg = msg.text.partition(" ")[2]
-        _send(channel, msg, *_calendar(ctx, msg, arg), remember=_calendar_note(arg))
+        with timed("calendar_view"):
+            text, keyboard = _calendar(ctx, msg, arg)
+        _send(channel, msg, text, keyboard, remember=_calendar_note(arg))
         return ACK
     if msg.text.startswith("/catalogo"):
         _catalog(ctx, channel, msg, settings)
@@ -275,7 +277,8 @@ def handle_update(msg: InboundMessage, settings: WorkerSettings) -> int:
         return ACK
     entry = quick.parse(msg.text, default=ctx.currency)
     if entry is not None:  # deterministic: no LLM, no spend, no history
-        _quick(ctx, msg, entry, channel)
+        with timed("quick_entry"):
+            _quick(ctx, msg, entry, channel)
         return ACK
 
     # 1. Rate limit and daily cap: fail closed without calling the LLM.

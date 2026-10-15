@@ -28,6 +28,7 @@ from google.cloud import firestore
 from google.cloud.firestore import FieldFilter
 
 from assistant.config import get_worker_settings
+from assistant.observability.timing import timed
 from assistant.services import state
 
 log = logging.getLogger(__name__)
@@ -127,7 +128,8 @@ def pick(kind: str, key: str) -> tuple[str, str] | None:
     """(url, tipo) of a random item of ``kind/key``, else of ``kind/general``."""
     for tag in (f"{kind}/{key}", f"{kind}/{GENERAL}"):
         query = _col().where(filter=FieldFilter("etiqueta", "==", tag))
-        items = [s.to_dict() or {} for s in query.stream()]
+        with timed("media.pick"):
+            items = [s.to_dict() or {} for s in query.stream()]
         if items:
             item = secrets.choice(items)
             return str(item["url"]), str(item["tipo"])

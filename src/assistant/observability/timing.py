@@ -14,7 +14,7 @@ from contextlib import contextmanager
 
 log = logging.getLogger(__name__)
 
-SLOW_MS = 800
+SLOW_MS = 300  # low enough to show which step of a 1-2 s reply is slow
 
 
 @contextmanager
